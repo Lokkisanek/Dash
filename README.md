@@ -31,6 +31,8 @@ Edit **`src/config/guestDashboard.js`** — add rooms, devices, scenes, or guest
 
 ## Docker (homelab)
 
+Container listens on **port 86**.
+
 ```bash
 # Mock / demo image
 docker build -t guest-ha-dashboard .
@@ -41,8 +43,27 @@ docker build \
   --build-arg VITE_HA_TOKEN=your_token \
   -t guest-ha-dashboard .
 
-docker run -d --name guest-ha -p 80:80 guest-ha-dashboard
+docker run -d --name guest-ha -p 86:86 guest-ha-dashboard
 ```
+
+## Coolify
+
+1. **New Resource → Public/Private Repository** (nebo GitHub/GitLab) → vyber tenhle repo.
+2. Build Pack: **Dockerfile** (Coolify ho detekuje sám).
+3. **Ports Exposes:** `86`  
+   **Ports Mappings:** `86:86` (nebo v UI jen Expose `86` a mapuj host `86`).
+4. **Build Arguments** (Environment → Build-time):
+
+   | Name | Value |
+   |---|---|
+   | `VITE_HA_URL` | `https://tvoje-ha:8123` (nebo `mock`) |
+   | `VITE_HA_TOKEN` | long-lived access token z HA |
+
+   Vite je peče do JS při buildu — po změně URL/tokenu musíš **Rebuild**.
+5. Doména (volitelně): přidej domain v Coolify; reverse proxy pak míří na container port **86**.
+6. Deploy → otevři `http://SERVER_IP:86` (nebo tvoji doménu).
+
+> HA WebSocket: pokud HA běží jinde, musí být dostupné z prohlížeče hosta (CORS / same network), ne jen z Coolify kontejneru.
 
 ## iPhone kiosk setup
 
