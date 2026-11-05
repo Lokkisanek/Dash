@@ -46,13 +46,25 @@ docker build \
 docker run -d --name guest-ha -p 86:86 guest-ha-dashboard
 ```
 
-## Coolify
+## Docker Compose
 
-1. **New Resource → Public/Private Repository** (nebo GitHub/GitLab) → vyber tenhle repo.
-2. Build Pack: **Dockerfile** (Coolify ho detekuje sám).
-3. **Ports Exposes:** `86`  
-   **Ports Mappings:** `86:86` (nebo v UI jen Expose `86` a mapuj host `86`).
-4. **Build Arguments** (Environment → Build-time):
+```bash
+# Mock
+docker compose up -d --build
+
+# Live HA
+VITE_HA_URL=https://homeassistant.local:8123 \
+VITE_HA_TOKEN=your_token \
+docker compose up -d --build
+```
+
+App: `http://localhost:86`
+
+## Coolify (Compose)
+
+1. **New Resource → Docker Compose** → napoj repo (nebo vlož `docker-compose.yml`).
+2. Coolify použije `docker-compose.yml` v rootu — port **`86:86`** je už v souboru.
+3. **Environment Variables** (pro build args):
 
    | Name | Value |
    |---|---|
@@ -60,8 +72,8 @@ docker run -d --name guest-ha -p 86:86 guest-ha-dashboard
    | `VITE_HA_TOKEN` | long-lived access token z HA |
 
    Vite je peče do JS při buildu — po změně URL/tokenu musíš **Rebuild**.
-5. Doména (volitelně): přidej domain v Coolify; reverse proxy pak míří na container port **86**.
-6. Deploy → otevři `http://SERVER_IP:86` (nebo tvoji doménu).
+4. Doména (volitelně): v Coolify nastav domain a jako container port uveď **86**.
+5. Deploy → `http://SERVER_IP:86` (nebo tvoje doména).
 
 > HA WebSocket: pokud HA běží jinde, musí být dostupné z prohlížeče hosta (CORS / same network), ne jen z Coolify kontejneru.
 

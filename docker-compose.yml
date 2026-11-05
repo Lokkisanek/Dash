@@ -1,0 +1,19 @@
+services:
+  guest-ha-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_HA_URL: ${VITE_HA_URL:-mock}
+        VITE_HA_TOKEN: ${VITE_HA_TOKEN:-mock}
+    image: guest-ha-dashboard:latest
+    container_name: guest-ha-dashboard
+    restart: unless-stopped
+    ports:
+      - "86:86"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:86/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
