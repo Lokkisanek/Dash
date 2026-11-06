@@ -22,7 +22,7 @@ export const guestDashboard = {
     accent: '#ff6b00',
   },
 
-  /** Bottom dock — max 4 entity shortcuts (label optional) */
+  /** Bottom dock — max 4 room shortcuts (label optional). Empty = first 4 rooms. */
   dock: [],
 
   /** Quick-action scene pills shown above the room grid */

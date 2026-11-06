@@ -1,7 +1,7 @@
 """Constants for Guest HA Dashboard."""
 
 DOMAIN = "guest_ha_dashboard"
-VERSION = "1.2.7"
+VERSION = "1.2.8"
 STORAGE_KEY = f"{DOMAIN}.config"
 STORAGE_VERSION = 1
 
@@ -20,7 +20,7 @@ DEFAULT_CONFIG: dict = {
     },
     "scenes": [],
     "rooms": [],
-    # Bottom dock shortcuts — max 4 entities (label optional)
+    # Bottom dock — max 4 room shortcuts (label optional)
     "dock": [],
     "dashboardUrl": "",
     "appearance": {

@@ -22,9 +22,74 @@ useWakeLock()
 
 const activeRoomId = ref(rooms.value[0]?.id)
 
+/** Dock entries resolved to rooms (max 4). Fallback: first 4 rooms. */
+const dockItems = computed(() => {
+  const list = rooms.value || []
+  const configured = (dock.value || []).filter((d) => d?.roomId).slice(0, 4)
+  if (configured.length) {
+    return configured
+      .map((d) => {
+        const room = list.find((r) => r.id === d.roomId)
+        if (!room) return null
+        const label =
+          d.showLabel === false ? '' : String(d.label || room.label || room.id).trim()
+        return {
+          id: room.id,
+          label,
+          showLabel: d.showLabel !== false && Boolean(label),
+          icon: d.icon || room.icon || 'Home',
+        }
+      })
+      .filter(Boolean)
+  }
+  return list.slice(0, 4).map((r) => ({
+    id: r.id,
+    label: r.label || r.id,
+    showLabel: true,
+    icon: r.icon || 'Home',
+  }))
+})
+
 function selectRoom(id) {
+  if (!id || id === activeRoomId.value) return
   unlockAudio()
   activeRoomId.value = id
+}
+
+function roomIndex() {
+  return rooms.value.findIndex((r) => r.id === activeRoomId.value)
+}
+
+function goRoomDelta(delta) {
+  const list = rooms.value
+  if (!list.length) return
+  let idx = roomIndex()
+  if (idx < 0) idx = 0
+  const next = Math.max(0, Math.min(list.length - 1, idx + delta))
+  if (list[next]) selectRoom(list[next].id)
+}
+
+/* Horizontal swipe between room cards */
+const swipe = ref({ x: 0, y: 0, active: false })
+
+function onPointerDown(e) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return
+  swipe.value = { x: e.clientX, y: e.clientY, active: true }
+}
+
+function onPointerUp(e) {
+  if (!swipe.value.active) return
+  const dx = e.clientX - swipe.value.x
+  const dy = e.clientY - swipe.value.y
+  swipe.value.active = false
+  // Require clear horizontal swipe (not a vertical scroll)
+  if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.2) return
+  if (dx < 0) goRoomDelta(1)
+  else goRoomDelta(-1)
+}
+
+function onPointerCancel() {
+  swipe.value.active = false
 }
 
 watch(
@@ -54,7 +119,6 @@ const activeRoom = computed(
   () => rooms.value.find((r) => r.id === activeRoomId.value) || rooms.value[0],
 )
 
-// Only block the UI for real auth gates — never on refresh/reconnect flicker
 const showLogin = computed(() => {
   if (status.value === 'login') return true
   if (status.value === 'need_url') return true
@@ -69,7 +133,6 @@ const isPreview = computed(() => {
   }
 })
 
-// Preview iframe: never flash reconnect splash — config panel + dashboard stay independent
 const showBootSplash = computed(() => {
   if (isPreview.value) return false
   return status.value === 'idle' || status.value === 'connecting'
@@ -85,7 +148,6 @@ onMounted(() => {
 </script>
 
 <template>
-  <!-- Preview iframe: never force full login UI (avoids OAuth loops inside HA panel) -->
   <div
     v-if="isPreview && showLogin"
     class="dashboard-shell grid place-items-center h-full text-base-content/60 text-sm p-6 text-center"
@@ -106,6 +168,9 @@ onMounted(() => {
     v-else
     class="dashboard-shell relative h-full w-full overflow-hidden text-base-content safe-pad"
     :class="{ 'is-dark': themeMode === 'dark' }"
+    @pointerdown="onPointerDown"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerCancel"
   >
     <div class="dashboard-orbs" aria-hidden="true">
       <span class="orb o1" />
@@ -131,22 +196,6 @@ onMounted(() => {
 
       <div class="mt-4">
         <SceneBar />
-      </div>
-
-      <div
-        v-if="rooms.length > 1"
-        class="mt-3 flex gap-2 overflow-x-auto no-scrollbar pb-1"
-      >
-        <button
-          v-for="room in rooms"
-          :key="room.id"
-          type="button"
-          class="btn btn-sm rounded-full shrink-0 border-0 shadow-none"
-          :class="room.id === activeRoomId ? 'bg-base-100' : 'bg-base-100/50 text-base-content/50'"
-          @click="selectRoom(room.id)"
-        >
-          {{ room.label }}
-        </button>
       </div>
 
       <div
@@ -182,13 +231,14 @@ onMounted(() => {
       </div>
     </div>
 
-    <LiquidGlassDock :items="dock" />
+    <LiquidGlassDock v-model="activeRoomId" :items="dockItems" />
   </div>
 </template>
 
 <style scoped>
 .dashboard-shell {
   background: #f3f0f7;
+  touch-action: pan-y;
 }
 
 .dashboard-shell.is-dark {

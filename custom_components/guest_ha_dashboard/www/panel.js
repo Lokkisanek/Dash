@@ -5,7 +5,7 @@
  * Editing draft config never touches the live preview iframe. Only Save refreshes
  * it (and publishes config to the real guest PWA via HA).
  */
-const PANEL_VERSION = "1.2.7";
+const PANEL_VERSION = "1.2.8";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
 const DOCK_MAX = 4;
@@ -59,13 +59,13 @@ const PANEL_I18N = {
     delete: "Smazat",
     scenesHint: "Rychlé scény v horní liště tabletu. Propsí se až po Uložit.",
     addScene: "Scéna",
-    dockHint: "Spodní dock tabletu — maximálně 4 entity. Název je volitelný (ikonka only / s popiskem).",
-    dockAdd: "+ Položka docku",
-    dockEntity: "Entity",
-    dockLabel: "Název",
+    dockHint: "Spodní dock = přepínač místností (max. 4). Klik přepne kartu místnosti. Název je volitelný.",
+    dockAdd: "+ Místnost do docku",
+    dockRoom: "Místnost",
+    dockLabel: "Název (volitelný override)",
     dockShowLabel: "Zobrazit název",
     dockFull: "Dock je plný (max. 4).",
-    dockEmpty: "Zatím žádné položky v docku.",
+    dockEmpty: "Zatím žádné místnosti v docku — použijí se první 4 z Mistnosti.",
     importedRooms: (n) => `Naimportováno ${n} místností`,
     roomExists: "Místnost už je v configu",
     roomAdded: (name) => `Přidáno: ${name}`,
@@ -120,13 +120,13 @@ const PANEL_I18N = {
     delete: "Delete",
     scenesHint: "Quick scenes in the tablet top bar. Applied only after Save.",
     addScene: "Scene",
-    dockHint: "Tablet bottom dock — max 4 entities. Name is optional (icon only / with label).",
-    dockAdd: "+ Dock item",
-    dockEntity: "Entity",
-    dockLabel: "Name",
+    dockHint: "Bottom dock = room switcher (max 4). Tap switches the room card. Name is optional.",
+    dockAdd: "+ Room to dock",
+    dockRoom: "Room",
+    dockLabel: "Name (optional override)",
     dockShowLabel: "Show name",
     dockFull: "Dock is full (max 4).",
-    dockEmpty: "No dock items yet.",
+    dockEmpty: "No dock rooms yet — the first 4 Rooms will be used.",
     importedRooms: (n) => `Imported ${n} rooms`,
     roomExists: "Room is already in the config",
     roomAdded: (name) => `Added: ${name}`,
@@ -910,29 +910,21 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
   }
 
-  _dockEntityOptions() {
-    const domains = ["light", "switch", "scene", "cover", "script", "input_boolean", "button"];
-    const ids = Object.keys(this._hass?.states || {})
-      .filter((id) => domains.includes(id.split(".")[0]))
-      .sort();
-    return ids;
-  }
-
   _renderDock(c) {
     const dock = this._ensureDock();
-    const entities = this._dockEntityOptions();
+    const rooms = c.rooms || [];
     return `
       <p class="hint">${this._t("dockHint")}</p>
       ${dock.length ? `<div class="card-list">${dock.map((item, i) => `
         <div class="device" data-dock-i="${i}">
-          <div class="row"><label>${this._t("dockEntity")}</label>
-            <select data-k="entityId">
+          <div class="row"><label>${this._t("dockRoom")}</label>
+            <select data-k="roomId">
               <option value="">—</option>
-              ${entities.map((e) => `<option value="${this._escape(e)}" ${item.entityId === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}
+              ${rooms.map((r) => `<option value="${this._escape(r.id)}" ${item.roomId === r.id ? "selected" : ""}>${this._escape(r.label || r.id)}</option>`).join("")}
             </select>
           </div>
           <div class="row"><label>${this._t("dockLabel")}</label>
-            <input data-k="label" value="${this._escape(item.label || "")}" placeholder="optional" ${item.showLabel === false ? "disabled" : ""} />
+            <input data-k="label" value="${this._escape(item.label || "")}" placeholder="${this._escape((rooms.find((r) => r.id === item.roomId) || {}).label || "")}" />
           </div>
           <div class="row"><label>${this._t("dockShowLabel")}</label>
             <label style="display:flex;align-items:center;gap:8px;color:var(--text)">
@@ -941,13 +933,17 @@ class GuestHaDashboardPanel extends HTMLElement {
             </label>
           </div>
           <div class="row"><label>${this._t("roomIcon")}</label>
-            <select data-k="icon">${ICON_OPTIONS.map((ic) => `<option ${item.icon === ic ? "selected" : ""}>${ic}</option>`).join("")}</select>
+            <select data-k="icon">${ICON_OPTIONS.map((ic) => {
+              const room = rooms.find((r) => r.id === item.roomId);
+              const selected = item.icon || room?.icon || "Home";
+              return `<option ${selected === ic ? "selected" : ""}>${ic}</option>`;
+            }).join("")}</select>
           </div>
           <div class="actions"><button type="button" class="btn danger" data-remove-dock="${i}">${this._t("delete")}</button></div>
         </div>
       `).join("")}</div>` : `<p class="hint">${this._t("dockEmpty")}</p>`}
       <div class="actions">
-        <button type="button" class="btn primary" id="addDock" ${dock.length >= DOCK_MAX ? "disabled" : ""}>${this._t("dockAdd")}</button>
+        <button type="button" class="btn primary" id="addDock" ${dock.length >= DOCK_MAX || !rooms.length ? "disabled" : ""}>${this._t("dockAdd")}</button>
         ${dock.length >= DOCK_MAX ? `<span class="count">${this._t("dockFull")}</span>` : ""}
       </div>
     `;
@@ -957,7 +953,14 @@ class GuestHaDashboardPanel extends HTMLElement {
     this.shadowRoot.getElementById("addDock")?.addEventListener("click", () => {
       const dock = this._ensureDock();
       if (dock.length >= DOCK_MAX) return;
-      dock.push({ entityId: "", label: "", showLabel: true, icon: "Power" });
+      const used = new Set(dock.map((d) => d.roomId).filter(Boolean));
+      const nextRoom = (this._config.rooms || []).find((r) => !used.has(r.id));
+      dock.push({
+        roomId: nextRoom?.id || "",
+        label: "",
+        showLabel: true,
+        icon: nextRoom?.icon || "Home",
+      });
       this._render();
     });
     this._on("[data-remove-dock]", "click", (e) => {
@@ -968,19 +971,21 @@ class GuestHaDashboardPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll(".device[data-dock-i]").forEach((card) => {
       const item = this._ensureDock()[Number(card.dataset.dockI)];
       if (!item) return;
+      // drop legacy entity fields if present
+      delete item.entityId;
       card.querySelectorAll("[data-k]").forEach((el) => {
         const key = el.dataset.k;
         const apply = () => {
           if (key === "showLabel") {
             item.showLabel = el.checked;
-            if (!item.showLabel) item.label = item.label || "";
           } else {
             item[key] = el.value;
           }
-          if (key === "entityId" && el.value && !item.label) {
-            item.label = this._friendly(el.value);
+          if (key === "roomId" && el.value) {
+            const room = (this._config.rooms || []).find((r) => r.id === el.value);
+            if (room?.icon) item.icon = room.icon;
           }
-          if (key === "showLabel" || key === "entityId") this._render();
+          if (key === "showLabel" || key === "roomId" || key === "icon") this._render();
         };
         el.addEventListener("change", apply);
         if (el.tagName === "INPUT" && el.type !== "checkbox") {

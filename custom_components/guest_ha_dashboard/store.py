@@ -44,17 +44,18 @@ class GuestDashboardStore:
         for item in raw_dock[:4]:
             if not isinstance(item, dict):
                 continue
-            entity_id = str(item.get("entityId") or item.get("entity_id") or "").strip()
-            if not entity_id:
+            # Legacy entity dock entries are dropped
+            if item.get("entityId") or item.get("entity_id"):
                 continue
-            label = str(item.get("label") or "").strip()
-            show_label = bool(item.get("showLabel", bool(label)))
+            room_id = str(item.get("roomId") or item.get("room_id") or "").strip()
+            if not room_id:
+                continue
             dock.append(
                 {
-                    "entityId": entity_id,
-                    "label": label,
-                    "showLabel": show_label,
-                    "icon": str(item.get("icon") or "Power"),
+                    "roomId": room_id,
+                    "label": str(item.get("label") or "").strip(),
+                    "showLabel": bool(item.get("showLabel", True)),
+                    "icon": str(item.get("icon") or "Home"),
                 }
             )
         cleaned = {

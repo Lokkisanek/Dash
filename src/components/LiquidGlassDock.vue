@@ -1,16 +1,16 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { mountSvgLiquidGlass, DOCK_GLASS } from '@/lib/liquidGlassSvg'
 import { resolveIcon } from '@/lib/icons'
 import { unlockAudio } from '@/composables/useSound'
-import { useHomeAssistant } from '@/composables/useHomeAssistant'
 
 const props = defineProps({
-  /** @type {{ entityId: string, label?: string, showLabel?: boolean, icon?: string }[]} */
+  /** @type {{ id: string, label?: string, showLabel?: boolean, icon?: string }[]} */
   items: { type: Array, default: () => [] },
+  modelValue: { type: String, default: '' },
 })
 
-const { getEntityState, toggleLight, toggleSwitch, activateScene, callService } = useHomeAssistant()
+const emit = defineEmits(['update:modelValue'])
 
 const glassRef = ref(null)
 const svgRef = ref(null)
@@ -19,38 +19,24 @@ let glass = null
 const DOCK_H = 88
 const DOCK_R = 44
 
-const visibleItems = computed(() => (props.items || []).filter((i) => i?.entityId).slice(0, 4))
+const visibleItems = computed(() => (props.items || []).filter((i) => i?.id).slice(0, 4))
 
 function itemIcon(item) {
-  return resolveIcon(item.icon || 'Power', 'Power')
-}
-
-function isOn(item) {
-  const st = getEntityState(item.entityId)?.state
-  return st === 'on' || st === 'open' || st === 'playing'
+  return resolveIcon(item.icon || 'Home', 'Home')
 }
 
 function showName(item) {
   return item.showLabel !== false && Boolean(String(item.label || '').trim())
 }
 
-async function activate(item) {
+function select(id) {
   unlockAudio()
-  const id = item.entityId
-  if (!id) return
-  const domain = id.split('.')[0]
-  if (domain === 'light') await toggleLight(id)
-  else if (domain === 'switch') await toggleSwitch(id)
-  else if (domain === 'scene') await activateScene(id)
-  else if (domain === 'cover') await callService('cover', 'toggle', { entity_id: id })
-  else if (domain === 'input_boolean') await callService('input_boolean', 'toggle', { entity_id: id })
-  else if (domain === 'script') await callService('script', 'turn_on', { entity_id: id })
-  else if (domain === 'button') await callService('button', 'press', { entity_id: id })
-  else await callService(domain, 'toggle', { entity_id: id })
+  emit('update:modelValue', id)
 }
 
-onMounted(async () => {
-  await nextTick()
+function mountGlass() {
+  glass?.destroy()
+  glass = null
   const glassEl = glassRef.value
   const defsHost = svgRef.value?.querySelector('defs')
   if (!glassEl || !defsHost || !visibleItems.value.length) return
@@ -78,6 +64,16 @@ onMounted(async () => {
   } catch (err) {
     console.warn('[LiquidGlassDock] SVG glass failed:', err)
   }
+}
+
+onMounted(async () => {
+  await nextTick()
+  mountGlass()
+})
+
+watch(visibleItems, async () => {
+  await nextTick()
+  mountGlass()
 })
 
 onUnmounted(() => {
@@ -108,15 +104,19 @@ onUnmounted(() => {
         borderRadius: `${DOCK_R}px`,
       }"
     >
-      <nav class="liquid-dock__nav" aria-label="Dock">
+      <nav class="liquid-dock__nav" aria-label="Rooms">
         <button
           v-for="item in visibleItems"
-          :key="item.entityId"
+          :key="item.id"
           type="button"
           class="liquid-dock__tab"
-          :class="{ 'is-active': isOn(item), 'is-icon-only': !showName(item) }"
-          :aria-label="item.label || item.entityId"
-          @click="activate(item)"
+          :class="{
+            'is-active': item.id === modelValue,
+            'is-icon-only': !showName(item),
+          }"
+          :aria-current="item.id === modelValue ? 'page' : undefined"
+          :aria-label="item.label || item.id"
+          @click="select(item.id)"
         >
           <component :is="itemIcon(item)" :size="22" :stroke-width="2.15" />
           <span v-if="showName(item)">{{ item.label }}</span>

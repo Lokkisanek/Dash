@@ -50,13 +50,13 @@ export function applyGuestConfig(config, source = 'ha') {
   if (!config || typeof config !== 'object') return
   const dock = Array.isArray(config.dock)
     ? config.dock
-        .filter((d) => d && (d.entityId || d.entity_id))
+        .filter((d) => d && (d.roomId || d.room_id) && !d.entityId && !d.entity_id)
         .slice(0, 4)
         .map((d) => ({
-          entityId: d.entityId || d.entity_id || '',
+          roomId: d.roomId || d.room_id || '',
           label: d.label || '',
-          showLabel: d.showLabel !== false && Boolean(d.label),
-          icon: d.icon || 'Power',
+          showLabel: d.showLabel !== false,
+          icon: d.icon || 'Home',
         }))
     : []
   state.config = {
