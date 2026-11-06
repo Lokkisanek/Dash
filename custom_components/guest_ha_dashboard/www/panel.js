@@ -1,12 +1,11 @@
 /**
  * Guest HA Dashboard config panel
- * Full-screen layout + live mobile preview + light/dark for config UI and guest PWA.
+ * Full-screen layout + config mock preview (iPhone 12 Pro) + light/dark.
  *
- * Preview is intentionally independent of HA `hass` pushes — those used to rebuild
- * the whole panel (~every 2s), remount the iframe, and interrupt config editing.
- * Draft config never reaches the guest dashboard / preview until Save.
+ * Preview renders the *draft* config locally — it never loads the live guest PWA
+ * and never reconnects to Home Assistant. The real dashboard updates only after Save.
  */
-const PANEL_VERSION = "1.2.4";
+const PANEL_VERSION = "1.2.5";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang";
 
@@ -21,7 +20,7 @@ const IPHONE_12_PRO = {
 const PANEL_I18N = {
   cs: {
     title: "Guest Dashboard",
-    subtitle: "Config + live preview hostovského tabletu",
+    subtitle: "Config + náhled draft configu (bez live PWA)",
     save: "Uložit",
     saving: "Ukládám…",
     saved: "Uloženo",
@@ -29,21 +28,22 @@ const PANEL_I18N = {
     tabScenes: "Scény",
     tabGuest: "Host & Wi-Fi",
     tabStyles: "Styly",
-    previewTitle: "Preview (iPhone 12 Pro)",
-    previewEmpty: "Nastav <b>URL hostovské PWA</b> v záložce Host &amp; Wi-Fi. Pak tu půjde interaktivně klikat jako na tabletu.",
-    guestHint: "Texty na tabletu, Wi-Fi QR a URL pro live preview. Změny se propsí až po Uložit.",
+    previewTitle: "Preview configu",
+    previewMeta: "Draft config · iPhone 12 Pro · bez live stránky",
+    previewEmptyRooms: "Zapni místnosti vlevo — tady uvidíš náhled configu.",
+    guestHint: "Texty, Wi-Fi a URL ostré PWA. Preview vpravo bere draft config; ostrá stránka až po Uložit.",
     dashboardUrl: "URL hostovské PWA",
     welcomeTitle: "Uvítací titulek",
     welcomeSubtitle: "Podtitulek",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi heslo",
     wifiSecurity: "Zabezpečení",
-    stylesHint: "Vzhled hostovského dashboardu (PWA). Nic se nepropsí, dokud neuložíš.",
+    stylesHint: "Vzhled hostovského dashboardu. Preview vpravo sleduje draft; live PWA až po Uložit.",
     dashTheme: "Dashboard theme",
     dashLanguage: "Jazyk dashboardu",
     accent: "Accent",
-    stylesAfterSave: "Po Uložit se theme, jazyk i ostatní config propsí do PWA / preview.",
-    roomsHint: "<b>Jednoduchý setup:</b> zapni místnosti z HA Areas. Zařízení se načtou sama. Pak Uložit.",
+    stylesAfterSave: "Po Uložit se theme, jazyk i config propsí do ostré PWA. Preview configu se mění hned.",
+    roomsHint: "<b>Jednoduchý setup:</b> zapni místnosti z HA Areas. Zařízení se načtou sama. Preview bere draft; Uložit pošle na PWA.",
     importAreas: "Zapnout všechny Areas",
     clearRooms: "Vypnout vše",
     noAreas: "V HA zatím nemáš Areas (Settings → Areas).",
@@ -69,7 +69,7 @@ const PANEL_I18N = {
   },
   en: {
     title: "Guest Dashboard",
-    subtitle: "Config + live preview of the guest tablet",
+    subtitle: "Config + draft config preview (no live PWA)",
     save: "Save",
     saving: "Saving…",
     saved: "Saved",
@@ -77,21 +77,22 @@ const PANEL_I18N = {
     tabScenes: "Scenes",
     tabGuest: "Guest & Wi-Fi",
     tabStyles: "Styles",
-    previewTitle: "Preview (iPhone 12 Pro)",
-    previewEmpty: "Set the <b>guest PWA URL</b> in the Guest &amp; Wi-Fi tab. Then you can click here like on a tablet.",
-    guestHint: "Tablet texts, Wi-Fi QR and live preview URL. Changes apply only after Save.",
+    previewTitle: "Config preview",
+    previewMeta: "Draft config · iPhone 12 Pro · no live page",
+    previewEmptyRooms: "Enable rooms on the left — the config preview shows up here.",
+    guestHint: "Texts, Wi-Fi and the real PWA URL. The right preview follows draft config; the live page updates after Save.",
     dashboardUrl: "Guest PWA URL",
     welcomeTitle: "Welcome title",
     welcomeSubtitle: "Subtitle",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi password",
     wifiSecurity: "Security",
-    stylesHint: "Guest dashboard (PWA) look. Nothing is published until you Save.",
+    stylesHint: "Guest dashboard look. Preview follows draft; live PWA updates after Save.",
     dashTheme: "Dashboard theme",
     dashLanguage: "Dashboard language",
     accent: "Accent",
-    stylesAfterSave: "After Save, theme, language and the rest of the config push to the PWA / preview.",
-    roomsHint: "<b>Simple setup:</b> enable rooms from HA Areas. Devices load automatically. Then Save.",
+    stylesAfterSave: "After Save, theme, language and config push to the live PWA. Config preview updates immediately.",
+    roomsHint: "<b>Simple setup:</b> enable rooms from HA Areas. Devices load automatically. Preview follows draft; Save publishes to the PWA.",
     importAreas: "Enable all Areas",
     clearRooms: "Disable all",
     noAreas: "No Areas in HA yet (Settings → Areas).",
@@ -156,7 +157,8 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._roomIdx = 0;
     this._uiTheme = localStorage.getItem(UI_THEME_KEY) || "auto";
     this._uiLang = localStorage.getItem(UI_LANG_KEY) === "en" ? "en" : "cs";
-    this._previewKey = 0;
+    this._previewRoomId = null;
+    this._previewPatchTimer = null;
     this.attachShadow({ mode: "open" });
   }
 
@@ -174,12 +176,11 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._load();
       return;
     }
-    // HA pushes a new `hass` object very often (entity updates). Never full-render
-    // here — that remounts the preview iframe and wipes in-progress config edits.
+    // HA pushes a new `hass` object very often — never wipe the editor for that.
     const wasDark = this.hasAttribute("dark");
     this._syncTheme();
     if (this._uiTheme === "auto" && this.hasAttribute("dark") !== wasDark) {
-      this._render({ keepPreview: true });
+      this._render();
     }
   }
   get hass() { return this._hass; }
@@ -187,7 +188,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     const next = Boolean(v);
     if (this._narrow === next) return;
     this._narrow = next;
-    this._render({ keepPreview: true });
+    this._render();
   }
   connectedCallback() { this._syncTheme(); this._render(); }
 
@@ -202,14 +203,28 @@ class GuestHaDashboardPanel extends HTMLElement {
     return this._config.appearance?.mode === "dark" ? "dark" : "light";
   }
 
-  _previewSrc() {
-    // Preview always loads the *saved* PWA — never push draft theme/lang via query params.
-    const base = (this._config.dashboardUrl || "").trim().replace(/\/$/, "");
-    if (!base) return "";
-    const u = new URL(base.includes("://") ? base : `https://${base}`);
-    u.searchParams.set("preview", "1");
-    u.searchParams.set("v", PANEL_VERSION);
-    return u.toString();
+  _dashLang() {
+    return this._config.appearance?.language === "en" ? "en" : "cs";
+  }
+
+  _dashAccent() {
+    return this._config.appearance?.accent || "#ff6b00";
+  }
+
+  /** Labels inside the config preview follow draft dashboard language. */
+  _pt(cs, en) {
+    return this._dashLang() === "en" ? en : cs;
+  }
+
+  _activePreviewRoom(c = this._config) {
+    const rooms = c.rooms || [];
+    if (!rooms.length) return null;
+    let room = rooms.find((r) => r.id === this._previewRoomId);
+    if (!room) {
+      room = rooms[this._roomIdx] || rooms[0];
+      this._previewRoomId = room?.id || null;
+    }
+    return room || null;
   }
 
   async _load() {
@@ -220,6 +235,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       });
       this._config = { ...emptyConfig(), ...cfg, appearance: { ...emptyConfig().appearance, ...(cfg.appearance || {}) } };
       this._error = null;
+      this._previewRoomId = this._config.rooms?.[0]?.id || null;
     } catch (err) {
       this._error = err?.message || String(err);
     }
@@ -228,7 +244,7 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   async _save() {
     if (!this._hass || this._saving) return;
-    this._saving = true; this._error = null; this._render({ keepPreview: true });
+    this._saving = true; this._error = null; this._render();
     try {
       const saved = await this._hass.connection.sendMessagePromise({
         type: "guest_ha_dashboard/set_config",
@@ -237,16 +253,12 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._config = { ...emptyConfig(), ...saved, appearance: { ...emptyConfig().appearance, ...(saved.appearance || {}) } };
       this._savedAt = new Date();
       this._info = this._t("saved");
-      // Only now remount preview so saved config / language / theme apply
-      this._previewKey += 1;
-      this._saving = false;
-      this._render({ keepPreview: false });
-      return;
+      // Live PWA picks this up via HA subscribe — preview stays a local draft mock
     } catch (err) {
       this._error = err?.message || String(err);
     }
     this._saving = false;
-    this._render({ keepPreview: true });
+    this._render();
   }
 
   _escape(s) {
@@ -304,18 +316,20 @@ class GuestHaDashboardPanel extends HTMLElement {
   _importAllAreas() {
     this._config.rooms = this._areas().map((a) => this._roomFromArea(a));
     this._roomIdx = 0; this._tab = "rooms";
+    this._previewRoomId = this._config.rooms[0]?.id || null;
     this._info = this._t("importedRooms", this._config.rooms.length);
-    this._render({ keepPreview: true });
+    this._render();
   }
   _addRoomFromArea(areaId) {
     const area = this._hass.areas?.[areaId];
     if (!area) return;
     if (this._config.rooms.some((r) => r.haAreaId === areaId || r.id === areaId)) {
-      this._info = this._t("roomExists"); this._render({ keepPreview: true }); return;
+      this._info = this._t("roomExists"); this._render(); return;
     }
     this._config.rooms.push(this._roomFromArea(area));
     this._roomIdx = this._config.rooms.length - 1;
-    this._info = this._t("roomAdded", area.name); this._render({ keepPreview: true });
+    this._previewRoomId = this._config.rooms[this._roomIdx]?.id || null;
+    this._info = this._t("roomAdded", area.name); this._render();
   }
   _addEmptyRoom() {
     this._config.rooms.push({
@@ -327,6 +341,7 @@ class GuestHaDashboardPanel extends HTMLElement {
   _removeRoom(i) {
     this._config.rooms.splice(i, 1);
     this._roomIdx = Math.max(0, Math.min(this._roomIdx, this._config.rooms.length - 1));
+    this._previewRoomId = this._config.rooms[this._roomIdx]?.id || null;
     this._render();
   }
   _addDevice(room) {
@@ -497,10 +512,11 @@ class GuestHaDashboardPanel extends HTMLElement {
         width: 100%; max-width: 420px; min-height: 0; height: 100%;
         justify-content: center;
       }
-      /* iPhone 12 Pro display: 1170×2532 px — CSS pt @3x = 390×844, slight flex to fit viewport */
+      /* iPhone 12 Pro display: 1170×2532 px — CSS pt @3x = 390×844 */
       .phone {
         --iphone-w: ${IPHONE_12_PRO.cssW}px;
         --iphone-h: ${IPHONE_12_PRO.cssH}px;
+        --preview-accent: #ff6b00;
         width: min(var(--iphone-w), 100%);
         height: auto;
         max-height: min(var(--iphone-h), calc(100vh - 130px));
@@ -508,10 +524,117 @@ class GuestHaDashboardPanel extends HTMLElement {
         border-radius: 36px; overflow: hidden; flex: 0 1 auto;
         border: 3px solid var(--phone-frame); background: #000;
         box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+        color: #1a1220;
       }
       .phone-meta {
         text-align: center; font-size: 0.72rem; color: var(--muted);
         letter-spacing: 0.02em; flex-shrink: 0;
+      }
+      .phone-screen {
+        width: 100%; height: 100%; display: flex; flex-direction: column;
+        position: relative; overflow: hidden;
+        background: #f3f0f7;
+      }
+      .phone.is-dark .phone-screen { background: #0e1014; color: #f3f4f6; }
+      .phone-orbs { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      .phone-orbs span {
+        position: absolute; border-radius: 50%; filter: blur(36px); opacity: 0.55;
+      }
+      .phone-orbs .o1 { width: 160px; height: 160px; top: -8%; left: -12%; background: #ff8ad0; }
+      .phone-orbs .o2 { width: 180px; height: 180px; top: 8%; right: -18%; background: #b08cff; }
+      .phone-orbs .o3 { width: 140px; height: 140px; bottom: 22%; right: 4%; background: #ff9a6a; }
+      .phone.is-dark .phone-orbs span { opacity: 0.35; }
+      .phone-inner {
+        position: relative; z-index: 1; display: flex; flex-direction: column;
+        height: 100%; padding: 14px 12px 10px; box-sizing: border-box;
+      }
+      .phone-eyebrow {
+        font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+        opacity: 0.45; margin-bottom: 2px;
+      }
+      .phone-title { font-size: 17px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.02em; }
+      .phone-title b { font-weight: 700; }
+      .phone-status {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 8px 10px; border-radius: 14px; background: rgba(255,255,255,0.82);
+        border: 1px solid rgba(0,0,0,0.06);
+      }
+      .phone.is-dark .phone-status { background: rgba(28,30,36,0.9); border-color: rgba(255,255,255,0.08); }
+      .phone-clock { font-size: 22px; font-weight: 650; letter-spacing: -0.03em; }
+      .phone-date { font-size: 11px; opacity: 0.45; margin-left: 6px; }
+      .phone-badges { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+      .phone-badge {
+        font-size: 10px; padding: 2px 7px; border-radius: 999px;
+        background: color-mix(in srgb, var(--preview-accent) 18%, transparent);
+        color: var(--preview-accent); font-weight: 650;
+      }
+      .phone-wifi { font-size: 10px; opacity: 0.55; }
+      .phone-scenes {
+        display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 2px;
+        scrollbar-width: none;
+      }
+      .phone-scenes::-webkit-scrollbar { display: none; }
+      .phone-scene {
+        flex: 0 0 auto; border: 0; border-radius: 999px; padding: 6px 10px;
+        font: inherit; font-size: 11px; background: rgba(255,255,255,0.75); color: inherit;
+      }
+      .phone.is-dark .phone-scene { background: rgba(42,45,54,0.9); }
+      .phone-grid {
+        flex: 1; min-height: 0; overflow: auto; display: grid;
+        grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 0 72px;
+        scrollbar-width: none;
+      }
+      .phone-grid::-webkit-scrollbar { display: none; }
+      .phone-tile {
+        border-radius: 16px; padding: 10px; min-height: 88px;
+        background: rgba(255,255,255,0.88); border: 1px solid rgba(0,0,0,0.05);
+        display: flex; flex-direction: column; justify-content: space-between; gap: 8px;
+      }
+      .phone.is-dark .phone-tile { background: rgba(28,30,36,0.92); border-color: rgba(255,255,255,0.06); }
+      .phone-tile-top { display: flex; justify-content: space-between; align-items: flex-start; }
+      .phone-tile-ico {
+        width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center;
+        background: rgba(0,0,0,0.06); font-size: 12px;
+      }
+      .phone.is-dark .phone-tile-ico { background: rgba(255,255,255,0.08); }
+      .phone-tile-badge {
+        font-size: 10px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.05); opacity: 0.7;
+      }
+      .phone-tile-name { font-size: 12px; font-weight: 650; line-height: 1.2; }
+      .phone-tile-sub { font-size: 10px; opacity: 0.45; margin-top: 2px; }
+      .phone-slider {
+        height: 4px; border-radius: 999px; background: rgba(0,0,0,0.08); overflow: hidden;
+      }
+      .phone.is-dark .phone-slider { background: rgba(255,255,255,0.1); }
+      .phone-slider > i {
+        display: block; height: 100%; width: 55%;
+        background: var(--preview-accent); border-radius: inherit;
+      }
+      .phone-dock {
+        position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 2;
+        display: flex; gap: 4px; overflow-x: auto; padding: 8px;
+        border-radius: 18px; background: rgba(255,255,255,0.78);
+        border: 1px solid rgba(255,255,255,0.7); backdrop-filter: blur(12px);
+        scrollbar-width: none;
+      }
+      .phone-dock::-webkit-scrollbar { display: none; }
+      .phone.is-dark .phone-dock {
+        background: rgba(20,22,28,0.82); border-color: rgba(255,255,255,0.08);
+      }
+      .phone-dock button {
+        flex: 0 0 auto; border: 0; background: transparent; color: inherit;
+        font: inherit; font-size: 9px; padding: 4px 6px; border-radius: 12px;
+        opacity: 0.55; cursor: pointer; max-width: 64px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .phone-dock button.on {
+        opacity: 1; background: rgba(255,255,255,0.95); color: #111;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      }
+      .phone.is-dark .phone-dock button.on { background: #fff; }
+      .phone-empty {
+        grid-column: 1 / -1; text-align: center; font-size: 12px; opacity: 0.5;
+        padding: 28px 10px; line-height: 1.4;
       }
       .area-check {
         display: flex; align-items: center; gap: 10px; width: 100%;
@@ -528,24 +651,102 @@ class GuestHaDashboardPanel extends HTMLElement {
       details.advanced summary {
         cursor: pointer; font-weight: 650; color: var(--text); list-style: none;
       }
-      .phone iframe { width: 100%; height: 100%; border: 0; background: #111; }
-      .preview-empty {
-        max-width: 260px; text-align: center; color: var(--muted); font-size: 0.9rem; line-height: 1.45;
-      }
     `;
   }
 
-  _desiredPreviewSrc() {
-    const preview = this._previewSrc();
-    if (!preview) return "";
-    return `${preview}&_r=${this._previewKey}`;
+  _deviceGlyph(device) {
+    const t = device?.type;
+    if (t === "light") return "💡";
+    if (t === "switch") return "⏻";
+    if (t === "cover") return "☰";
+    if (t === "climate") return "°";
+    return "•";
   }
 
-  _render(opts = {}) {
-    const keepPreview = opts.keepPreview !== false;
+  _renderPreviewBody(c = this._config) {
+    const accent = this._escape(this._dashAccent());
+    const dark = this._dashMode() === "dark";
+    const g = c.guestInfo || {};
+    const rooms = c.rooms || [];
+    const scenes = (c.scenes || []).slice(0, 6);
+    const room = this._activePreviewRoom(c);
+    const locale = this._dashLang() === "en" ? "en-US" : "cs-CZ";
+    const now = new Date();
+    const time = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    const date = now.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
+    const devices = room?.devices || [];
+
+    const tiles = devices.length
+      ? devices.map((d) => `
+          <div class="phone-tile">
+            <div class="phone-tile-top">
+              <div class="phone-tile-ico">${this._deviceGlyph(d)}</div>
+              <span class="phone-tile-badge">${this._escape(this._pt("Vyp", "Off"))}</span>
+            </div>
+            <div>
+              <div class="phone-tile-name">${this._escape(d.label || d.id || "—")}</div>
+              <div class="phone-tile-sub">${this._escape(this._pt("Vypnuto", "Off"))}</div>
+            </div>
+            ${d.type === "light" ? `<div class="phone-slider"><i></i></div>` : ""}
+          </div>
+        `).join("")
+      : `<div class="phone-empty">${this._t("previewEmptyRooms")}</div>`;
+
+    return `
+      <div class="phone-wrap">
+        <div class="phone ${dark ? "is-dark" : ""}" style="--preview-accent:${accent}">
+          <div class="phone-screen">
+            <div class="phone-orbs" aria-hidden="true"><span class="o1"></span><span class="o2"></span><span class="o3"></span></div>
+            <div class="phone-inner">
+              <div class="phone-eyebrow">${this._escape(g.welcomeTitle || "Guest Home")}</div>
+              <h2 class="phone-title">Smart <b>Guest Home</b> <span style="opacity:.5;font-weight:500">${this._escape(this._pt("Controller", "Controller"))}</span></h2>
+              <div class="phone-status">
+                <div>
+                  <div><span class="phone-clock">${this._escape(time)}</span><span class="phone-date">${this._escape(date)}</span></div>
+                  <div class="phone-badges">
+                    <span class="phone-badge">• ${this._escape(this._pt("Config", "Config"))}</span>
+                    <span class="phone-wifi">Wi-Fi${g.wifiSsid ? ` · ${this._escape(g.wifiSsid)}` : ""}</span>
+                  </div>
+                </div>
+              </div>
+              ${scenes.length ? `<div class="phone-scenes">${scenes.map((s) =>
+                `<span class="phone-scene">${this._escape(s.label || s.id || "scene")}</span>`
+              ).join("")}</div>` : ""}
+              <div class="phone-grid">${tiles}</div>
+            </div>
+            ${rooms.length ? `<div class="phone-dock">${rooms.map((r) => `
+              <button type="button" data-preview-room="${this._escape(r.id)}" class="${r.id === room?.id ? "on" : ""}">${this._escape(r.label || r.id)}</button>
+            `).join("")}</div>` : ""}
+          </div>
+        </div>
+        <div class="phone-meta">${this._t("previewMeta")} · ${IPHONE_12_PRO.pxW}×${IPHONE_12_PRO.pxH}</div>
+      </div>
+    `;
+  }
+
+  _patchPreview() {
+    const body = this.shadowRoot.querySelector(".preview-body");
+    if (!body) return;
+    body.innerHTML = this._renderPreviewBody(this._config);
+    this._bindPreview();
+  }
+
+  _schedulePreviewPatch() {
+    clearTimeout(this._previewPatchTimer);
+    this._previewPatchTimer = setTimeout(() => this._patchPreview(), 60);
+  }
+
+  _bindPreview() {
+    this._on("[data-preview-room]", "click", (e) => {
+      this._previewRoomId = e.currentTarget.dataset.previewRoom;
+      this._patchPreview();
+    });
+  }
+
+  _render() {
     this._syncTheme();
     const c = this._config;
-    if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00" };
+    if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00", language: "cs" };
     const room = c.rooms[this._roomIdx];
     const areaFilter = room?.haAreaId || null;
     const sensors = this._entities("sensor", areaFilter);
@@ -555,20 +756,15 @@ class GuestHaDashboardPanel extends HTMLElement {
     const climates = this._entities("climate", areaFilter);
     const scenes = this._entities("scene");
     const areas = this._areas();
-    const preview = this._previewSrc();
-    const desiredSrc = this._desiredPreviewSrc();
-
-    // Detach live iframe so innerHTML rebuild does not unload / reconnect the dashboard
-    const prevFrame = this.shadowRoot.getElementById("previewFrame");
-    const prevSrc = prevFrame?.getAttribute("src") || "";
-    const canReuseFrame = Boolean(
-      keepPreview && prevFrame && desiredSrc && prevSrc === desiredSrc,
-    );
-    if (canReuseFrame) prevFrame.remove();
 
     const scrollEl = this.shadowRoot.querySelector(".editor-scroll");
     const scrollTop = scrollEl?.scrollTop || 0;
     const activeId = this.shadowRoot.activeElement?.id || null;
+    const activeSel = activeId ? null : (() => {
+      const el = this.shadowRoot.activeElement;
+      if (!el || el === this.shadowRoot) return null;
+      return { name: el.name || null, value: el.value, tag: el.tagName, start: el.selectionStart, end: el.selectionEnd };
+    })();
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -622,23 +818,11 @@ class GuestHaDashboardPanel extends HTMLElement {
             </div>
           </div>
           <div class="preview-body">
-            ${
-              preview
-                ? `<div class="phone-wrap">
-                    <div class="phone"><iframe id="previewFrame" title="Guest dashboard preview" src="${this._escape(desiredSrc)}" allow="fullscreen"></iframe></div>
-                    <div class="phone-meta">iPhone 12 Pro · ${IPHONE_12_PRO.pxW}×${IPHONE_12_PRO.pxH}px</div>
-                   </div>`
-                : `<div class="preview-empty">${this._t("previewEmpty")}</div>`
-            }
+            ${this._renderPreviewBody(c)}
           </div>
         </aside>
       </div>
     `;
-
-    if (canReuseFrame) {
-      const placeholder = this.shadowRoot.getElementById("previewFrame");
-      placeholder?.replaceWith(prevFrame);
-    }
 
     const nextScroll = this.shadowRoot.querySelector(".editor-scroll");
     if (nextScroll) nextScroll.scrollTop = scrollTop;
@@ -646,31 +830,34 @@ class GuestHaDashboardPanel extends HTMLElement {
       const el = this.shadowRoot.getElementById(activeId);
       if (el && typeof el.focus === "function") {
         try { el.focus({ preventScroll: true }); } catch { el.focus(); }
+        if (activeSel && typeof activeSel.start === "number" && el.setSelectionRange) {
+          try { el.setSelectionRange(activeSel.start, activeSel.end); } catch { /* ignore */ }
+        }
       }
     }
 
     this._on(".tab", "click", (e) => {
       this._tab = e.currentTarget.dataset.tab;
       this._info = null;
-      this._render({ keepPreview: true });
+      this._render();
     });
     this.shadowRoot.getElementById("save")?.addEventListener("click", () => this._save());
     this._on("[data-ui-lang]", "click", (e) => {
       this._uiLang = e.currentTarget.dataset.uiLang === "en" ? "en" : "cs";
       localStorage.setItem(UI_LANG_KEY, this._uiLang);
-      this._render({ keepPreview: true });
+      this._render();
     });
     this._on("[data-ui-theme]", "click", (e) => {
       this._uiTheme = e.currentTarget.dataset.uiTheme;
       localStorage.setItem(UI_THEME_KEY, this._uiTheme);
-      this._render({ keepPreview: true });
+      this._render();
     });
-    // Draft only — preview stays on last saved config until Save
     this._on("[data-dash-mode]", "click", (e) => {
       if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
       this._config.appearance.mode = e.currentTarget.dataset.dashMode;
-      this._render({ keepPreview: true });
+      this._render();
     });
+    this._bindPreview();
 
     if (this._tab === "guest") this._bindGuest();
     if (this._tab === "rooms") this._bindRooms();
@@ -711,9 +898,13 @@ class GuestHaDashboardPanel extends HTMLElement {
     for (const [id, fn] of map) {
       const el = this.shadowRoot.getElementById(id);
       if (!el) continue;
-      // Draft only — preview remounts after Save
-      el.addEventListener("change", () => fn(el.value));
-      el.addEventListener("input", () => fn(el.value));
+      const apply = () => {
+        fn(el.value);
+        // dashboardUrl is for live PWA only — preview is local config mock
+        if (id !== "dashboardUrl") this._schedulePreviewPatch();
+      };
+      el.addEventListener("change", apply);
+      el.addEventListener("input", apply);
     }
   }
 
@@ -744,22 +935,23 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._on("[data-style-mode]", "click", (e) => {
       if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
       this._config.appearance.mode = e.currentTarget.dataset.styleMode;
-      this._render({ keepPreview: true });
+      this._render();
     });
     this._on("[data-dash-lang]", "click", (e) => {
       if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
       this._config.appearance.language = e.currentTarget.dataset.dashLang === "en" ? "en" : "cs";
-      this._render({ keepPreview: true });
+      this._render();
     });
     const accent = this.shadowRoot.getElementById("accent");
     accent?.addEventListener("input", () => {
       if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
       this._config.appearance.accent = accent.value;
+      this._schedulePreviewPatch();
     });
     accent?.addEventListener("change", () => {
       if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
       this._config.appearance.accent = accent.value;
-      this._render({ keepPreview: true });
+      this._patchPreview();
     });
   }
 
@@ -837,9 +1029,14 @@ class GuestHaDashboardPanel extends HTMLElement {
     this.shadowRoot.getElementById("clearRooms")?.addEventListener("click", () => {
       this._config.rooms = [];
       this._roomIdx = 0;
+      this._previewRoomId = null;
       this._render();
     });
-    this._on(".pill[data-room]", "click", (e) => { this._roomIdx = Number(e.currentTarget.dataset.room); this._render(); });
+    this._on(".pill[data-room]", "click", (e) => {
+      this._roomIdx = Number(e.currentTarget.dataset.room);
+      this._previewRoomId = this._config.rooms[this._roomIdx]?.id || null;
+      this._render();
+    });
     this.shadowRoot.getElementById("addDevice")?.addEventListener("click", () => {
       const room = this._config.rooms[this._roomIdx];
       if (room) this._addDevice(room);
@@ -852,7 +1049,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       const fresh = this._roomFromArea(area);
       this._config.rooms[this._roomIdx] = { ...fresh, label: room.label || fresh.label };
       this._info = this._t("roomResynced");
-      this._render({ keepPreview: true });
+      this._render();
     });
 
     const room = this._config.rooms[this._roomIdx];
@@ -861,6 +1058,9 @@ class GuestHaDashboardPanel extends HTMLElement {
       const el = this.shadowRoot.getElementById(id);
       if (!el) return;
       el.addEventListener("change", () => { fn(el.value); this._render(); });
+      if (el.tagName === "INPUT") {
+        el.addEventListener("input", () => { fn(el.value); this._schedulePreviewPatch(); });
+      }
     };
     bind("roomLabel", (v) => (room.label = v));
     bind("roomIcon", (v) => (room.icon = v));
@@ -876,7 +1076,12 @@ class GuestHaDashboardPanel extends HTMLElement {
           if (key === "id" && el.value) device.label = this._friendly(el.value);
           this._render();
         });
-        if (el.tagName === "INPUT") el.addEventListener("input", () => { device[el.dataset.k] = el.value; });
+        if (el.tagName === "INPUT") {
+          el.addEventListener("input", () => {
+            device[el.dataset.k] = el.value;
+            this._schedulePreviewPatch();
+          });
+        }
       });
     });
     this._on("[data-remove-device]", "click", (e) => {
@@ -909,8 +1114,14 @@ class GuestHaDashboardPanel extends HTMLElement {
         el.addEventListener("change", () => {
           scene[el.dataset.k] = el.value;
           if (el.dataset.k === "entityId" && el.value) { scene.label = this._friendly(el.value); this._render(); }
+          else this._schedulePreviewPatch();
         });
-        if (el.tagName === "INPUT") el.addEventListener("input", () => { scene[el.dataset.k] = el.value; });
+        if (el.tagName === "INPUT") {
+          el.addEventListener("input", () => {
+            scene[el.dataset.k] = el.value;
+            this._schedulePreviewPatch();
+          });
+        }
       });
     });
     this._on("[data-remove-scene]", "click", (e) => {
