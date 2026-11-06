@@ -14,7 +14,7 @@
 - Guest Wi-Fi card with a QR code, a weather and greeting header, light and dark mode, Czech and English.
 - A playful `hello.dash` intro on first setup.
 
-**Demo:** TODO(owner): demo URL
+**Demo:**: [demo URL](https://dash.matyas.online/)
 
 ## Screenshots
 
