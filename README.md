@@ -74,3 +74,13 @@ The integration lives in `custom_components/guest_ha_dashboard/`. The panel is a
 ## Stack
 
 Vue 3 · Vite · Tailwind 4 · daisyUI 5 · home-assistant-js-websocket · nginx · Home Assistant custom integration.
+
+## License
+
+dash is licensed under the GNU Affero General Public License v3.0 or later (see [LICENSE](LICENSE)).
+
+In plain words: you can use, change and share dash for free, including commercially. If you modify dash and let others use it over a network, you must offer them your modified source under the same license.
+
+Commercial use (e.g. hotels, rental companies or businesses that do not want to publish their changes) needs a separate commercial license, see [COMMERCIAL.md](COMMERCIAL.md).
+
+Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).
