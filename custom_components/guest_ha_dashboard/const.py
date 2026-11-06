@@ -1,7 +1,7 @@
 """Constants for Guest HA Dashboard."""
 
 DOMAIN = "guest_ha_dashboard"
-VERSION = "1.2.6"
+VERSION = "1.2.7"
 STORAGE_KEY = f"{DOMAIN}.config"
 STORAGE_VERSION = 1
 
