@@ -33,12 +33,18 @@ def _normalize_standby(raw: Any) -> dict:
     src = raw if isinstance(raw, dict) else {}
     return {
         "enabled": bool(src.get("enabled", DEFAULT_STANDBY["enabled"])),
-        "idleMinutes": _clamp_int(src.get("idleMinutes"), 1, 120, DEFAULT_STANDBY["idleMinutes"]),
-        "mode": src.get("mode") if src.get("mode") in STANDBY_MODES else DEFAULT_STANDBY["mode"],
+        "idleMinutes": _clamp_int(
+            src.get("idleMinutes"), 1, 120, DEFAULT_STANDBY["idleMinutes"]
+        ),
+        "mode": src.get("mode")
+        if src.get("mode") in STANDBY_MODES
+        else DEFAULT_STANDBY["mode"],
         "clockStyle": src.get("clockStyle")
         if src.get("clockStyle") in CLOCK_STYLES
         else DEFAULT_STANDBY["clockStyle"],
-        "photoSeconds": _clamp_int(src.get("photoSeconds"), 3, 600, DEFAULT_STANDBY["photoSeconds"]),
+        "photoSeconds": _clamp_int(
+            src.get("photoSeconds"), 3, 600, DEFAULT_STANDBY["photoSeconds"]
+        ),
     }
 
 
@@ -87,7 +93,11 @@ def _normalize_dock(raw_dock: list) -> list:
         if item.get("entityId") or item.get("entity_id"):
             continue
         page_id = str(
-            item.get("pageId") or item.get("page_id") or item.get("roomId") or item.get("room_id") or ""
+            item.get("pageId")
+            or item.get("page_id")
+            or item.get("roomId")
+            or item.get("room_id")
+            or ""
         ).strip()
         if not page_id:
             continue
@@ -141,16 +151,24 @@ class GuestDashboardStore:
     async def async_save(self, data: dict[str, Any]) -> dict[str, Any]:
         """Validate lightly, persist, notify listeners."""
         merged = {**deepcopy(DEFAULT_CONFIG), **data}
-        appearance = merged.get("appearance") if isinstance(merged.get("appearance"), dict) else {}
+        appearance = (
+            merged.get("appearance")
+            if isinstance(merged.get("appearance"), dict)
+            else {}
+        )
         pages = _normalize_pages(merged)
-        dock = _normalize_dock(merged.get("dock") if isinstance(merged.get("dock"), list) else [])
+        dock = _normalize_dock(
+            merged.get("dock") if isinstance(merged.get("dock"), list) else []
+        )
         cleaned = {
             "guestInfo": _normalize_guest_info(merged.get("guestInfo")),
             "general": _normalize_general(merged.get("general")),
             "standby": _normalize_standby(merged.get("standby")),
             "pages": pages if isinstance(pages, list) else [],
             "dock": dock,
-            "hosting": merged.get("hosting") if merged.get("hosting") in ("hosted", "self") else "hosted",
+            "hosting": merged.get("hosting")
+            if merged.get("hosting") in ("hosted", "self")
+            else "hosted",
             "dashboardUrl": merged.get("dashboardUrl") or "",
             "appearance": {
                 **deepcopy(DEFAULT_CONFIG["appearance"]),

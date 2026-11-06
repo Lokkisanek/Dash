@@ -9,3 +9,8 @@ custom_components
 .DS_Store
 .agents
 skills-lock.json
+test-results
+playwright-report
+blob-report
+docs/img
+.github

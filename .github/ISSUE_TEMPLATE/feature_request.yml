@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest an idea for dash.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: Describe the use case or problem, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed solution
+      description: How could dash help? Sketches or examples are welcome.
+  - type: input
+    id: dash_version
+    attributes:
+      label: dash version
+      description: e.g. 2.0.0.
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: e.g. 2026.11.0.
+  - type: dropdown
+    id: hosting
+    attributes:
+      label: Hosting
+      options:
+        - Hosted (dash.matyas.online)
+        - Self-hosted
+        - Not sure
+  - type: input
+    id: device
+    attributes:
+      label: Browser and device
+      description: e.g. Safari on iPhone 15 (PWA).

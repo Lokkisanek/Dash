@@ -57,7 +57,11 @@ const humidity = computed(() => {
 const statusMeta = computed(() => {
   const s = status.value
   if (s === 'connected') return null
-  if (s === 'mock') return { color: 'status-warning', label: t('mock'), badge: 'badge-warning' }
+  if (s === 'mock') {
+    // Public demo build (VITE_MODE=mock) says "Demo"; local mock runs keep "Mock".
+    const label = import.meta.env.VITE_MODE === 'mock' ? t('demo') : t('mock')
+    return { color: 'status-warning', label, badge: 'badge-warning' }
+  }
   if (s === 'connecting') return { color: 'status-info', label: '…', badge: 'badge-info' }
   return { color: 'status-error', label: t('offline'), badge: 'badge-error' }
 })

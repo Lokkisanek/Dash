@@ -1,0 +1,9 @@
+# Lint/format settings for the Home Assistant integration in custom_components/.
+# Import sorting follows Home Assistant core (pyproject.toml, [tool.ruff.lint.isort]).
+# Line length and lint rules are ruff's defaults, as in core.
+
+[lint.isort]
+force-sort-within-sections = true
+known-first-party = ["homeassistant"]
+combine-as-imports = true
+split-on-trailing-comma = false

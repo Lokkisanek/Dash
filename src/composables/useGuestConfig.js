@@ -99,8 +99,15 @@ export function applyGuestConfig(config, source = 'ha') {
   state.loaded = true
 }
 
+/** Shown only in mock/demo mode, so the Wi-Fi card has an obviously fake value. */
+const DEMO_WIFI_PASSWORD = 'demo-password'
+
 export function useFallbackGuestConfig(source = 'fallback') {
-  applyGuestConfig(fallbackConfig, source)
+  const config =
+    source === 'mock'
+      ? { ...fallbackConfig, guestInfo: { ...fallbackConfig.guestInfo, wifiPassword: DEMO_WIFI_PASSWORD } }
+      : fallbackConfig
+  applyGuestConfig(config, source)
 }
 
 export default useGuestConfig

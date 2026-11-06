@@ -12,3 +12,12 @@ __pycache__/
 # Local AI agent skills (not part of the app)
 .agents/
 skills-lock.json
+
+# Playwright and generated files
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+*.zip
+release-notes.md
+preview.log

@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}
+
+jobs:
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tag must match package.json version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version v${version}"
+            exit 1
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Check versions
+        run: npm run check:versions
+
+      - run: npm run build
+
+      - name: Zip dist
+        run: cd dist && zip -r "../dash-web-${VERSION}.zip" .
+
+      - name: Release notes from CHANGELOG.md
+        run: node scripts/changelog-section.mjs "${VERSION}" > release-notes.md
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          name: dash ${{ env.VERSION }}
+          body_path: release-notes.md
+          files: dash-web-${{ env.VERSION }}.zip
+          fail_on_unmatched_files: true
+
+  # Optional: Docker image on GHCR. Delete this job (or add `if: false`) to disable it.
+  docker:
+    name: Docker image (GHCR)
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=true
+          tags: |
+            type=semver,pattern={{version}}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
