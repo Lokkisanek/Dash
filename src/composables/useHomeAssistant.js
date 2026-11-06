@@ -15,11 +15,11 @@ import {
   getGuestConfig,
 } from './useGuestConfig'
 import { playTick } from './useSound'
-import { translate, normalizeLang } from '@/i18n/messages'
+import { translate } from '@/i18n/messages'
+import { detectUiLang } from './useI18n'
 
 function tt(key) {
-  const lang = normalizeLang(getGuestConfig()?.appearance?.language)
-  return translate(lang, key)
+  return translate(detectUiLang(), key)
 }
 
 /** @typedef {'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'mock' | 'need_url' | 'login'} HaStatus */

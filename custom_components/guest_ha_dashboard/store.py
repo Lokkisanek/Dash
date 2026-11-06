@@ -39,20 +39,36 @@ class GuestDashboardStore:
         merged = {**deepcopy(DEFAULT_CONFIG), **data}
         # Keep known top-level keys only
         appearance = merged.get("appearance") if isinstance(merged.get("appearance"), dict) else {}
+        raw_dock = merged.get("dock") if isinstance(merged.get("dock"), list) else []
+        dock = []
+        for item in raw_dock[:4]:
+            if not isinstance(item, dict):
+                continue
+            entity_id = str(item.get("entityId") or item.get("entity_id") or "").strip()
+            if not entity_id:
+                continue
+            label = str(item.get("label") or "").strip()
+            show_label = bool(item.get("showLabel", bool(label)))
+            dock.append(
+                {
+                    "entityId": entity_id,
+                    "label": label,
+                    "showLabel": show_label,
+                    "icon": str(item.get("icon") or "Power"),
+                }
+            )
         cleaned = {
             "guestInfo": merged.get("guestInfo") or deepcopy(DEFAULT_CONFIG["guestInfo"]),
             "scenes": merged.get("scenes") if isinstance(merged.get("scenes"), list) else [],
             "rooms": merged.get("rooms") if isinstance(merged.get("rooms"), list) else [],
+            "dock": dock,
             "dashboardUrl": merged.get("dashboardUrl") or "",
             "appearance": {
                 **deepcopy(DEFAULT_CONFIG["appearance"]),
-                **appearance,
+                **{k: v for k, v in appearance.items() if k != "language"},
                 "mode": appearance.get("mode")
                 if appearance.get("mode") in ("light", "dark")
                 else DEFAULT_CONFIG["appearance"]["mode"],
-                "language": appearance.get("language")
-                if appearance.get("language") in ("cs", "en")
-                else DEFAULT_CONFIG["appearance"]["language"],
             },
         }
         self._data = cleaned

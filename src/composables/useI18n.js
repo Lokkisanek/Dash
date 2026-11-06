@@ -1,11 +1,32 @@
 import { computed } from 'vue'
-import { useGuestConfig } from './useGuestConfig'
 import { normalizeLang, translate } from '@/i18n/messages'
 
-export function useI18n() {
-  const { appearance } = useGuestConfig()
+/** Resolve UI language from Home Assistant / browser locale (cs | en). */
+export function detectUiLang() {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const forced = params.get('lang')
+    if (forced === 'en' || forced === 'cs') return forced
+  } catch {
+    /* ignore */
+  }
 
-  const lang = computed(() => normalizeLang(appearance.value?.language))
+  const candidates = [
+    typeof document !== 'undefined' ? document.documentElement.lang : null,
+    typeof navigator !== 'undefined' ? navigator.language : null,
+    typeof navigator !== 'undefined' ? navigator.languages?.[0] : null,
+  ].filter(Boolean)
+
+  for (const raw of candidates) {
+    const low = String(raw).toLowerCase()
+    if (low.startsWith('en')) return 'en'
+    if (low.startsWith('cs') || low.startsWith('sk')) return 'cs'
+  }
+  return 'cs'
+}
+
+export function useI18n() {
+  const lang = computed(() => normalizeLang(detectUiLang()))
   const locale = computed(() => (lang.value === 'en' ? 'en-US' : 'cs-CZ'))
 
   function t(key) {

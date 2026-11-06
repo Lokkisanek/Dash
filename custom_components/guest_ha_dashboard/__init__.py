@@ -16,7 +16,7 @@ from .const import (
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL_PATH,
-    VERSION,  # 1.2.5
+    VERSION,  # 1.2.6
 )
 from .store import GuestDashboardStore
 from .websocket_api import async_register_ws

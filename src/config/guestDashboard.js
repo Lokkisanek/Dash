@@ -20,8 +20,10 @@ export const guestDashboard = {
   appearance: {
     mode: 'light', // light | dark
     accent: '#ff6b00',
-    language: 'cs', // cs | en
   },
+
+  /** Bottom dock — max 4 entity shortcuts (label optional) */
+  dock: [],
 
   /** Quick-action scene pills shown above the room grid */
   scenes: [

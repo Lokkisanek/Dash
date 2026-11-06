@@ -1,15 +1,16 @@
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { mountSvgLiquidGlass, DOCK_GLASS } from '@/lib/liquidGlassSvg'
 import { resolveIcon } from '@/lib/icons'
 import { unlockAudio } from '@/composables/useSound'
+import { useHomeAssistant } from '@/composables/useHomeAssistant'
 
 const props = defineProps({
-  rooms: { type: Array, required: true },
-  modelValue: { type: String, required: true },
+  /** @type {{ entityId: string, label?: string, showLabel?: boolean, icon?: string }[]} */
+  items: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const { getEntityState, toggleLight, toggleSwitch, activateScene, callService } = useHomeAssistant()
 
 const glassRef = ref(null)
 const svgRef = ref(null)
@@ -18,20 +19,41 @@ let glass = null
 const DOCK_H = 88
 const DOCK_R = 44
 
-function roomIcon(name) {
-  return resolveIcon(name, 'Home')
+const visibleItems = computed(() => (props.items || []).filter((i) => i?.entityId).slice(0, 4))
+
+function itemIcon(item) {
+  return resolveIcon(item.icon || 'Power', 'Power')
 }
 
-function select(id) {
+function isOn(item) {
+  const st = getEntityState(item.entityId)?.state
+  return st === 'on' || st === 'open' || st === 'playing'
+}
+
+function showName(item) {
+  return item.showLabel !== false && Boolean(String(item.label || '').trim())
+}
+
+async function activate(item) {
   unlockAudio()
-  emit('update:modelValue', id)
+  const id = item.entityId
+  if (!id) return
+  const domain = id.split('.')[0]
+  if (domain === 'light') await toggleLight(id)
+  else if (domain === 'switch') await toggleSwitch(id)
+  else if (domain === 'scene') await activateScene(id)
+  else if (domain === 'cover') await callService('cover', 'toggle', { entity_id: id })
+  else if (domain === 'input_boolean') await callService('input_boolean', 'toggle', { entity_id: id })
+  else if (domain === 'script') await callService('script', 'turn_on', { entity_id: id })
+  else if (domain === 'button') await callService('button', 'press', { entity_id: id })
+  else await callService(domain, 'toggle', { entity_id: id })
 }
 
 onMounted(async () => {
   await nextTick()
   const glassEl = glassRef.value
   const defsHost = svgRef.value?.querySelector('defs')
-  if (!glassEl || !defsHost) return
+  if (!glassEl || !defsHost || !visibleItems.value.length) return
 
   const dockWidth = Math.min(360, Math.max(280, window.innerWidth - 40))
   glassEl.style.width = `${dockWidth}px`
@@ -39,7 +61,6 @@ onMounted(async () => {
   glassEl.style.borderRadius = `${DOCK_R}px`
 
   try {
-    // Tuned closer to archisvaze / iOS liquid-glass look
     glass = mountSvgLiquidGlass(glassEl, defsHost, {
       ...DOCK_GLASS,
       width: dockWidth,
@@ -66,7 +87,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="liquid-dock">
+  <div v-if="visibleItems.length" class="liquid-dock">
     <svg
       ref="svgRef"
       xmlns="http://www.w3.org/2000/svg"
@@ -87,18 +108,18 @@ onUnmounted(() => {
         borderRadius: `${DOCK_R}px`,
       }"
     >
-      <nav class="liquid-dock__nav" aria-label="Místnosti">
+      <nav class="liquid-dock__nav" aria-label="Dock">
         <button
-          v-for="room in rooms"
-          :key="room.id"
+          v-for="item in visibleItems"
+          :key="item.entityId"
           type="button"
           class="liquid-dock__tab"
-          :class="{ 'is-active': room.id === modelValue }"
-          :aria-current="room.id === modelValue ? 'page' : undefined"
-          @click="select(room.id)"
+          :class="{ 'is-active': isOn(item), 'is-icon-only': !showName(item) }"
+          :aria-label="item.label || item.entityId"
+          @click="activate(item)"
         >
-          <component :is="roomIcon(room.icon)" :size="22" :stroke-width="2.15" />
-          <span>{{ room.label }}</span>
+          <component :is="itemIcon(item)" :size="22" :stroke-width="2.15" />
+          <span v-if="showName(item)">{{ item.label }}</span>
         </button>
       </nav>
     </div>
@@ -127,15 +148,10 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-/*
-  Whole dock = one liquid-glass lens (like the reference Profile pill,
-  stretched into a single bar). Ignore the separate round button.
-*/
 .liquid-dock__glass {
   position: relative;
   pointer-events: auto;
   isolation: isolate;
-  /* Nearly clear — content must show through / refract */
   background: rgba(255, 255, 255, 0.06);
   border: 0.5px solid rgba(255, 255, 255, 0.55);
   box-shadow:
@@ -144,7 +160,6 @@ onUnmounted(() => {
     0 -1px 0 rgba(255, 255, 255, 0.25) inset;
 }
 
-/* Live refraction / blur of whatever sits behind the dock */
 .liquid-dock__glass::after {
   content: '';
   position: absolute;
@@ -158,7 +173,6 @@ onUnmounted(() => {
   -webkit-backdrop-filter: var(--lg-filter, blur(22px) saturate(1.85) brightness(1.05));
 }
 
-/* Specular rim — bright glass edge like the reference Profile pill */
 .liquid-dock__glass::before {
   content: '';
   position: absolute;
@@ -219,7 +233,10 @@ onUnmounted(() => {
     transform 140ms ease;
 }
 
-/* Active room = nested liquid-glass chip (like Profile in the reference) */
+.liquid-dock__tab.is-icon-only {
+  gap: 0;
+}
+
 .liquid-dock__tab.is-active {
   color: rgba(15, 8, 30, 0.95);
   font-weight: 650;

@@ -5,9 +5,10 @@
  * Preview renders the *draft* config locally — it never loads the live guest PWA
  * and never reconnects to Home Assistant. The real dashboard updates only after Save.
  */
-const PANEL_VERSION = "1.2.5";
+const PANEL_VERSION = "1.2.6";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
-const UI_LANG_KEY = "guest_ha_panel_ui_lang";
+const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
+const DOCK_MAX = 4;
 
 /** iPhone 12 Pro physical pixels (Apple: 2532 × 1170 @3x → 390 × 844 CSS pt). */
 const IPHONE_12_PRO = {
@@ -25,6 +26,7 @@ const PANEL_I18N = {
     saving: "Ukládám…",
     saved: "Uloženo",
     tabRooms: "Místnosti",
+    tabDock: "Dock",
     tabScenes: "Scény",
     tabGuest: "Host & Wi-Fi",
     tabStyles: "Styly",
@@ -38,11 +40,10 @@ const PANEL_I18N = {
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi heslo",
     wifiSecurity: "Zabezpečení",
-    stylesHint: "Vzhled hostovského dashboardu. Preview vpravo sleduje draft; live PWA až po Uložit.",
+    stylesHint: "Vzhled hostovského dashboardu. Preview sleduje draft; live PWA až po Uložit.",
     dashTheme: "Dashboard theme",
-    dashLanguage: "Jazyk dashboardu",
     accent: "Accent",
-    stylesAfterSave: "Po Uložit se theme, jazyk i config propsí do ostré PWA. Preview configu se mění hned.",
+    stylesAfterSave: "Po Uložit se theme i config propsí do ostré PWA. Preview configu se mění hned.",
     roomsHint: "<b>Jednoduchý setup:</b> zapni místnosti z HA Areas. Zařízení se načtou sama. Preview bere draft; Uložit pošle na PWA.",
     importAreas: "Zapnout všechny Areas",
     clearRooms: "Vypnout vše",
@@ -58,14 +59,26 @@ const PANEL_I18N = {
     delete: "Smazat",
     scenesHint: "Rychlé scény v horní liště tabletu. Propsí se až po Uložit.",
     addScene: "Scéna",
+    dockHint: "Spodní dock tabletu — maximálně 4 entity. Název je volitelný (ikonka only / s popiskem).",
+    dockAdd: "+ Položka docku",
+    dockEntity: "Entity",
+    dockLabel: "Název",
+    dockShowLabel: "Zobrazit název",
+    dockFull: "Dock je plný (max. 4).",
+    dockEmpty: "Zatím žádné položky v docku.",
     importedRooms: (n) => `Naimportováno ${n} místností`,
     roomExists: "Místnost už je v configu",
     roomAdded: (name) => `Přidáno: ${name}`,
     roomResynced: "Místnost znovu načtena z Area",
     devicesCount: (n) => `${n} zařízení`,
+    langAuto: "Auto (HA)",
     langCs: "Čeština",
     langEn: "English",
-    panelLang: "Jazyk panelu",
+    uiSettings: "Nastavení config rozhraní",
+    uiSettingsHint: "Jen vzhled tohoto config panelu. Žádný guest config.",
+    uiTheme: "Vzhled panelu",
+    uiLanguage: "Jazyk panelu",
+    close: "Zavřít",
   },
   en: {
     title: "Guest Dashboard",
@@ -74,6 +87,7 @@ const PANEL_I18N = {
     saving: "Saving…",
     saved: "Saved",
     tabRooms: "Rooms",
+    tabDock: "Dock",
     tabScenes: "Scenes",
     tabGuest: "Guest & Wi-Fi",
     tabStyles: "Styles",
@@ -89,9 +103,8 @@ const PANEL_I18N = {
     wifiSecurity: "Security",
     stylesHint: "Guest dashboard look. Preview follows draft; live PWA updates after Save.",
     dashTheme: "Dashboard theme",
-    dashLanguage: "Dashboard language",
     accent: "Accent",
-    stylesAfterSave: "After Save, theme, language and config push to the live PWA. Config preview updates immediately.",
+    stylesAfterSave: "After Save, theme and config push to the live PWA. Config preview updates immediately.",
     roomsHint: "<b>Simple setup:</b> enable rooms from HA Areas. Devices load automatically. Preview follows draft; Save publishes to the PWA.",
     importAreas: "Enable all Areas",
     clearRooms: "Disable all",
@@ -107,14 +120,26 @@ const PANEL_I18N = {
     delete: "Delete",
     scenesHint: "Quick scenes in the tablet top bar. Applied only after Save.",
     addScene: "Scene",
+    dockHint: "Tablet bottom dock — max 4 entities. Name is optional (icon only / with label).",
+    dockAdd: "+ Dock item",
+    dockEntity: "Entity",
+    dockLabel: "Name",
+    dockShowLabel: "Show name",
+    dockFull: "Dock is full (max 4).",
+    dockEmpty: "No dock items yet.",
     importedRooms: (n) => `Imported ${n} rooms`,
     roomExists: "Room is already in the config",
     roomAdded: (name) => `Added: ${name}`,
     roomResynced: "Room reloaded from Area",
     devicesCount: (n) => `${n} devices`,
+    langAuto: "Auto (HA)",
     langCs: "Čeština",
     langEn: "English",
-    panelLang: "Panel language",
+    uiSettings: "Config UI settings",
+    uiSettingsHint: "Only this config panel chrome. No guest dashboard config here.",
+    uiTheme: "Panel theme",
+    uiLanguage: "Panel language",
+    close: "Close",
   },
 };
 
@@ -140,8 +165,9 @@ const emptyConfig = () => ({
   },
   scenes: [],
   rooms: [],
+  dock: [],
   dashboardUrl: "",
-  appearance: { mode: "light", accent: "#ff6b00", language: "cs" },
+  appearance: { mode: "light", accent: "#ff6b00" },
 });
 
 class GuestHaDashboardPanel extends HTMLElement {
@@ -156,14 +182,34 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._tab = "rooms";
     this._roomIdx = 0;
     this._uiTheme = localStorage.getItem(UI_THEME_KEY) || "auto";
-    this._uiLang = localStorage.getItem(UI_LANG_KEY) === "en" ? "en" : "cs";
+    const storedLang = localStorage.getItem(UI_LANG_KEY);
+    this._uiLangPref = storedLang === "en" || storedLang === "cs" ? storedLang : "auto";
+    this._settingsOpen = false;
     this._previewRoomId = null;
     this._previewPatchTimer = null;
     this.attachShadow({ mode: "open" });
   }
 
+  /** Home Assistant language / region → cs | en */
+  _haLang() {
+    const raw =
+      this._hass?.locale?.language ||
+      this._hass?.language ||
+      this._hass?.locale?.languageCode ||
+      "";
+    const low = String(raw).toLowerCase();
+    if (low.startsWith("en")) return "en";
+    if (low.startsWith("cs") || low.startsWith("sk")) return "cs";
+    return "cs";
+  }
+
+  _uiLang() {
+    if (this._uiLangPref === "en" || this._uiLangPref === "cs") return this._uiLangPref;
+    return this._haLang();
+  }
+
   _t(key, ...args) {
-    const pack = PANEL_I18N[this._uiLang] || PANEL_I18N.cs;
+    const pack = PANEL_I18N[this._uiLang()] || PANEL_I18N.cs;
     const val = pack[key] ?? PANEL_I18N.cs[key] ?? key;
     return typeof val === "function" ? val(...args) : val;
   }
@@ -203,17 +249,19 @@ class GuestHaDashboardPanel extends HTMLElement {
     return this._config.appearance?.mode === "dark" ? "dark" : "light";
   }
 
-  _dashLang() {
-    return this._config.appearance?.language === "en" ? "en" : "cs";
-  }
-
   _dashAccent() {
     return this._config.appearance?.accent || "#ff6b00";
   }
 
-  /** Labels inside the config preview follow draft dashboard language. */
+  /** Preview copy follows HA / panel UI language. */
   _pt(cs, en) {
-    return this._dashLang() === "en" ? en : cs;
+    return this._uiLang() === "en" ? en : cs;
+  }
+
+  _ensureDock() {
+    if (!Array.isArray(this._config.dock)) this._config.dock = [];
+    if (this._config.dock.length > DOCK_MAX) this._config.dock = this._config.dock.slice(0, DOCK_MAX);
+    return this._config.dock;
   }
 
   _activePreviewRoom(c = this._config) {
@@ -233,7 +281,13 @@ class GuestHaDashboardPanel extends HTMLElement {
       const cfg = await this._hass.connection.sendMessagePromise({
         type: "guest_ha_dashboard/get_config",
       });
-      this._config = { ...emptyConfig(), ...cfg, appearance: { ...emptyConfig().appearance, ...(cfg.appearance || {}) } };
+      this._config = {
+        ...emptyConfig(),
+        ...cfg,
+        dock: Array.isArray(cfg.dock) ? cfg.dock.slice(0, DOCK_MAX) : [],
+        appearance: { ...emptyConfig().appearance, ...(cfg.appearance || {}) },
+      };
+      this._ensureDock();
       this._error = null;
       this._previewRoomId = this._config.rooms?.[0]?.id || null;
     } catch (err) {
@@ -417,9 +471,40 @@ class GuestHaDashboardPanel extends HTMLElement {
       .editor, .preview {
         min-height: 0; height: calc(100vh - 32px);
         background: var(--card); border: 1px solid var(--border); border-radius: 22px;
-        overflow: hidden; display: flex; flex-direction: column;
+        overflow: hidden; display: flex; flex-direction: column; position: relative;
       }
-      .editor-scroll { overflow: auto; padding: 16px 16px 28px; flex: 1; }
+      .editor-scroll { overflow: auto; padding: 16px 16px 20px; flex: 1; }
+      .editor-footer {
+        display: flex; justify-content: flex-end; align-items: center;
+        gap: 12px; padding: 14px 16px; border-top: 1px solid var(--border);
+        background: color-mix(in srgb, var(--card) 92%, transparent);
+        flex-shrink: 0;
+      }
+      .btn.save-xl {
+        font-size: 1.08rem; font-weight: 700; letter-spacing: -0.01em;
+        padding: 16px 34px; min-width: 168px; border-radius: 18px;
+        background: var(--accent); color: #fff;
+        box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 35%, transparent);
+      }
+      .btn.save-xl:disabled { opacity: 0.6; cursor: default; }
+      .gear-btn {
+        width: 42px; height: 42px; border-radius: 14px; border: 1px solid var(--border);
+        background: var(--btn); color: var(--text); display: grid; place-items: center;
+        cursor: pointer; font-size: 1.15rem; line-height: 1;
+      }
+      .gear-btn:hover { border-color: var(--accent); }
+      .settings-backdrop {
+        position: absolute; inset: 0; z-index: 40;
+        background: rgba(0,0,0,0.45); display: grid; place-items: center; padding: 20px;
+      }
+      .settings-card {
+        width: min(360px, 100%); border-radius: 20px; padding: 18px 16px 16px;
+        background: var(--card); border: 1px solid var(--border); color: var(--text);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+      }
+      .settings-card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+      .settings-card .hint { margin-bottom: 14px; }
+      .settings-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
       header {
         display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start;
         justify-content: space-between; margin-bottom: 14px;
@@ -668,9 +753,10 @@ class GuestHaDashboardPanel extends HTMLElement {
     const dark = this._dashMode() === "dark";
     const g = c.guestInfo || {};
     const rooms = c.rooms || [];
+    const dock = (Array.isArray(c.dock) ? c.dock : []).filter((d) => d?.entityId).slice(0, DOCK_MAX);
     const scenes = (c.scenes || []).slice(0, 6);
     const room = this._activePreviewRoom(c);
-    const locale = this._dashLang() === "en" ? "en-US" : "cs-CZ";
+    const locale = this._uiLang() === "en" ? "en-US" : "cs-CZ";
     const now = new Date();
     const time = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
     const date = now.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
@@ -692,6 +778,19 @@ class GuestHaDashboardPanel extends HTMLElement {
         `).join("")
       : `<div class="phone-empty">${this._t("previewEmptyRooms")}</div>`;
 
+    const roomChips = rooms.length > 1
+      ? `<div class="phone-scenes">${rooms.map((r) =>
+          `<button type="button" class="phone-scene ${r.id === room?.id ? "on" : ""}" data-preview-room="${this._escape(r.id)}" style="${r.id === room?.id ? "background:var(--preview-accent);color:#fff" : ""}">${this._escape(r.label || r.id)}</button>`
+        ).join("")}</div>`
+      : "";
+
+    const dockHtml = dock.length
+      ? `<div class="phone-dock">${dock.map((d) => {
+          const show = d.showLabel !== false && Boolean(String(d.label || "").trim());
+          return `<button type="button" class="${show ? "" : "icon-only"}">${show ? this._escape(d.label) : "●"}</button>`;
+        }).join("")}</div>`
+      : "";
+
     return `
       <div class="phone-wrap">
         <div class="phone ${dark ? "is-dark" : ""}" style="--preview-accent:${accent}">
@@ -712,11 +811,10 @@ class GuestHaDashboardPanel extends HTMLElement {
               ${scenes.length ? `<div class="phone-scenes">${scenes.map((s) =>
                 `<span class="phone-scene">${this._escape(s.label || s.id || "scene")}</span>`
               ).join("")}</div>` : ""}
+              ${roomChips}
               <div class="phone-grid">${tiles}</div>
             </div>
-            ${rooms.length ? `<div class="phone-dock">${rooms.map((r) => `
-              <button type="button" data-preview-room="${this._escape(r.id)}" class="${r.id === room?.id ? "on" : ""}">${this._escape(r.label || r.id)}</button>
-            `).join("")}</div>` : ""}
+            ${dockHtml}
           </div>
         </div>
         <div class="phone-meta">${this._t("previewMeta")} · ${IPHONE_12_PRO.pxW}×${IPHONE_12_PRO.pxH}</div>
@@ -743,10 +841,40 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
   }
 
+  _renderSettingsModal() {
+    if (!this._settingsOpen) return "";
+    return `
+      <div class="settings-backdrop" id="settingsBackdrop">
+        <div class="settings-card" role="dialog" aria-label="${this._escape(this._t("uiSettings"))}">
+          <h3>${this._t("uiSettings")}</h3>
+          <p class="hint">${this._t("uiSettingsHint")}</p>
+          <div class="row"><label>${this._t("uiTheme")}</label>
+            <div class="seg">
+              <button type="button" data-ui-theme="light" class="${this._uiTheme === "light" ? "active" : ""}">Light</button>
+              <button type="button" data-ui-theme="dark" class="${this._uiTheme === "dark" ? "active" : ""}">Dark</button>
+              <button type="button" data-ui-theme="auto" class="${this._uiTheme === "auto" ? "active" : ""}">Auto</button>
+            </div>
+          </div>
+          <div class="row"><label>${this._t("uiLanguage")}</label>
+            <div class="seg">
+              <button type="button" data-ui-lang="auto" class="${this._uiLangPref === "auto" ? "active" : ""}">${this._t("langAuto")}</button>
+              <button type="button" data-ui-lang="cs" class="${this._uiLangPref === "cs" ? "active" : ""}">${this._t("langCs")}</button>
+              <button type="button" data-ui-lang="en" class="${this._uiLangPref === "en" ? "active" : ""}">${this._t("langEn")}</button>
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button type="button" class="btn" id="closeSettings">${this._t("close")}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   _render() {
     this._syncTheme();
     const c = this._config;
-    if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00", language: "cs" };
+    if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00" };
+    this._ensureDock();
     const room = c.rooms[this._roomIdx];
     const areaFilter = room?.haAreaId || null;
     const sensors = this._entities("sensor", areaFilter);
@@ -756,15 +884,11 @@ class GuestHaDashboardPanel extends HTMLElement {
     const climates = this._entities("climate", areaFilter);
     const scenes = this._entities("scene");
     const areas = this._areas();
+    const locale = this._uiLang() === "en" ? "en-US" : "cs-CZ";
 
     const scrollEl = this.shadowRoot.querySelector(".editor-scroll");
     const scrollTop = scrollEl?.scrollTop || 0;
     const activeId = this.shadowRoot.activeElement?.id || null;
-    const activeSel = activeId ? null : (() => {
-      const el = this.shadowRoot.activeElement;
-      if (!el || el === this.shadowRoot) return null;
-      return { name: el.name || null, value: el.value, tag: el.tagName, start: el.selectionStart, end: el.selectionEnd };
-    })();
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -778,25 +902,17 @@ class GuestHaDashboardPanel extends HTMLElement {
                 <div class="version">v${PANEL_VERSION}</div>
               </div>
               <div class="toolbar">
-                <div class="seg" title="${this._escape(this._t("panelLang"))}">
-                  <button data-ui-lang="cs" class="${this._uiLang === "cs" ? "active" : ""}">CS</button>
-                  <button data-ui-lang="en" class="${this._uiLang === "en" ? "active" : ""}">EN</button>
-                </div>
-                <div class="seg" title="Theme">
-                  <button data-ui-theme="light" class="${this._uiTheme === "light" ? "active" : ""}">Light</button>
-                  <button data-ui-theme="dark" class="${this._uiTheme === "dark" ? "active" : ""}">Dark</button>
-                  <button data-ui-theme="auto" class="${this._uiTheme === "auto" ? "active" : ""}">Auto</button>
-                </div>
-                <button class="btn primary" id="save">${this._saving ? this._t("saving") : this._t("save")}</button>
+                <button type="button" class="gear-btn" id="openSettings" title="${this._escape(this._t("uiSettings"))}" aria-label="${this._escape(this._t("uiSettings"))}">⚙</button>
               </div>
             </header>
 
             ${this._error ? `<div class="msg err">${this._escape(this._error)}</div>` : ""}
             ${this._info ? `<div class="msg ok">${this._escape(this._info)}</div>` : ""}
-            ${this._savedAt ? `<div class="msg ok">${this._t("saved")} ${this._savedAt.toLocaleTimeString(this._uiLang === "en" ? "en-US" : "cs-CZ")}</div>` : ""}
+            ${this._savedAt ? `<div class="msg ok">${this._t("saved")} ${this._savedAt.toLocaleTimeString(locale)}</div>` : ""}
 
             <div class="tabs">
               <button class="tab ${this._tab === "rooms" ? "active" : ""}" data-tab="rooms">${this._t("tabRooms")}</button>
+              <button class="tab ${this._tab === "dock" ? "active" : ""}" data-tab="dock">${this._t("tabDock")}</button>
               <button class="tab ${this._tab === "scenes" ? "active" : ""}" data-tab="scenes">${this._t("tabScenes")}</button>
               <button class="tab ${this._tab === "guest" ? "active" : ""}" data-tab="guest">${this._t("tabGuest")}</button>
               <button class="tab ${this._tab === "styles" ? "active" : ""}" data-tab="styles">${this._t("tabStyles")}</button>
@@ -804,18 +920,19 @@ class GuestHaDashboardPanel extends HTMLElement {
 
             ${this._tab === "guest" ? this._renderGuest(c) : ""}
             ${this._tab === "rooms" ? this._renderRooms(c, room, areas, sensors, lights, switches, covers, climates) : ""}
+            ${this._tab === "dock" ? this._renderDock(c) : ""}
             ${this._tab === "scenes" ? this._renderScenes(c, scenes) : ""}
             ${this._tab === "styles" ? this._renderStyles(c) : ""}
           </div>
+          <div class="editor-footer">
+            <button class="btn save-xl" id="save" ${this._saving ? "disabled" : ""}>${this._saving ? this._t("saving") : this._t("save")}</button>
+          </div>
+          ${this._renderSettingsModal()}
         </section>
 
         <aside class="preview">
           <div class="preview-head">
             <strong>${this._t("previewTitle")}</strong>
-            <div class="seg">
-              <button data-dash-mode="light" class="${this._dashMode() === "light" ? "active" : ""}">Light</button>
-              <button data-dash-mode="dark" class="${this._dashMode() === "dark" ? "active" : ""}">Dark</button>
-            </div>
           </div>
           <div class="preview-body">
             ${this._renderPreviewBody(c)}
@@ -830,9 +947,6 @@ class GuestHaDashboardPanel extends HTMLElement {
       const el = this.shadowRoot.getElementById(activeId);
       if (el && typeof el.focus === "function") {
         try { el.focus({ preventScroll: true }); } catch { el.focus(); }
-        if (activeSel && typeof activeSel.start === "number" && el.setSelectionRange) {
-          try { el.setSelectionRange(activeSel.start, activeSel.end); } catch { /* ignore */ }
-        }
       }
     }
 
@@ -842,9 +956,24 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._render();
     });
     this.shadowRoot.getElementById("save")?.addEventListener("click", () => this._save());
+    this.shadowRoot.getElementById("openSettings")?.addEventListener("click", () => {
+      this._settingsOpen = true;
+      this._render();
+    });
+    this.shadowRoot.getElementById("closeSettings")?.addEventListener("click", () => {
+      this._settingsOpen = false;
+      this._render();
+    });
+    this.shadowRoot.getElementById("settingsBackdrop")?.addEventListener("click", (e) => {
+      if (e.target?.id === "settingsBackdrop") {
+        this._settingsOpen = false;
+        this._render();
+      }
+    });
     this._on("[data-ui-lang]", "click", (e) => {
-      this._uiLang = e.currentTarget.dataset.uiLang === "en" ? "en" : "cs";
-      localStorage.setItem(UI_LANG_KEY, this._uiLang);
+      const v = e.currentTarget.dataset.uiLang;
+      this._uiLangPref = v === "en" || v === "cs" ? v : "auto";
+      localStorage.setItem(UI_LANG_KEY, this._uiLangPref);
       this._render();
     });
     this._on("[data-ui-theme]", "click", (e) => {
@@ -852,15 +981,11 @@ class GuestHaDashboardPanel extends HTMLElement {
       localStorage.setItem(UI_THEME_KEY, this._uiTheme);
       this._render();
     });
-    this._on("[data-dash-mode]", "click", (e) => {
-      if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
-      this._config.appearance.mode = e.currentTarget.dataset.dashMode;
-      this._render();
-    });
     this._bindPreview();
 
     if (this._tab === "guest") this._bindGuest();
     if (this._tab === "rooms") this._bindRooms();
+    if (this._tab === "dock") this._bindDock();
     if (this._tab === "scenes") this._bindScenes();
     if (this._tab === "styles") this._bindStyles();
   }
@@ -910,19 +1035,12 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _renderStyles(c) {
     const a = c.appearance || {};
-    const lang = a.language === "en" ? "en" : "cs";
     return `
       <p class="hint">${this._t("stylesHint")}</p>
       <div class="row"><label>${this._t("dashTheme")}</label>
         <div class="seg">
           <button type="button" data-style-mode="light" class="${a.mode !== "dark" ? "active" : ""}">Light</button>
           <button type="button" data-style-mode="dark" class="${a.mode === "dark" ? "active" : ""}">Dark</button>
-        </div>
-      </div>
-      <div class="row"><label>${this._t("dashLanguage")}</label>
-        <div class="seg">
-          <button type="button" data-dash-lang="cs" class="${lang === "cs" ? "active" : ""}">${this._t("langCs")}</button>
-          <button type="button" data-dash-lang="en" class="${lang === "en" ? "active" : ""}">${this._t("langEn")}</button>
         </div>
       </div>
       <div class="row"><label>${this._t("accent")}</label>
@@ -937,11 +1055,6 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._config.appearance.mode = e.currentTarget.dataset.styleMode;
       this._render();
     });
-    this._on("[data-dash-lang]", "click", (e) => {
-      if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
-      this._config.appearance.language = e.currentTarget.dataset.dashLang === "en" ? "en" : "cs";
-      this._render();
-    });
     const accent = this.shadowRoot.getElementById("accent");
     accent?.addEventListener("input", () => {
       if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
@@ -952,6 +1065,90 @@ class GuestHaDashboardPanel extends HTMLElement {
       if (!this._config.appearance) this._config.appearance = emptyConfig().appearance;
       this._config.appearance.accent = accent.value;
       this._patchPreview();
+    });
+  }
+
+  _dockEntityOptions() {
+    const domains = ["light", "switch", "scene", "cover", "script", "input_boolean", "button"];
+    const ids = Object.keys(this._hass?.states || {})
+      .filter((id) => domains.includes(id.split(".")[0]))
+      .sort();
+    return ids;
+  }
+
+  _renderDock(c) {
+    const dock = this._ensureDock();
+    const entities = this._dockEntityOptions();
+    return `
+      <p class="hint">${this._t("dockHint")}</p>
+      ${dock.length ? `<div class="card-list">${dock.map((item, i) => `
+        <div class="device" data-dock-i="${i}">
+          <div class="row"><label>${this._t("dockEntity")}</label>
+            <select data-k="entityId">
+              <option value="">—</option>
+              ${entities.map((e) => `<option value="${this._escape(e)}" ${item.entityId === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}
+            </select>
+          </div>
+          <div class="row"><label>${this._t("dockLabel")}</label>
+            <input data-k="label" value="${this._escape(item.label || "")}" placeholder="optional" ${item.showLabel === false ? "disabled" : ""} />
+          </div>
+          <div class="row"><label>${this._t("dockShowLabel")}</label>
+            <label style="display:flex;align-items:center;gap:8px;color:var(--text)">
+              <input type="checkbox" data-k="showLabel" ${item.showLabel !== false ? "checked" : ""} />
+              ${item.showLabel !== false ? "on" : "off"}
+            </label>
+          </div>
+          <div class="row"><label>${this._t("roomIcon")}</label>
+            <select data-k="icon">${ICON_OPTIONS.map((ic) => `<option ${item.icon === ic ? "selected" : ""}>${ic}</option>`).join("")}</select>
+          </div>
+          <div class="actions"><button type="button" class="btn danger" data-remove-dock="${i}">${this._t("delete")}</button></div>
+        </div>
+      `).join("")}</div>` : `<p class="hint">${this._t("dockEmpty")}</p>`}
+      <div class="actions">
+        <button type="button" class="btn primary" id="addDock" ${dock.length >= DOCK_MAX ? "disabled" : ""}>${this._t("dockAdd")}</button>
+        ${dock.length >= DOCK_MAX ? `<span class="count">${this._t("dockFull")}</span>` : ""}
+      </div>
+    `;
+  }
+
+  _bindDock() {
+    this.shadowRoot.getElementById("addDock")?.addEventListener("click", () => {
+      const dock = this._ensureDock();
+      if (dock.length >= DOCK_MAX) return;
+      dock.push({ entityId: "", label: "", showLabel: true, icon: "Power" });
+      this._render();
+    });
+    this._on("[data-remove-dock]", "click", (e) => {
+      const i = Number(e.currentTarget.dataset.removeDock);
+      this._ensureDock().splice(i, 1);
+      this._render();
+    });
+    this.shadowRoot.querySelectorAll(".device[data-dock-i]").forEach((card) => {
+      const item = this._ensureDock()[Number(card.dataset.dockI)];
+      if (!item) return;
+      card.querySelectorAll("[data-k]").forEach((el) => {
+        const key = el.dataset.k;
+        const apply = () => {
+          if (key === "showLabel") {
+            item.showLabel = el.checked;
+            if (!item.showLabel) item.label = item.label || "";
+          } else {
+            item[key] = el.value;
+          }
+          if (key === "entityId" && el.value && !item.label) {
+            item.label = this._friendly(el.value);
+          }
+          this._schedulePreviewPatch();
+          if (key === "showLabel" || key === "entityId") this._render();
+        };
+        el.addEventListener("change", apply);
+        if (el.tagName === "INPUT" && el.type !== "checkbox") {
+          el.addEventListener("input", () => {
+            item[key] = el.value;
+            this._schedulePreviewPatch();
+          });
+        }
+      });
     });
   }
 

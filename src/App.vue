@@ -16,11 +16,16 @@ import CoverTile from '@/components/CoverTile.vue'
 import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
 
 const { status } = useHomeAssistant()
-const { guestInfo, rooms, appearance, themeMode } = useGuestConfig()
+const { guestInfo, rooms, dock, appearance, themeMode } = useGuestConfig()
 const { t } = useI18n()
 useWakeLock()
 
 const activeRoomId = ref(rooms.value[0]?.id)
+
+function selectRoom(id) {
+  unlockAudio()
+  activeRoomId.value = id
+}
 
 watch(
   rooms,
@@ -129,6 +134,22 @@ onMounted(() => {
       </div>
 
       <div
+        v-if="rooms.length > 1"
+        class="mt-3 flex gap-2 overflow-x-auto no-scrollbar pb-1"
+      >
+        <button
+          v-for="room in rooms"
+          :key="room.id"
+          type="button"
+          class="btn btn-sm rounded-full shrink-0 border-0 shadow-none"
+          :class="room.id === activeRoomId ? 'bg-base-100' : 'bg-base-100/50 text-base-content/50'"
+          @click="selectRoom(room.id)"
+        >
+          {{ room.label }}
+        </button>
+      </div>
+
+      <div
         data-dashboard-scroll
         class="mt-4 flex-1 overflow-y-auto no-scrollbar overscroll-contain"
       >
@@ -161,7 +182,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <LiquidGlassDock v-model="activeRoomId" :rooms="rooms" />
+    <LiquidGlassDock :items="dock" />
   </div>
 </template>
 
