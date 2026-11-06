@@ -2,38 +2,59 @@ import { reactive, computed } from 'vue'
 import {
   createConnection,
   createLongLivedTokenAuth,
+  getAuth,
   subscribeEntities,
   callService as haCallService,
+  ERR_HASS_HOST_REQUIRED,
+  ERR_INVALID_AUTH,
 } from 'home-assistant-js-websocket'
 import { guestDashboard } from '@/config/guestDashboard'
+import {
+  applyGuestConfig,
+  useFallbackGuestConfig,
+  getGuestConfig,
+} from './useGuestConfig'
 import { playTick } from './useSound'
 
-/** @typedef {'connecting' | 'connected' | 'disconnected' | 'error' | 'mock'} HaStatus */
+/** @typedef {'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'mock' | 'need_url' | 'login'} HaStatus */
+
+const TOKENS_KEY = 'guest_ha_tokens'
+const HASS_URL_KEY = 'guest_ha_url'
 
 const state = reactive({
   /** @type {Record<string, object>} */
   entities: {},
   /** @type {HaStatus} */
-  status: 'connecting',
+  status: 'idle',
   isMock: false,
   lastError: null,
+  hassUrl: localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL || '',
 })
 
 let connection = null
 let brightnessTimers = new Map()
 let initialized = false
+let configUnsub = null
 
-function isMockConfigured() {
+function wantsMock() {
   const url = import.meta.env.VITE_HA_URL
-  const token = import.meta.env.VITE_HA_TOKEN
-  return (
-    !url ||
-    !token ||
-    url === 'mock' ||
-    token === 'mock' ||
-    url.trim() === '' ||
-    token.trim() === ''
-  )
+  const mode = import.meta.env.VITE_MODE
+  return mode === 'mock' || url === 'mock'
+}
+
+function saveTokens(tokens) {
+  if (tokens) localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens))
+  else localStorage.removeItem(TOKENS_KEY)
+}
+
+function loadTokens() {
+  const raw = localStorage.getItem(TOKENS_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
 }
 
 /* ─── Mock entity factory ─────────────────────────────────── */
@@ -42,6 +63,7 @@ function buildMockEntities() {
   /** @type {Record<string, object>} */
   const entities = {}
   const now = new Date().toISOString()
+  const cfg = getGuestConfig()
 
   const sensorDefaults = {
     'sensor.obyvak_teplota': { state: '22.4', unit: '°C' },
@@ -64,8 +86,8 @@ function buildMockEntities() {
     }
   }
 
-  for (const room of guestDashboard.rooms) {
-    for (const device of room.devices) {
+  for (const room of cfg.rooms || []) {
+    for (const device of room.devices || []) {
       if (device.type === 'light') {
         entities[device.id] = {
           entity_id: device.id,
@@ -121,7 +143,8 @@ function buildMockEntities() {
     }
   }
 
-  for (const scene of guestDashboard.scenes) {
+  for (const scene of cfg.scenes || []) {
+    if (!scene.entityId) continue
     entities[scene.entityId] = {
       entity_id: scene.entityId,
       state: 'scening',
@@ -131,7 +154,6 @@ function buildMockEntities() {
     }
   }
 
-  // Seed a few lights on for a lively first paint
   setLightMock(entities, 'light.obyvak_strop', true, 70, 3000)
   setLightMock(entities, 'light.obyvak_lampa', true, 45, 2700)
   setLightMock(entities, 'light.chodba_vstup', true, 40, 3000)
@@ -174,27 +196,95 @@ function applyMockScene(action) {
 function startMockMode() {
   state.isMock = true
   state.status = 'mock'
+  useFallbackGuestConfig('mock')
   state.entities = buildMockEntities()
   state.lastError = null
 }
 
-/* ─── Real HA connection ──────────────────────────────────── */
+async function loadRemoteConfig(conn) {
+  try {
+    const config = await conn.sendMessagePromise({
+      type: 'guest_ha_dashboard/get_config',
+    })
+    if (config?.rooms?.length || config?.guestInfo) {
+      applyGuestConfig(config, 'ha')
+    } else {
+      useFallbackGuestConfig('fallback')
+    }
+  } catch (err) {
+    console.warn('[HA] Config integration missing, using bundled fallback:', err)
+    useFallbackGuestConfig('fallback')
+  }
 
-async function connectLive() {
-  const haUrl = import.meta.env.VITE_HA_URL
-  const haToken = import.meta.env.VITE_HA_TOKEN
+  try {
+    configUnsub?.()
+    configUnsub = conn.subscribeMessage(
+      (ev) => {
+        if (ev?.config) applyGuestConfig(ev.config, 'ha')
+      },
+      { type: 'guest_ha_dashboard/subscribe_config' },
+    )
+  } catch (err) {
+    console.warn('[HA] Config subscribe failed:', err)
+  }
+}
+
+/* ─── Real HA connection (OAuth) ──────────────────────────── */
+
+async function connectLive(hassUrl) {
+  const url = (hassUrl || state.hassUrl || import.meta.env.VITE_HA_URL || '').replace(/\/$/, '')
+  const token = import.meta.env.VITE_HA_TOKEN
 
   state.status = 'connecting'
   state.isMock = false
+  state.lastError = null
 
   try {
-    const auth = createLongLivedTokenAuth(haUrl, haToken)
+    let auth
+
+    // Optional escape hatch: long-lived token (CI / kiosk without OAuth)
+    if (token && token !== 'mock' && url && url !== 'mock') {
+      auth = createLongLivedTokenAuth(url, token)
+    } else {
+      try {
+        auth = await getAuth({
+          hassUrl: url || undefined,
+          clientId: `${window.location.origin}/`,
+          redirectUrl: window.location.href.split('?')[0].split('#')[0],
+          saveTokens,
+          loadTokens,
+        })
+      } catch (err) {
+        if (err === ERR_HASS_HOST_REQUIRED) {
+          state.status = 'need_url'
+          return
+        }
+        if (err === ERR_INVALID_AUTH) {
+          saveTokens(null)
+          state.status = 'login'
+          state.lastError = 'Neplatné přihlášení — zkus to znovu'
+          return
+        }
+        throw err
+      }
+    }
+
+    if (auth.data?.hassUrl) {
+      state.hassUrl = auth.data.hassUrl
+      localStorage.setItem(HASS_URL_KEY, auth.data.hassUrl)
+    } else if (url) {
+      state.hassUrl = url
+      localStorage.setItem(HASS_URL_KEY, url)
+    }
+
     connection = await createConnection({ auth })
     state.status = 'connected'
 
     subscribeEntities(connection, (entities) => {
       state.entities = entities
     })
+
+    await loadRemoteConfig(connection)
 
     connection.addEventListener('ready', () => {
       state.status = 'connected'
@@ -206,11 +296,42 @@ async function connectLive() {
       state.status = 'error'
       state.lastError = 'Reconnect failed'
     })
+
+    // Clear OAuth query params from URL after success
+    if (window.location.search.includes('auth_callback') || window.location.search.includes('code')) {
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
   } catch (err) {
-    console.error('[HA] Connection failed, falling back to mock:', err)
+    console.error('[HA] Connection failed:', err)
     state.lastError = err?.message || String(err)
-    startMockMode()
+    state.status = 'error'
   }
+}
+
+export async function loginWithHassUrl(hassUrl) {
+  const cleaned = hassUrl.trim().replace(/\/$/, '')
+  if (!cleaned) {
+    state.lastError = 'Zadej URL Home Assistantu'
+    return
+  }
+  state.hassUrl = cleaned
+  localStorage.setItem(HASS_URL_KEY, cleaned)
+  await connectLive(cleaned)
+}
+
+export async function logoutHa() {
+  saveTokens(null)
+  configUnsub?.()
+  configUnsub = null
+  try {
+    connection?.close()
+  } catch {
+    /* ignore */
+  }
+  connection = null
+  state.entities = {}
+  state.status = 'need_url'
+  state.isMock = false
 }
 
 /* ─── Public API ──────────────────────────────────────────── */
@@ -247,6 +368,7 @@ export async function callService(domain, service, serviceData = {}) {
 function handleMockService(domain, service, data) {
   const now = new Date().toISOString()
   const entityId = data?.entity_id
+  const cfg = getGuestConfig()
 
   if (domain === 'light' && entityId) {
     const e = state.entities[entityId]
@@ -257,7 +379,13 @@ function handleMockService(domain, service, data) {
       const pct = e.attributes.brightness
         ? Math.round((e.attributes.brightness / 255) * 100)
         : 80
-      setLightMock(state.entities, entityId, on, on ? Math.max(pct, 1) : 0, e.attributes.color_temp_kelvin)
+      setLightMock(
+        state.entities,
+        entityId,
+        on,
+        on ? Math.max(pct, 1) : 0,
+        e.attributes.color_temp_kelvin,
+      )
     } else if (service === 'turn_on') {
       const pct =
         data.brightness_pct ??
@@ -299,7 +427,7 @@ function handleMockService(domain, service, data) {
       e.last_updated = now
     }
   } else if (domain === 'scene' && service === 'turn_on' && entityId) {
-    const scene = guestDashboard.scenes.find((s) => s.entityId === entityId)
+    const scene = (cfg.scenes || []).find((s) => s.entityId === entityId)
     if (scene?.mockAction) applyMockScene(scene.mockAction)
   }
 }
@@ -311,7 +439,6 @@ export async function toggleLight(entityId) {
 export async function setLightBrightness(entityId, brightnessPct) {
   const pct = Math.max(1, Math.min(100, Math.round(brightnessPct)))
 
-  // Optimistic local update for silky drag feedback
   const e = state.entities[entityId]
   if (e) {
     e.state = 'on'
@@ -321,7 +448,6 @@ export async function setLightBrightness(entityId, brightnessPct) {
     }
   }
 
-  // Debounce HA writes while dragging
   if (brightnessTimers.has(entityId)) {
     clearTimeout(brightnessTimers.get(entityId))
   }
@@ -330,7 +456,6 @@ export async function setLightBrightness(entityId, brightnessPct) {
     entityId,
     setTimeout(async () => {
       brightnessTimers.delete(entityId)
-      // Skip playTick on every drag — only fire once at end via soft
       if (state.isMock) {
         handleMockService('light', 'turn_on', {
           entity_id: entityId,
@@ -386,16 +511,26 @@ export function initHomeAssistant() {
   if (initialized) return
   initialized = true
 
-  if (isMockConfigured()) {
+  if (wantsMock()) {
     startMockMode()
+    return
+  }
+
+  // OAuth callback or saved session / configured URL
+  const hasCallback =
+    window.location.search.includes('auth_callback') ||
+    window.location.search.includes('code') ||
+    window.location.search.includes('state')
+  const savedUrl = localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL
+
+  if (hasCallback || loadTokens() || (savedUrl && savedUrl !== 'mock')) {
+    connectLive(savedUrl && savedUrl !== 'mock' ? savedUrl : undefined)
   } else {
-    connectLive()
+    state.status = 'need_url'
+    useFallbackGuestConfig('fallback')
   }
 }
 
-/**
- * Singleton composable — call from any component.
- */
 export function useHomeAssistant() {
   if (!initialized) initHomeAssistant()
 
@@ -404,6 +539,7 @@ export function useHomeAssistant() {
     status: computed(() => state.status),
     isMock: computed(() => state.isMock),
     lastError: computed(() => state.lastError),
+    hassUrl: computed(() => state.hassUrl),
     getEntity,
     getEntityState,
     callService,
@@ -414,6 +550,9 @@ export function useHomeAssistant() {
     toggleSwitch,
     setCover,
     setClimateTemp,
+    loginWithHassUrl,
+    logoutHa,
+    startMockMode,
   }
 }
 

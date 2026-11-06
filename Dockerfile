@@ -8,12 +8,12 @@ RUN npm ci || npm install
 
 COPY . .
 
-# HA URL / token are baked at build time via Vite env.
-# Override with --build-arg when connecting to a real instance.
-ARG VITE_HA_URL=mock
-ARG VITE_HA_TOKEN=mock
+# Optional default HA URL hint for the login screen (OAuth happens in the browser).
+# Leave empty so users enter their HA URL on first visit.
+ARG VITE_HA_URL=
+ARG VITE_MODE=
 ENV VITE_HA_URL=$VITE_HA_URL
-ENV VITE_HA_TOKEN=$VITE_HA_TOKEN
+ENV VITE_MODE=$VITE_MODE
 
 RUN npm run build
 

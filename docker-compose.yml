@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_HA_URL: ${VITE_HA_URL:-mock}
-        VITE_HA_TOKEN: ${VITE_HA_TOKEN:-mock}
+        VITE_HA_URL: ${VITE_HA_URL:-}
+        VITE_MODE: ${VITE_MODE:-}
     image: guest-ha-dashboard:latest
     container_name: guest-ha-dashboard
     restart: unless-stopped

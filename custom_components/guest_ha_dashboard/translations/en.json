@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Guest HA Dashboard",
+        "description": "Adds a sidebar panel to configure rooms, devices, scenes and guest Wi‑Fi for the hosted guest PWA."
+      }
+    },
+    "abort": {
+      "already_configured": "Guest HA Dashboard is already configured."
+    }
+  }
+}

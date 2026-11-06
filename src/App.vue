@@ -1,10 +1,11 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { guestDashboard } from '@/config/guestDashboard'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
+import { useGuestConfig } from '@/composables/useGuestConfig'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { unlockAudio } from '@/composables/useSound'
 
+import HaLogin from '@/components/HaLogin.vue'
 import TopStatusBar from '@/components/TopStatusBar.vue'
 import SceneBar from '@/components/SceneBar.vue'
 import LightTile from '@/components/LightTile.vue'
@@ -13,15 +14,34 @@ import SwitchTile from '@/components/SwitchTile.vue'
 import CoverTile from '@/components/CoverTile.vue'
 import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
 
-useHomeAssistant()
+const { status } = useHomeAssistant()
+const { guestInfo, rooms } = useGuestConfig()
 useWakeLock()
 
-const activeRoomId = ref(guestDashboard.rooms[0]?.id)
-const rooms = guestDashboard.rooms
-const info = guestDashboard.guestInfo
+const activeRoomId = ref(rooms.value[0]?.id)
+
+watch(
+  rooms,
+  (list) => {
+    if (!list?.length) return
+    if (!list.some((r) => r.id === activeRoomId.value)) {
+      activeRoomId.value = list[0].id
+    }
+  },
+  { immediate: true, deep: true },
+)
 
 const activeRoom = computed(
-  () => rooms.find((r) => r.id === activeRoomId.value) || rooms[0],
+  () => rooms.value.find((r) => r.id === activeRoomId.value) || rooms.value[0],
+)
+
+const showLogin = computed(
+  () =>
+    status.value === 'need_url' ||
+    status.value === 'login' ||
+    status.value === 'error' ||
+    status.value === 'connecting' ||
+    status.value === 'idle',
 )
 
 onMounted(() => {
@@ -34,7 +54,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="dashboard-shell relative h-full w-full overflow-hidden text-base-content safe-pad">
+  <HaLogin v-if="showLogin" />
+
+  <div
+    v-else
+    class="dashboard-shell relative h-full w-full overflow-hidden text-base-content safe-pad"
+  >
     <div class="dashboard-orbs" aria-hidden="true">
       <span class="orb o1" />
       <span class="orb o2" />
@@ -44,7 +69,7 @@ onMounted(() => {
 
     <div class="relative z-10 flex flex-col h-full px-4 pt-3 max-w-lg mx-auto">
       <p class="text-[11px] uppercase tracking-[0.18em] text-base-content/40 mb-1">
-        {{ info.welcomeTitle }}
+        {{ guestInfo.welcomeTitle }}
       </p>
 
       <h1 class="text-2xl leading-tight tracking-tight mb-3">
@@ -66,7 +91,7 @@ onMounted(() => {
         class="mt-4 flex-1 overflow-y-auto no-scrollbar overscroll-contain"
       >
         <div class="grid grid-cols-2 gap-3 pb-[120px]">
-          <template v-for="device in activeRoom.devices" :key="device.id">
+          <template v-for="device in activeRoom?.devices || []" :key="device.id || device.label">
             <LightTile
               v-if="device.type === 'light'"
               :entity-id="device.id"

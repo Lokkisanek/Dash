@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Wifi } from 'lucide-vue-next'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
-import { guestDashboard } from '@/config/guestDashboard'
+import { useGuestConfig } from '@/composables/useGuestConfig'
 import { playTick } from '@/composables/useSound'
 import WifiModal from './WifiModal.vue'
 
@@ -12,6 +12,7 @@ const props = defineProps({
 })
 
 const { status, getEntityState } = useHomeAssistant()
+const { guestInfo } = useGuestConfig()
 const wifiOpen = ref(false)
 
 const now = ref(new Date())
@@ -95,9 +96,9 @@ function openWifi() {
 
     <WifiModal
       :open="wifiOpen"
-      :ssid="guestDashboard.guestInfo.wifiSsid"
-      :password="guestDashboard.guestInfo.wifiPassword"
-      :security="guestDashboard.guestInfo.wifiSecurity"
+      :ssid="guestInfo.wifiSsid"
+      :password="guestInfo.wifiPassword"
+      :security="guestInfo.wifiSecurity"
       @close="wifiOpen = false"
     />
   </div>

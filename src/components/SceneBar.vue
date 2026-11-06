@@ -1,17 +1,17 @@
 <script setup>
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
-import { guestDashboard } from '@/config/guestDashboard'
+import { useGuestConfig } from '@/composables/useGuestConfig'
 import { resolveIcon } from '@/lib/icons'
 
 const { activateScene } = useHomeAssistant()
-
-const scenes = guestDashboard.scenes
+const { scenes } = useGuestConfig()
 
 function iconFor(name) {
   return resolveIcon(name, 'Sparkles')
 }
 
 async function onScene(scene) {
+  if (!scene.entityId) return
   await activateScene(scene.entityId)
 }
 </script>

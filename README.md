@@ -1,89 +1,52 @@
 # Guest HA Dashboard
 
-Ultra-sleek Progressive Web App for an **iPhone on MagSafe** — a Smart Home Guest Controller for **Home Assistant** (Zigbee2MQTT).
+Hostovský PWA tablet (MagSafe) + **Home Assistant integrace** (HACS) pro interaktivní konfiguraci.
 
-## Quick start (Mock Mode)
+```text
+Coolify / server          Home Assistant
+┌─────────────────┐       ┌──────────────────────────┐
+│ Guest PWA :86   │ ◄WS── │ Guest HA Dashboard       │
+│ OAuth login     │       │ Sidebar panel = config UI│
+└─────────────────┘       └──────────────────────────┘
+```
+
+## Co kam patří
+
+| Kde | Co děláš |
+|---|---|
+| **Home Assistant** (HACS) | Místnosti, entity, scény, Wi‑Fi — sidebar **Guest Dashboard** |
+| **PWA na serveru** | Hosté ovládají dům; přihlášení přes normální HA účet (OAuth) |
+
+## 1) Instalace do Home Assistant (HACS)
+
+1. HACS → **Integrations** → ⋮ → **Custom repositories**
+2. URL tohoto repa, kategorie **Integration**
+3. Nainstaluj **Guest HA Dashboard** → restart HA
+4. Settings → Devices & services → **Add integration** → Guest HA Dashboard
+5. V sidebaru otevři **Guest Dashboard** a nastav místnosti / zařízení / scény / Wi‑Fi → **Uložit**
+
+## 2) Hostování PWA (Coolify / Compose)
 
 ```bash
+docker compose up -d --build
+# → http://SERVER:86
+```
+
+V Coolify: **Docker Compose**, port **86:86**.  
+Build arg `VITE_HA_URL` je volitelný hint pro login obrazovku (OAuth běží v prohlížeči — **nepotřebuješ long-lived token**).
+
+Na tabletu otevři PWA → zadej URL Home Assistantu → přihlas se HA účtem → config se stáhne z integrace.
+
+## Lokální vývoj
+
+```bash
+cp .env.example .env
+# VITE_HA_URL=mock   → demo bez HA
+# VITE_HA_URL=https://ha.local:8123 → OAuth proti tvé HA
 npm install
 npm run dev
 ```
 
-With `VITE_HA_URL=mock` (default in `.env`), the app runs fully interactive Local Mock Mode — no HA required.
-
-## Connect to Home Assistant
-
-1. Copy `.env.example` → `.env`
-2. Set your values:
-
-```env
-VITE_HA_URL=https://homeassistant.local:8123
-VITE_HA_TOKEN=your_long_lived_access_token
-```
-
-3. Restart `npm run dev`
-
-Create a Long-Lived Access Token in HA: **Profile → Security → Long-Lived Access Tokens**.
-
-## Configure rooms / lights / scenes
-
-Edit **`src/config/guestDashboard.js`** — add rooms, devices, scenes, or guest Wi-Fi in seconds.
-
-## Docker (homelab)
-
-Container listens on **port 86**.
-
-```bash
-# Mock / demo image
-docker build -t guest-ha-dashboard .
-
-# Live HA image
-docker build \
-  --build-arg VITE_HA_URL=https://homeassistant.local:8123 \
-  --build-arg VITE_HA_TOKEN=your_token \
-  -t guest-ha-dashboard .
-
-docker run -d --name guest-ha -p 86:86 guest-ha-dashboard
-```
-
-## Docker Compose
-
-```bash
-# Mock
-docker compose up -d --build
-
-# Live HA
-VITE_HA_URL=https://homeassistant.local:8123 \
-VITE_HA_TOKEN=your_token \
-docker compose up -d --build
-```
-
-App: `http://localhost:86`
-
-## Coolify (Compose)
-
-1. **New Resource → Docker Compose** → napoj repo (nebo vlož `docker-compose.yml`).
-2. Coolify použije `docker-compose.yml` v rootu — port **`86:86`** je už v souboru.
-3. **Environment Variables** (pro build args):
-
-   | Name | Value |
-   |---|---|
-   | `VITE_HA_URL` | `https://tvoje-ha:8123` (nebo `mock`) |
-   | `VITE_HA_TOKEN` | long-lived access token z HA |
-
-   Vite je peče do JS při buildu — po změně URL/tokenu musíš **Rebuild**.
-4. Doména (volitelně): v Coolify nastav domain a jako container port uveď **86**.
-5. Deploy → `http://SERVER_IP:86` (nebo tvoje doména).
-
-> HA WebSocket: pokud HA běží jinde, musí být dostupné z prohlížeče hosta (CORS / same network), ne jen z Coolify kontejneru.
-
-## iPhone kiosk setup
-
-1. Open the URL in Safari
-2. Share → **Add to Home Screen**
-3. Launch the icon (standalone fullscreen)
-4. Mount on MagSafe — Screen Wake Lock keeps the display awake
-
 ## Stack
 
-Vue 3 · Vite · Tailwind CSS · lucide-vue-next · home-assistant-js-websocket · nginx
+Vue 3 · Vite · Tailwind · daisyUI · home-assistant-js-websocket · nginx · HA custom integration (HACS)
