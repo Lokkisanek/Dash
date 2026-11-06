@@ -46,6 +46,21 @@ The bundled nginx has `access_log off`, but every layer in front of it keeps its
 
 See [Logging](SECURITY.md#logging) in the security notes.
 
+## Public demo
+
+A demo with mock data runs without Home Assistant:
+
+```bash
+docker compose -f docker-compose.demo.yml up -d --build
+# → http://SERVER:87/
+```
+
+It builds the same Dockerfile with `VITE_MODE=mock`. The demo build:
+
+- shows mock entities and a "Demo" badge in the top bar, with no login screen;
+- uses the fake Wi-Fi password `demo-password`;
+- adds `<meta name="robots" content="noindex,nofollow">` and a `robots.txt` with `Disallow: /`, so search engines skip it.
+
 ## Home Assistant requirements
 
 - The phone must reach Home Assistant at the address in the URL path.

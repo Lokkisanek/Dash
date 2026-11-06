@@ -1,0 +1,21 @@
+# Public demo: same Dockerfile, mock data, no Home Assistant needed.
+#   docker compose -f docker-compose.demo.yml up -d --build
+#   → http://SERVER:87/
+services:
+  dash-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_MODE: mock
+    image: dash-demo:latest
+    container_name: dash-demo
+    restart: unless-stopped
+    ports:
+      - "87:86"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:86/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
