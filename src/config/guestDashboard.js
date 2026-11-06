@@ -13,7 +13,7 @@
 export const guestDashboard = {
   guestInfo: {
     wifiSsid: 'Guest-Home',
-    wifiPassword: 'vitejte2024',
+    wifiPassword: '',
     wifiSecurity: 'WPA',
   },
 

@@ -19,7 +19,7 @@
                                     └──────────────────────────────┘
 ```
 
-The page is static. Your browser talks to your Home Assistant directly, and nothing passes through or is stored on the dash server.
+The page is static. Your browser talks to your Home Assistant directly. The dash server never receives your tokens, entity states, Wi-Fi password or photos. In hosted mode you still trust the code it delivers to your browser; self-hosting removes that. Details in [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Two ways to run it
 
@@ -28,7 +28,7 @@ The page is static. Your browser talks to your Home Assistant directly, and noth
 | URL | `https://dash.matyas.online/<your-ha-host>` | your own domain / LAN |
 | Setup | none | Docker, port 86 |
 | Requirement | HA reachable over **public HTTPS** | HA reachable from the phone |
-| Who sees your data | nobody but your browser and your HA | you |
+| Who sees your data | your browser and your HA; the host serves the code but never receives your data | you |
 
 Pick the mode in the panel under **General → Dashboard**. Hosted mode shows your personal link with Copy and Open buttons.
 
@@ -47,13 +47,13 @@ Pick the mode in the panel under **General → Dashboard**. Hosted mode shows yo
 - **Hosted:** open the link from the panel, e.g. `https://dash.matyas.online/home.example.com`. Then sign in with your Home Assistant account and "Add to Home Screen".
 - **Self-hosted:** see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 
-Use a dedicated, non-admin Home Assistant user for guest phones.
+Use a dedicated, non-admin Home Assistant user for guest phones. Note that this does not sandbox the guest: Home Assistant lets any user control all entities, and dash only hides tiles. See [Guest accounts are not sandboxed](docs/SECURITY.md#guest-accounts-are-not-sandboxed).
 
 ## Documentation
 
 - [Configuration](docs/CONFIGURATION.md): pages, tile styles, dock, media, StandBy, photos.
 - [Self-hosting](docs/SELF_HOSTING.md): Docker, Coolify, nginx, reverse proxies.
-- [Security & privacy](docs/SECURITY.md): what is stored where and why the host can't see it.
+- [Security & privacy](docs/SECURITY.md): what is stored where, what the host can and can't see, guest limitations, logging.
 
 ## Development
 
@@ -74,3 +74,13 @@ The integration lives in `custom_components/guest_ha_dashboard/`. The panel is a
 ## Stack
 
 Vue 3 · Vite · Tailwind 4 · daisyUI 5 · home-assistant-js-websocket · nginx · Home Assistant custom integration.
+
+## License
+
+dash is licensed under the GNU Affero General Public License v3.0 or later (see [LICENSE](LICENSE)).
+
+In plain words: you can use, change and share dash for free, including commercially. If you modify dash and let others use it over a network, you must offer them your modified source under the same license.
+
+Commercial use (e.g. hotels, rental companies or businesses that do not want to publish their changes) needs a separate commercial license, see [COMMERCIAL.md](COMMERCIAL.md).
+
+Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).
