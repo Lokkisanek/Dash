@@ -36,6 +36,16 @@ Any proxy works; just forward to port 86. Keep these properties from the bundled
 - No access logs on the dashboard host, because the first OAuth redirect carries a one-time code in the query string.
 - `Cache-Control: no-cache` for `index.html`, and long caching for `/assets/*` (hashed file names).
 
+## Logging checklist
+
+The bundled nginx has `access_log off`, but every layer in front of it keeps its own logs. The first OAuth redirect carries a one-time `code` in the query string.
+
+- [ ] Reverse proxy (Coolify's Traefik, Caddy, nginx, …): access logs for the dash host disabled, or query strings stripped.
+- [ ] CDN / tunnel (Cloudflare, …): request logs and log push for the dash host disabled, or query strings stripped.
+- [ ] Any other access logs, analytics or error tracking on the path: no full URLs with query strings.
+
+See [Logging](SECURITY.md#logging) in the security notes.
+
 ## Home Assistant requirements
 
 - The phone must reach Home Assistant at the address in the URL path.
