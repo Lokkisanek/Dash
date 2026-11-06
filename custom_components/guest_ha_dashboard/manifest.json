@@ -3,6 +3,7 @@
   "name": "dash",
   "codeowners": ["@Lokkisanek"],
   "config_flow": true,
+  "dependencies": ["http"],
   "documentation": "https://github.com/Lokkisanek/Guest-HA-Dashboard",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Lokkisanek/Guest-HA-Dashboard/issues",
