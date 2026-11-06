@@ -16,6 +16,7 @@ from .const import (
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL_PATH,
+    VERSION,
 )
 from .store import GuestDashboardStore
 from .websocket_api import async_register_ws
@@ -62,10 +63,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         webcomponent_name=PANEL_COMPONENT,
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
-        module_url=f"/{DOMAIN}_static/panel.js",
+        # Cache-bust so browsers/HACS don't keep a stale panel.js
+        module_url=f"/{DOMAIN}_static/panel.js?v={VERSION}",
         embed_iframe=False,
         require_admin=True,
-        config={"entry_id": entry.entry_id},
+        config={"entry_id": entry.entry_id, "version": VERSION},
     )
 
     return True

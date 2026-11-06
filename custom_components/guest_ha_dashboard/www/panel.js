@@ -2,6 +2,8 @@
  * Guest HA Dashboard — Home Assistant sidebar config panel.
  * Uses native HA areas/devices and follows light/dark theme.
  */
+const PANEL_VERSION = "1.2.0";
+
 const ICON_OPTIONS = [
   "Sofa",
   "BedDouble",
@@ -289,10 +291,10 @@ class GuestHaDashboardPanel extends HTMLElement {
     return `
       :host {
         --bg: #f4f0f7;
-        --card: rgba(255,255,255,0.82);
+        --card: rgba(255,255,255,0.92);
         --text: #1a1220;
         --muted: rgba(26,18,32,0.58);
-        --border: rgba(0,0,0,0.08);
+        --border: rgba(0,0,0,0.1);
         --input-bg: #ffffff;
         --input-text: #111111;
         --accent: #ff6b00;
@@ -305,9 +307,10 @@ class GuestHaDashboardPanel extends HTMLElement {
         --btn-primary: #1a1220;
         --btn-primary-text: #ffffff;
         display: block;
+        min-height: 100%;
         height: 100%;
         overflow: auto;
-        background: var(--bg);
+        background: var(--bg) !important;
         color: var(--text);
         font-family: var(--paper-font-body1_-_font-family, system-ui, -apple-system, sans-serif);
         color-scheme: light;
@@ -365,12 +368,21 @@ class GuestHaDashboardPanel extends HTMLElement {
         padding: 10px 12px;
         border-radius: 12px;
         border: 1px solid var(--border);
-        background: var(--input-bg) !important;
-        color: var(--input-text) !important;
-        -webkit-text-fill-color: var(--input-text) !important;
-        caret-color: var(--input-text);
+        background-color: #ffffff !important;
+        color: #111111 !important;
+        -webkit-text-fill-color: #111111 !important;
+        caret-color: #111111 !important;
         opacity: 1 !important;
-        color-scheme: inherit;
+        color-scheme: light;
+      }
+      :host([dark]) input,
+      :host([dark]) select,
+      :host([dark]) textarea {
+        background-color: #1c1e24 !important;
+        color: #f5f5f5 !important;
+        -webkit-text-fill-color: #f5f5f5 !important;
+        caret-color: #f5f5f5 !important;
+        color-scheme: dark;
       }
       input::placeholder, textarea::placeholder {
         color: var(--muted);
@@ -406,6 +418,13 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       h3 { margin: 18px 0 8px; font-size: 1rem; color: var(--text); }
       .count { color: var(--muted); font-size: 0.8rem; }
+      .version {
+        display: inline-flex; align-items: center; gap: 6px;
+        margin-top: 8px; padding: 4px 10px; border-radius: 999px;
+        font-size: 0.75rem; font-weight: 650; letter-spacing: 0.02em;
+        background: color-mix(in srgb, var(--accent) 18%, transparent);
+        color: var(--text); border: 1px solid var(--border);
+      }
     `;
   }
 
@@ -434,11 +453,12 @@ class GuestHaDashboardPanel extends HTMLElement {
         <header>
           <div>
             <h1>Guest Dashboard</h1>
-            <div class="sub">Nastavení hostovského tabletu z Home Assistant místností</div>
+            <div class="sub">Nastaveni hostovskeho tabletu z Home Assistant mistnosti</div>
+            <div class="version">v${PANEL_VERSION}</div>
           </div>
           <div class="actions" style="margin:0">
             <button class="btn primary" id="save" ${this._saving ? "disabled" : ""}>
-              ${this._saving ? "Ukládám…" : "Uložit"}
+              ${this._saving ? "Ukladam..." : "Ulozit"}
             </button>
           </div>
         </header>
