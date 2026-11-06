@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in dash does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not paste tokens, passwords or your Home Assistant URL if it is private.
+        Security issues: report them privately via GitHub Security Advisories, not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: dash_version
+    attributes:
+      label: dash version
+      description: Shown in the panel or in HACS, e.g. 2.0.0.
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: Settings → About, e.g. 2026.11.0.
+    validations:
+      required: true
+  - type: dropdown
+    id: hosting
+    attributes:
+      label: Hosting
+      options:
+        - Hosted (dash.matyas.online)
+        - Self-hosted
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Browser and device
+      description: e.g. Safari on iPhone 15 (PWA), Chrome on Android tablet.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Browser console errors and Home Assistant logs for `guest_ha_dashboard`, if any.
+      render: text
