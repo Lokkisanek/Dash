@@ -2,7 +2,7 @@
  * Guest HA Dashboard config panel v1.2.1
  * Full-screen layout + live mobile preview + light/dark for config UI and guest PWA.
  */
-const PANEL_VERSION = "1.2.1";
+const PANEL_VERSION = "1.2.2";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 
 const ICON_OPTIONS = [
@@ -252,11 +252,15 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       * { box-sizing: border-box; }
       .shell {
-        display: grid; grid-template-columns: minmax(0, 1fr) 360px;
+        /* Preview ~50% wider than 360px column */
+        display: grid; grid-template-columns: minmax(0, 1fr) minmax(480px, 0.85fr);
         gap: 16px; height: 100%; min-height: 100vh; padding: 16px;
       }
+      @media (max-width: 1100px) {
+        .shell { grid-template-columns: minmax(0, 1fr) 480px; }
+      }
       @media (max-width: 980px) {
-        .shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 520px; }
+        .shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 620px; }
       }
       .editor, .preview {
         min-height: 0; height: calc(100vh - 32px);
@@ -352,10 +356,25 @@ class GuestHaDashboardPanel extends HTMLElement {
           var(--bg);
       }
       .phone {
-        width: min(320px, 100%); height: 100%; max-height: calc(100vh - 120px);
+        width: min(390px, 100%); height: 100%; max-height: calc(100vh - 110px);
         aspect-ratio: 9 / 19.5; border-radius: 28px; overflow: hidden;
         border: 3px solid var(--phone-frame); background: #000;
         box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+      }
+      .area-check {
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        text-align: left; padding: 10px 12px; border-radius: 14px;
+        border: 1px solid var(--border); background: var(--btn); color: var(--text);
+        font: inherit; cursor: pointer;
+      }
+      .area-check.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+      .area-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+      .area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+      details.advanced {
+        margin-top: 14px; border: 1px solid var(--border); border-radius: 16px; padding: 10px 12px;
+      }
+      details.advanced summary {
+        cursor: pointer; font-weight: 650; color: var(--text); list-style: none;
       }
       .phone iframe { width: 100%; height: 100%; border: 0; background: #111; }
       .preview-empty {
@@ -527,63 +546,98 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
   }
 
+  _isAreaSelected(areaId) {
+    return this._config.rooms.some((r) => r.haAreaId === areaId || r.id === areaId);
+  }
+
+  _toggleArea(areaId, on) {
+    if (on) this._addRoomFromArea(areaId);
+    else {
+      const idx = this._config.rooms.findIndex((r) => r.haAreaId === areaId || r.id === areaId);
+      if (idx >= 0) this._removeRoom(idx);
+    }
+  }
+
   _renderRooms(c, room, areas, sensors, lights, switches, covers, climates) {
     return `
-      <div class="import-box">
-        <p class="hint" style="margin:0 0 10px">Nacti mistnosti primo z Home Assistant <b>Areas</b>.</p>
-        <div class="actions" style="margin:0">
-          <button class="btn primary" id="importAreas">Importovat vsechny mistnosti z HA</button>
-        </div>
-        ${areas.length ? `<p class="hint" style="margin:12px 0 6px">Nebo pridej jednu Area:</p>
-          <div class="area-pills">${areas.map((a) => `<button class="pill" data-add-area="${this._escape(a.area_id)}">${this._escape(a.name)}</button>`).join("")}</div>` : ""}
-      </div>
+      <p class="hint"><b>Jednoduchy setup:</b> zapni mistnosti z HA Areas. Zarizeni se nactou sama. Pak Ulozit.</p>
       <div class="actions" style="margin-top:0">
-        <button class="btn ghost" id="addRoom">+ Prazdna mistnost</button>
+        <button class="btn primary" id="importAreas">Zapnout vsechny Areas</button>
+        <button class="btn ghost" id="clearRooms">Vypnout vse</button>
       </div>
-      <div class="room-pills">
-        ${c.rooms.map((r, i) => `<button class="pill ${i === this._roomIdx ? "active" : ""}" data-room="${i}">${this._escape(r.label || r.id)} <span class="count">(${(r.devices || []).length})</span></button>`).join("")}
+      <div class="area-grid" style="margin-top:12px">
+        ${areas.length ? areas.map((a) => {
+          const on = this._isAreaSelected(a.area_id);
+          const count = this._roomFromArea(a).devices.length;
+          return `<button type="button" class="area-check ${on ? "on" : ""}" data-toggle-area="${this._escape(a.area_id)}" data-on="${on ? "1" : "0"}">
+            <input type="checkbox" ${on ? "checked" : ""} tabindex="-1" />
+            <span><b>${this._escape(a.name)}</b><br/><span class="count">${count} zarizeni</span></span>
+          </button>`;
+        }).join("") : `<p class="hint">V HA zatim nemas Areas (Settings → Areas).</p>`}
       </div>
-      ${!room ? `<p class="hint">Zatim zadna mistnost.</p>` : `
-        <div class="row"><label>Nazev</label><input id="roomLabel" value="${this._escape(room.label || "")}" /></div>
-        <div class="row"><label>ID</label><input id="roomId" value="${this._escape(room.id || "")}" /></div>
-        <div class="row"><label>Ikona</label>
-          <select id="roomIcon">${ICON_OPTIONS.map((i) => `<option ${room.icon === i ? "selected" : ""}>${i}</option>`).join("")}</select></div>
-        <div class="row"><label>Teplota</label>
-          <select id="roomTemp"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.temperatureEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
-        <div class="row"><label>Vlhkost</label>
-          <select id="roomHum"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.humidityEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
-        <h3>Zarizeni</h3>
-        <div class="card-list">
-          ${(room.devices || []).map((d, di) => {
-            const pool = d.type === "light" ? lights : d.type === "switch" ? switches : d.type === "cover" ? covers : climates;
-            return `<div class="device" data-di="${di}"><div class="device-grid">
-              <input data-k="label" value="${this._escape(d.label || "")}" placeholder="Popisek" />
-              <select data-k="type">${DEVICE_TYPES.map((t) => `<option value="${t}" ${d.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
-              <select data-k="id"><option value="">- entity -</option>${pool.map((e) => `<option value="${e}" ${d.id === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}</select>
-              <button class="btn danger" data-remove-device="${di}">Smazat</button>
-            </div></div>`;
-          }).join("")}
-        </div>
-        <div class="actions">
-          <button class="btn" id="addDevice">+ Zarizeni</button>
-          <button class="btn danger" id="removeRoom">Smazat mistnost</button>
-        </div>`}
+
+      ${c.rooms.length ? `
+        <details class="advanced">
+          <summary>Pokrocile — upravit mistnost / entity rucne</summary>
+          <div class="room-pills" style="margin-top:10px">
+            ${c.rooms.map((r, i) => `<button class="pill ${i === this._roomIdx ? "active" : ""}" data-room="${i}">${this._escape(r.label || r.id)} <span class="count">(${(r.devices || []).length})</span></button>`).join("")}
+          </div>
+          ${!room ? "" : `
+            <div class="row"><label>Nazev</label><input id="roomLabel" value="${this._escape(room.label || "")}" /></div>
+            <div class="row"><label>Ikona</label>
+              <select id="roomIcon">${ICON_OPTIONS.map((i) => `<option ${room.icon === i ? "selected" : ""}>${i}</option>`).join("")}</select></div>
+            <div class="row"><label>Teplota</label>
+              <select id="roomTemp"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.temperatureEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
+            <div class="row"><label>Vlhkost</label>
+              <select id="roomHum"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.humidityEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
+            <h3>Zarizeni</h3>
+            <div class="card-list">
+              ${(room.devices || []).map((d, di) => {
+                const pool = d.type === "light" ? lights : d.type === "switch" ? switches : d.type === "cover" ? covers : climates;
+                return `<div class="device" data-di="${di}"><div class="device-grid">
+                  <input data-k="label" value="${this._escape(d.label || "")}" placeholder="Popisek" />
+                  <select data-k="type">${DEVICE_TYPES.map((t) => `<option value="${t}" ${d.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+                  <select data-k="id"><option value="">- entity -</option>${pool.map((e) => `<option value="${e}" ${d.id === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}</select>
+                  <button class="btn danger" data-remove-device="${di}">Smazat</button>
+                </div></div>`;
+              }).join("")}
+            </div>
+            <div class="actions">
+              <button class="btn" id="addDevice">+ Zarizeni</button>
+              <button class="btn ghost" id="resyncRoom">Znovu nacist z Area</button>
+            </div>`}
+        </details>` : ""}
     `;
   }
 
   _bindRooms() {
-    this._on(".pill[data-room]", "click", (e) => { this._roomIdx = Number(e.currentTarget.dataset.room); this._render(); });
-    this.shadowRoot.getElementById("importAreas")?.addEventListener("click", () => {
-      if (!confirm("Nahradit aktualni mistnosti importem ze vsech HA Areas?")) return;
-      this._importAllAreas();
+    this._on("[data-toggle-area]", "click", (e) => {
+      const id = e.currentTarget.dataset.toggleArea;
+      const on = e.currentTarget.dataset.on === "1";
+      this._toggleArea(id, !on);
     });
-    this._on("[data-add-area]", "click", (e) => this._addRoomFromArea(e.currentTarget.dataset.addArea));
-    this.shadowRoot.getElementById("addRoom")?.addEventListener("click", () => this._addEmptyRoom());
-    this.shadowRoot.getElementById("removeRoom")?.addEventListener("click", () => this._removeRoom(this._roomIdx));
+    this.shadowRoot.getElementById("importAreas")?.addEventListener("click", () => this._importAllAreas());
+    this.shadowRoot.getElementById("clearRooms")?.addEventListener("click", () => {
+      this._config.rooms = [];
+      this._roomIdx = 0;
+      this._render();
+    });
+    this._on(".pill[data-room]", "click", (e) => { this._roomIdx = Number(e.currentTarget.dataset.room); this._render(); });
     this.shadowRoot.getElementById("addDevice")?.addEventListener("click", () => {
       const room = this._config.rooms[this._roomIdx];
       if (room) this._addDevice(room);
     });
+    this.shadowRoot.getElementById("resyncRoom")?.addEventListener("click", () => {
+      const room = this._config.rooms[this._roomIdx];
+      const areaId = room?.haAreaId || room?.id;
+      const area = this._hass.areas?.[areaId];
+      if (!area || !room) return;
+      const fresh = this._roomFromArea(area);
+      this._config.rooms[this._roomIdx] = { ...fresh, label: room.label || fresh.label };
+      this._info = "Mistnost znovu nactena z Area";
+      this._render();
+    });
+
     const room = this._config.rooms[this._roomIdx];
     if (!room) return;
     const bind = (id, fn) => {
@@ -592,7 +646,6 @@ class GuestHaDashboardPanel extends HTMLElement {
       el.addEventListener("change", () => { fn(el.value); this._render(); });
     };
     bind("roomLabel", (v) => (room.label = v));
-    bind("roomId", (v) => (room.id = v));
     bind("roomIcon", (v) => (room.icon = v));
     bind("roomTemp", (v) => (room.temperatureEntity = v));
     bind("roomHum", (v) => (room.humidityEntity = v));

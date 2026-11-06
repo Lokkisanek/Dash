@@ -47,14 +47,24 @@ const activeRoom = computed(
   () => rooms.value.find((r) => r.id === activeRoomId.value) || rooms.value[0],
 )
 
-const showLogin = computed(
-  () =>
-    status.value === 'need_url' ||
-    status.value === 'login' ||
-    status.value === 'error' ||
-    status.value === 'connecting' ||
-    status.value === 'idle',
+// Only block the UI for real auth gates — never on refresh/reconnect flicker
+const showLogin = computed(() => {
+  if (status.value === 'login') return true
+  if (status.value === 'need_url') return true
+  return false
+})
+
+const showBootSplash = computed(
+  () => status.value === 'idle' || status.value === 'connecting',
 )
+
+const isPreview = computed(() => {
+  try {
+    return new URLSearchParams(window.location.search).get('preview') === '1'
+  } catch {
+    return false
+  }
+})
 
 onMounted(() => {
   const unlock = () => {
@@ -66,7 +76,22 @@ onMounted(() => {
 </script>
 
 <template>
-  <HaLogin v-if="showLogin" />
+  <!-- Preview iframe: never force full login UI (avoids OAuth loops inside HA panel) -->
+  <div
+    v-if="isPreview && showLogin"
+    class="dashboard-shell grid place-items-center h-full text-base-content/60 text-sm p-6 text-center"
+  >
+    Nejdřív se přihlas v hlavním okně tabletu / PWA, pak preview ožije.
+  </div>
+
+  <HaLogin v-else-if="showLogin" />
+
+  <div
+    v-else-if="showBootSplash"
+    class="dashboard-shell grid place-items-center h-full text-base-content/50 text-sm"
+  >
+    Připojuji k Home Assistant…
+  </div>
 
   <div
     v-else

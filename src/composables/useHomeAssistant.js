@@ -29,17 +29,48 @@ const state = reactive({
   isMock: false,
   lastError: null,
   hassUrl: localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL || '',
+  /** True once we have successfully connected in this tab session */
+  everConnected: false,
 })
 
 let connection = null
 let brightnessTimers = new Map()
 let initialized = false
 let configUnsub = null
+let connectInFlight = null
+
+function isPreviewMode() {
+  try {
+    return new URLSearchParams(window.location.search).get('preview') === '1'
+  } catch {
+    return false
+  }
+}
 
 function wantsMock() {
   const url = import.meta.env.VITE_HA_URL
   const mode = import.meta.env.VITE_MODE
   return mode === 'mock' || url === 'mock'
+}
+
+function cleanAuthParamsFromUrl() {
+  try {
+    const url = new URL(window.location.href)
+    ;['auth_callback', 'code', 'state'].forEach((k) => url.searchParams.delete(k))
+    const next = `${url.pathname}${url.search}${url.hash}`
+    window.history.replaceState({}, document.title, next)
+  } catch {
+    /* ignore */
+  }
+}
+
+function hasOAuthCallback() {
+  try {
+    const q = new URLSearchParams(window.location.search)
+    return q.get('auth_callback') === '1' || q.has('code')
+  } catch {
+    return false
+  }
 }
 
 function saveTokens(tokens) {
@@ -232,80 +263,109 @@ async function loadRemoteConfig(conn) {
 /* ─── Real HA connection (OAuth) ──────────────────────────── */
 
 async function connectLive(hassUrl) {
-  const url = (hassUrl || state.hassUrl || import.meta.env.VITE_HA_URL || '').replace(/\/$/, '')
-  const token = import.meta.env.VITE_HA_TOKEN
+  // Dedupe parallel connects (main tab + preview iframe refresh storms)
+  if (connectInFlight) return connectInFlight
 
-  state.status = 'connecting'
-  state.isMock = false
-  state.lastError = null
+  connectInFlight = (async () => {
+    const url = (hassUrl || state.hassUrl || import.meta.env.VITE_HA_URL || '').replace(/\/$/, '')
+    const token = import.meta.env.VITE_HA_TOKEN
+    const preview = isPreviewMode()
 
-  try {
-    let auth
+    state.status = 'connecting'
+    state.isMock = false
+    state.lastError = null
 
-    // Optional escape hatch: long-lived token (CI / kiosk without OAuth)
-    if (token && token !== 'mock' && url && url !== 'mock') {
-      auth = createLongLivedTokenAuth(url, token)
-    } else {
-      try {
-        auth = await getAuth({
-          hassUrl: url || undefined,
-          clientId: `${window.location.origin}/`,
-          redirectUrl: window.location.href.split('?')[0].split('#')[0],
-          saveTokens,
-          loadTokens,
-        })
-      } catch (err) {
-        if (err === ERR_HASS_HOST_REQUIRED) {
+    try {
+      let auth
+
+      // Optional escape hatch: long-lived token (CI / kiosk without OAuth)
+      if (token && token !== 'mock' && url && url !== 'mock') {
+        auth = createLongLivedTokenAuth(url, token)
+      } else {
+        // Preview iframe: only reuse stored tokens — never kick OAuth redirect loops
+        if (preview && !loadTokens() && !hasOAuthCallback()) {
           state.status = 'need_url'
+          state.lastError = null
           return
         }
-        if (err === ERR_INVALID_AUTH) {
+        try {
+          auth = await getAuth({
+            hassUrl: url || undefined,
+            clientId: `${window.location.origin}/`,
+            // Keep preview/theme query params out of redirect base
+            redirectUrl: `${window.location.origin}${window.location.pathname}`,
+            saveTokens,
+            loadTokens,
+          })
+        } catch (err) {
+          if (err === ERR_HASS_HOST_REQUIRED) {
+            state.status = 'need_url'
+            return
+          }
+          if (err === ERR_INVALID_AUTH) {
+            saveTokens(null)
+            state.status = preview ? 'need_url' : 'login'
+            state.lastError = preview ? null : 'Neplatné přihlášení — zkus to znovu'
+            return
+          }
+          throw err
+        }
+      }
+
+      if (auth.data?.hassUrl) {
+        state.hassUrl = auth.data.hassUrl
+        localStorage.setItem(HASS_URL_KEY, auth.data.hassUrl)
+      } else if (url) {
+        state.hassUrl = url
+        localStorage.setItem(HASS_URL_KEY, url)
+      }
+
+      connection = await createConnection({ auth })
+      state.status = 'connected'
+      state.everConnected = true
+
+      subscribeEntities(connection, (entities) => {
+        state.entities = entities
+      })
+
+      await loadRemoteConfig(connection)
+
+      connection.addEventListener('ready', () => {
+        state.status = 'connected'
+        state.everConnected = true
+      })
+      connection.addEventListener('disconnected', () => {
+        // Stay on dashboard during brief drops — do not bounce to login
+        if (state.status === 'connected') state.status = 'disconnected'
+      })
+      connection.addEventListener('reconnect-error', (ev) => {
+        // Only force re-login on hard auth failure
+        if (ev === ERR_INVALID_AUTH || ev?.detail === ERR_INVALID_AUTH) {
           saveTokens(null)
           state.status = 'login'
-          state.lastError = 'Neplatné přihlášení — zkus to znovu'
+          state.lastError = 'Session vypršela — přihlas se znovu'
           return
         }
-        throw err
+        state.status = 'disconnected'
+        state.lastError = 'Reconnect failed'
+      })
+
+      cleanAuthParamsFromUrl()
+    } catch (err) {
+      console.error('[HA] Connection failed:', err)
+      state.lastError = err?.message || String(err)
+      // Keep dashboard if we already had a session; otherwise ask for login
+      if (state.everConnected || loadTokens()) {
+        state.status = 'disconnected'
+      } else {
+        state.status = preview ? 'need_url' : 'login'
       }
+    } finally {
+      connectInFlight = null
     }
+  })()
 
-    if (auth.data?.hassUrl) {
-      state.hassUrl = auth.data.hassUrl
-      localStorage.setItem(HASS_URL_KEY, auth.data.hassUrl)
-    } else if (url) {
-      state.hassUrl = url
-      localStorage.setItem(HASS_URL_KEY, url)
-    }
-
-    connection = await createConnection({ auth })
-    state.status = 'connected'
-
-    subscribeEntities(connection, (entities) => {
-      state.entities = entities
-    })
-
-    await loadRemoteConfig(connection)
-
-    connection.addEventListener('ready', () => {
-      state.status = 'connected'
-    })
-    connection.addEventListener('disconnected', () => {
-      state.status = 'disconnected'
-    })
-    connection.addEventListener('reconnect-error', () => {
-      state.status = 'error'
-      state.lastError = 'Reconnect failed'
-    })
-
-    // Clear OAuth query params from URL after success
-    if (window.location.search.includes('auth_callback') || window.location.search.includes('code')) {
-      window.history.replaceState({}, document.title, window.location.pathname)
-    }
-  } catch (err) {
-    console.error('[HA] Connection failed:', err)
-    state.lastError = err?.message || String(err)
-    state.status = 'error'
-  }
+  return connectInFlight
 }
 
 export async function loginWithHassUrl(hassUrl) {
@@ -516,14 +576,12 @@ export function initHomeAssistant() {
     return
   }
 
-  // OAuth callback or saved session / configured URL
-  const hasCallback =
-    window.location.search.includes('auth_callback') ||
-    window.location.search.includes('code') ||
-    window.location.search.includes('state')
   const savedUrl = localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL
+  const canResume =
+    hasOAuthCallback() || Boolean(loadTokens()) || (Boolean(savedUrl) && savedUrl !== 'mock')
 
-  if (hasCallback || loadTokens() || (savedUrl && savedUrl !== 'mock')) {
+  if (canResume) {
+    // If we only have a URL but no tokens yet, still try — getAuth will redirect once
     connectLive(savedUrl && savedUrl !== 'mock' ? savedUrl : undefined)
   } else {
     state.status = 'need_url'
