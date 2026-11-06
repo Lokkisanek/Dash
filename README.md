@@ -1,5 +1,10 @@
 # dash
 
+[![CI](https://github.com/Lokkisanek/Guest-HA-Dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Lokkisanek/Guest-HA-Dashboard/actions/workflows/ci.yml)
+[![Validate](https://github.com/Lokkisanek/Guest-HA-Dashboard/actions/workflows/validate.yml/badge.svg)](https://github.com/Lokkisanek/Guest-HA-Dashboard/actions/workflows/validate.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![HACS: Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/docs/faq/custom_repositories/)
+
 **dash** is an open-source, iOS-style dashboard for Home Assistant, built for wall-mounted phones, MagSafe stands and guests. You design it in a Home Assistant sidebar panel with a live iPhone preview. The phone runs it as a PWA.
 
 - Control-Center-style grid with lights, switches, covers, climate and media; drag to reorder, pull the corner to resize.
@@ -8,6 +13,26 @@
 - StandBy: after a period of inactivity the phone shows a big clock (portrait and landscape) or a slowly fading photo frame.
 - Guest Wi-Fi card with a QR code, a weather and greeting header, light and dark mode, Czech and English.
 - A playful `hello.dash` intro on first setup.
+
+**Demo:** TODO(owner): demo URL
+
+## Screenshots
+
+<p>
+  <img src="docs/img/home-light.png" width="240" alt="Home page with tiles, media player and dock">
+  <img src="docs/img/bedroom-tiles.png" width="240" alt="Bedroom page with light, cover and climate tiles">
+  <img src="docs/img/wifi-qr.png" width="240" alt="Guest Wi-Fi card with QR code">
+</p>
+<p>
+  <img src="docs/img/media-card.png" width="360" alt="Media player card">
+  <img src="docs/img/climate-dial.png" width="360" alt="Climate dial tile">
+</p>
+<p>
+  <img src="docs/img/standby-clock-landscape.png" width="480" alt="StandBy clock, landscape">
+  <img src="docs/img/standby-clock-portrait.png" width="180" alt="StandBy clock, portrait">
+</p>
+
+Screenshots come from the demo build (`npm run screenshots`).
 
 ```text
  Phone (PWA)                         Your Home Assistant
@@ -54,6 +79,8 @@ Use a dedicated, non-admin Home Assistant user for guest phones. Note that this 
 - [Configuration](docs/CONFIGURATION.md): pages, tile styles, dock, media, StandBy, photos.
 - [Self-hosting](docs/SELF_HOSTING.md): Docker, Coolify, nginx, reverse proxies.
 - [Security & privacy](docs/SECURITY.md): what is stored where, what the host can and can't see, guest limitations, logging.
+- [Releasing](docs/RELEASING.md): version bump, changelog, tag, GitHub Release.
+- [Changelog](CHANGELOG.md)
 
 ## Development
 
@@ -64,9 +91,17 @@ npm run dev               # PWA on http://localhost:5173
 npm run build
 ```
 
+Other scripts:
+
+- `npm run check:versions`: the version in `package.json`, `manifest.json` and `const.py` must match.
+- `npm run screenshots`: rebuilds `docs/img/*.png` from the demo build (needs `npx playwright install chromium` once).
+- `npm run brand`: renders the integration icon (`custom_components/guest_ha_dashboard/brand/`) from `public/favicon.svg`.
+- `node scripts/smoke.mjs`: smoke test against a running mock preview (see `.github/workflows/ci.yml`).
+
 Useful URL flags:
 
 - `?standby=1` forces StandBy.
+- `?lang=en` or `?lang=cs` forces the UI language.
 - `?glass=lens` forces the WebKit liquid-glass path in Chrome.
 
 The integration lives in `custom_components/guest_ha_dashboard/`. The panel is a single web component (`www/panel.js`) with no build step.
