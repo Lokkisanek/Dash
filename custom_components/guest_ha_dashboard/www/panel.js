@@ -5,7 +5,7 @@
  * Editing draft config never touches the live preview iframe. Only Save refreshes
  * it (and publishes config to the real guest PWA via HA).
  */
-const PANEL_VERSION = "1.3.0";
+const PANEL_VERSION = "1.3.1";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
 const DOCK_MAX = 4;
@@ -198,7 +198,6 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._uiTheme = localStorage.getItem(UI_THEME_KEY) || "auto";
     const storedLang = localStorage.getItem(UI_LANG_KEY);
     this._uiLangPref = storedLang === "en" || storedLang === "cs" ? storedLang : "auto";
-    this._previewKey = 0;
     /** Live iframe src — updates only on load + Save, never while drafting */
     this._livePreviewSrc = "";
     this.attachShadow({ mode: "open" });
@@ -295,7 +294,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     } catch (err) {
       this._error = err?.message || String(err);
     }
-    this._render({ refreshPreview: true });
+    this._render();
   }
 
   async _save() {
@@ -310,11 +309,11 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._ensureDock();
       this._savedAt = new Date();
       this._info = this._t("saved");
-      // Refresh live preview once after successful Save — not while drafting
-      this._previewKey += 1;
+      // The guest page picks up saved config over its own HA subscription;
+      // the iframe is only re-pointed if the dashboard URL itself changed.
       this._syncLivePreviewSrc(this._config);
       this._saving = false;
-      this._render({ refreshPreview: true });
+      this._render();
       return;
     } catch (err) {
       this._error = err?.message || String(err);
@@ -553,20 +552,57 @@ class GuestHaDashboardPanel extends HTMLElement {
     `;
   }
 
-  /** Live iframe markup — src comes from last Save/load only. */
-  _renderPreviewBody() {
-    const src = this._livePreviewSrc;
-    if (!src) {
-      return `<div class="preview-empty">${this._t("previewEmpty")}</div>`;
-    }
-    return `
-      <div class="phone-wrap">
-        <div class="phone">
-          <iframe id="previewFrame" title="Guest dashboard live preview" src="${this._escape(src)}" allow="fullscreen"></iframe>
-        </div>
-        <div class="phone-meta">${this._t("previewMeta")} · ${IPHONE_12_PRO.pxW}×${IPHONE_12_PRO.pxH}</div>
+  /** Builds the static shell once; the preview column is never re-created. */
+  _ensureShell() {
+    if (this.shadowRoot.getElementById("editorHost")) return;
+    this.shadowRoot.innerHTML = `
+      <style>${this._styles()}</style>
+      <div class="shell">
+        <section class="editor" id="editorHost"></section>
+        <aside class="preview">
+          <div class="preview-head"><strong id="previewTitle"></strong></div>
+          <div class="preview-body" id="previewHost"></div>
+        </aside>
       </div>
     `;
+  }
+
+  /**
+   * Detaching an iframe from the DOM always reloads it, so it is only
+   * created once and touched again solely when the dashboard URL changes.
+   */
+  _renderPreview() {
+    const title = this.shadowRoot.getElementById("previewTitle");
+    if (title) title.textContent = this._t("previewTitle");
+
+    const host = this.shadowRoot.getElementById("previewHost");
+    if (!host) return;
+    const src = this._livePreviewSrc;
+    let frame = host.querySelector("iframe");
+
+    if (!src) {
+      if (frame || !host.querySelector(".preview-empty")) {
+        host.innerHTML = `<div class="preview-empty"></div>`;
+      }
+      host.querySelector(".preview-empty").innerHTML = this._t("previewEmpty");
+      return;
+    }
+
+    if (!frame) {
+      host.innerHTML = `
+        <div class="phone-wrap">
+          <div class="phone">
+            <iframe title="Guest dashboard live preview" allow="fullscreen"></iframe>
+          </div>
+          <div class="phone-meta"></div>
+        </div>
+      `;
+      frame = host.querySelector("iframe");
+    }
+    if (frame.getAttribute("src") !== src) frame.setAttribute("src", src);
+
+    const meta = host.querySelector(".phone-meta");
+    if (meta) meta.textContent = `${this._t("previewMeta")} · ${IPHONE_12_PRO.pxW}×${IPHONE_12_PRO.pxH}`;
   }
 
   /** Full config page for panel chrome (not a popup). */
@@ -592,9 +628,9 @@ class GuestHaDashboardPanel extends HTMLElement {
     `;
   }
 
-  _render(opts = {}) {
-    const refreshPreview = opts.refreshPreview === true;
+  _render() {
     this._syncTheme();
+    this._ensureShell();
     const c = this._config;
     if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00" };
     this._ensureDock();
@@ -607,19 +643,11 @@ class GuestHaDashboardPanel extends HTMLElement {
     const locale = this._uiLang() === "en" ? "en-US" : "cs-CZ";
     const onSettings = this._tab === "ui";
 
-    // Keep live iframe alive across editor re-renders — remount only after Save/load
-    const prevFrame = this.shadowRoot.getElementById("previewFrame");
-    const canReuseFrame = Boolean(!refreshPreview && prevFrame && this._livePreviewSrc);
-    if (canReuseFrame) prevFrame.remove();
-
     const scrollEl = this.shadowRoot.querySelector(".editor-scroll");
     const scrollTop = scrollEl?.scrollTop || 0;
     const activeId = this.shadowRoot.activeElement?.id || null;
 
-    this.shadowRoot.innerHTML = `
-      <style>${this._styles()}</style>
-      <div class="shell">
-        <section class="editor">
+    this.shadowRoot.getElementById("editorHost").innerHTML = `
           <div class="editor-scroll">
             <header>
               <div>
@@ -654,23 +682,9 @@ class GuestHaDashboardPanel extends HTMLElement {
           <div class="editor-footer">
             <button class="btn save-xl" id="save" ${this._saving ? "disabled" : ""}>${this._saving ? this._t("saving") : this._t("save")}</button>
           </div>`}
-        </section>
-
-        <aside class="preview">
-          <div class="preview-head">
-            <strong>${this._t("previewTitle")}</strong>
-          </div>
-          <div class="preview-body">
-            ${this._renderPreviewBody()}
-          </div>
-        </aside>
-      </div>
     `;
 
-    if (canReuseFrame) {
-      const placeholder = this.shadowRoot.getElementById("previewFrame");
-      placeholder?.replaceWith(prevFrame);
-    }
+    this._renderPreview();
 
     const nextScroll = this.shadowRoot.querySelector(".editor-scroll");
     if (nextScroll) nextScroll.scrollTop = scrollTop;
