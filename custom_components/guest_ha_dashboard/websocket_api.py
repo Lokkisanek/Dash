@@ -57,7 +57,9 @@ def _decode_image(data: str) -> bytes:
 
 
 def _mime(raw: bytes) -> str:
-    return next((mime for sig, mime in IMAGE_SIGNATURES if raw.startswith(sig)), "image/jpeg")
+    return next(
+        (mime for sig, mime in IMAGE_SIGNATURES if raw.startswith(sig)), "image/jpeg"
+    )
 
 
 def _store(hass: HomeAssistant):

@@ -8,7 +8,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "icons": "node scripts/gen-icons.mjs"
+    "icons": "node scripts/gen-icons.mjs",
+    "check:versions": "node scripts/check-versions.mjs",
+    "brand": "node scripts/gen-brand.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@fontsource/sacramento": "^5.3.0",
@@ -23,6 +26,7 @@
     "@tailwindcss/vite": "^4.3.4",
     "@vitejs/plugin-vue": "^5.2.1",
     "daisyui": "^5.7.50",
+    "playwright": "^1.65.0",
     "tailwindcss": "^4.3.4",
     "vite": "^6.0.3"
   }
