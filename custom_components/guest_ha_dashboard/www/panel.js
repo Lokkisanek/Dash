@@ -1,9 +1,20 @@
 /**
- * Guest HA Dashboard config panel v1.2.1
+ * Guest HA Dashboard config panel
  * Full-screen layout + live mobile preview + light/dark for config UI and guest PWA.
+ *
+ * Preview is intentionally independent of HA `hass` pushes — those used to rebuild
+ * the whole panel (~every 2s), remount the iframe, and interrupt config editing.
  */
-const PANEL_VERSION = "1.2.2";
+const PANEL_VERSION = "1.2.3";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
+
+/** iPhone 12 Pro physical pixels (Apple: 2532 × 1170 @3x → 390 × 844 CSS pt). */
+const IPHONE_12_PRO = {
+  pxW: 1170,
+  pxH: 2532,
+  cssW: 390,
+  cssH: 844,
+};
 
 const ICON_OPTIONS = [
   "Sofa", "BedDouble", "Bath", "DoorOpen", "Home", "Lamp", "Tv",
@@ -50,12 +61,26 @@ class GuestHaDashboardPanel extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
+    if (first) {
+      this._syncTheme();
+      this._load();
+      return;
+    }
+    // HA pushes a new `hass` object very often (entity updates). Never full-render
+    // here — that remounts the preview iframe and wipes in-progress config edits.
+    const wasDark = this.hasAttribute("dark");
     this._syncTheme();
-    if (first) this._load();
-    else this._render();
+    if (this._uiTheme === "auto" && this.hasAttribute("dark") !== wasDark) {
+      this._render({ keepPreview: true });
+    }
   }
   get hass() { return this._hass; }
-  set narrow(v) { this._narrow = v; this._render(); }
+  set narrow(v) {
+    const next = Boolean(v);
+    if (this._narrow === next) return;
+    this._narrow = next;
+    this._render({ keepPreview: true });
+  }
   connectedCallback() { this._syncTheme(); this._render(); }
 
   _isDark() {
@@ -252,15 +277,15 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       * { box-sizing: border-box; }
       .shell {
-        /* Preview ~50% wider than 360px column */
-        display: grid; grid-template-columns: minmax(0, 1fr) minmax(480px, 0.85fr);
+        /* Right column sized for iPhone 12 Pro preview (+ a little padding) */
+        display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, 0.72fr);
         gap: 16px; height: 100%; min-height: 100vh; padding: 16px;
       }
       @media (max-width: 1100px) {
-        .shell { grid-template-columns: minmax(0, 1fr) 480px; }
+        .shell { grid-template-columns: minmax(0, 1fr) 420px; }
       }
       @media (max-width: 980px) {
-        .shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 620px; }
+        .shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(560px, 70vh); }
       }
       .editor, .preview {
         min-height: 0; height: calc(100vh - 32px);
@@ -355,11 +380,26 @@ class GuestHaDashboardPanel extends HTMLElement {
           radial-gradient(ellipse at 80% 80%, rgba(140,100,255,0.12), transparent 40%),
           var(--bg);
       }
+      .phone-wrap {
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
+        width: 100%; max-width: 420px; min-height: 0; height: 100%;
+        justify-content: center;
+      }
+      /* iPhone 12 Pro display: 1170×2532 px — CSS pt @3x = 390×844, slight flex to fit viewport */
       .phone {
-        width: min(390px, 100%); height: 100%; max-height: calc(100vh - 110px);
-        aspect-ratio: 9 / 19.5; border-radius: 28px; overflow: hidden;
+        --iphone-w: ${IPHONE_12_PRO.cssW}px;
+        --iphone-h: ${IPHONE_12_PRO.cssH}px;
+        width: min(var(--iphone-w), 100%);
+        height: auto;
+        max-height: min(var(--iphone-h), calc(100vh - 130px));
+        aspect-ratio: ${IPHONE_12_PRO.pxW} / ${IPHONE_12_PRO.pxH};
+        border-radius: 36px; overflow: hidden; flex: 0 1 auto;
         border: 3px solid var(--phone-frame); background: #000;
         box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+      }
+      .phone-meta {
+        text-align: center; font-size: 0.72rem; color: var(--muted);
+        letter-spacing: 0.02em; flex-shrink: 0;
       }
       .area-check {
         display: flex; align-items: center; gap: 10px; width: 100%;
@@ -383,7 +423,14 @@ class GuestHaDashboardPanel extends HTMLElement {
     `;
   }
 
-  _render() {
+  _desiredPreviewSrc() {
+    const preview = this._previewSrc();
+    if (!preview) return "";
+    return `${preview}&_r=${this._previewKey}`;
+  }
+
+  _render(opts = {}) {
+    const keepPreview = opts.keepPreview !== false;
     this._syncTheme();
     const c = this._config;
     if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00" };
@@ -397,6 +444,19 @@ class GuestHaDashboardPanel extends HTMLElement {
     const scenes = this._entities("scene");
     const areas = this._areas();
     const preview = this._previewSrc();
+    const desiredSrc = this._desiredPreviewSrc();
+
+    // Detach live iframe so innerHTML rebuild does not unload / reconnect the dashboard
+    const prevFrame = this.shadowRoot.getElementById("previewFrame");
+    const prevSrc = prevFrame?.getAttribute("src") || "";
+    const canReuseFrame = Boolean(
+      keepPreview && prevFrame && desiredSrc && prevSrc === desiredSrc,
+    );
+    if (canReuseFrame) prevFrame.remove();
+
+    const scrollEl = this.shadowRoot.querySelector(".editor-scroll");
+    const scrollTop = scrollEl?.scrollTop || 0;
+    const activeId = this.shadowRoot.activeElement?.id || null;
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -439,7 +499,7 @@ class GuestHaDashboardPanel extends HTMLElement {
 
         <aside class="preview">
           <div class="preview-head">
-            <strong>Preview (mobil)</strong>
+            <strong>Preview (iPhone 12 Pro)</strong>
             <div class="seg">
               <button data-dash-mode="light" class="${this._dashMode() === "light" ? "active" : ""}">Light</button>
               <button data-dash-mode="dark" class="${this._dashMode() === "dark" ? "active" : ""}">Dark</button>
@@ -448,7 +508,10 @@ class GuestHaDashboardPanel extends HTMLElement {
           <div class="preview-body">
             ${
               preview
-                ? `<div class="phone"><iframe id="previewFrame" title="Guest dashboard preview" src="${this._escape(preview)}&_r=${this._previewKey}" allow="fullscreen"></iframe></div>`
+                ? `<div class="phone-wrap">
+                    <div class="phone"><iframe id="previewFrame" title="Guest dashboard preview" src="${this._escape(desiredSrc)}" allow="fullscreen"></iframe></div>
+                    <div class="phone-meta">iPhone 12 Pro · ${IPHONE_12_PRO.pxW}×${IPHONE_12_PRO.pxH}px</div>
+                   </div>`
                 : `<div class="preview-empty">Nastav <b>URL hostovskeho PWA</b> v zalozce Host &amp; Wi-Fi. Pak tu pujde interaktivne klikat jako na tabletu.</div>`
             }
           </div>
@@ -456,17 +519,35 @@ class GuestHaDashboardPanel extends HTMLElement {
       </div>
     `;
 
-    this._on(".tab", "click", (e) => { this._tab = e.currentTarget.dataset.tab; this._info = null; this._render(); });
+    if (canReuseFrame) {
+      const placeholder = this.shadowRoot.getElementById("previewFrame");
+      placeholder?.replaceWith(prevFrame);
+    }
+
+    const nextScroll = this.shadowRoot.querySelector(".editor-scroll");
+    if (nextScroll) nextScroll.scrollTop = scrollTop;
+    if (activeId) {
+      const el = this.shadowRoot.getElementById(activeId);
+      if (el && typeof el.focus === "function") {
+        try { el.focus({ preventScroll: true }); } catch { el.focus(); }
+      }
+    }
+
+    this._on(".tab", "click", (e) => {
+      this._tab = e.currentTarget.dataset.tab;
+      this._info = null;
+      this._render({ keepPreview: true });
+    });
     this.shadowRoot.getElementById("save")?.addEventListener("click", () => this._save());
     this._on("[data-ui-theme]", "click", (e) => {
       this._uiTheme = e.currentTarget.dataset.uiTheme;
       localStorage.setItem(UI_THEME_KEY, this._uiTheme);
-      this._render();
+      this._render({ keepPreview: true });
     });
     this._on("[data-dash-mode]", "click", (e) => {
       this._config.appearance.mode = e.currentTarget.dataset.dashMode;
       this._previewKey += 1;
-      this._render();
+      this._render({ keepPreview: false });
     });
 
     if (this._tab === "guest") this._bindGuest();
@@ -498,7 +579,7 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _bindGuest() {
     const map = [
-      ["dashboardUrl", (v) => { this._config.dashboardUrl = v; this._previewKey += 1; }],
+      ["dashboardUrl", (v) => { this._config.dashboardUrl = v; }],
       ["welcomeTitle", (v) => (this._config.guestInfo.welcomeTitle = v)],
       ["welcomeSubtitle", (v) => (this._config.guestInfo.welcomeSubtitle = v)],
       ["wifiSsid", (v) => (this._config.guestInfo.wifiSsid = v)],
@@ -508,7 +589,14 @@ class GuestHaDashboardPanel extends HTMLElement {
     for (const [id, fn] of map) {
       const el = this.shadowRoot.getElementById(id);
       if (!el) continue;
-      el.addEventListener("change", () => { fn(el.value); if (id === "dashboardUrl") this._render(); });
+      el.addEventListener("change", () => {
+        fn(el.value);
+        // Reload preview only when PWA URL is committed — not on every keystroke
+        if (id === "dashboardUrl") {
+          this._previewKey += 1;
+          this._render({ keepPreview: false });
+        }
+      });
       el.addEventListener("input", () => fn(el.value));
     }
   }
@@ -533,7 +621,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._on("[data-style-mode]", "click", (e) => {
       this._config.appearance.mode = e.currentTarget.dataset.styleMode;
       this._previewKey += 1;
-      this._render();
+      this._render({ keepPreview: false });
     });
     const accent = this.shadowRoot.getElementById("accent");
     accent?.addEventListener("input", () => {
@@ -542,7 +630,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     accent?.addEventListener("change", () => {
       this._config.appearance.accent = accent.value;
       this._previewKey += 1;
-      this._render();
+      this._render({ keepPreview: false });
     });
   }
 

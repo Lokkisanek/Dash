@@ -265,13 +265,17 @@ async function loadRemoteConfig(conn) {
 async function connectLive(hassUrl) {
   // Dedupe parallel connects (main tab + preview iframe refresh storms)
   if (connectInFlight) return connectInFlight
+  // Already have a socket (connected or auto-reconnecting) — don't open a second one
+  if (connection) return connection
 
   connectInFlight = (async () => {
     const url = (hassUrl || state.hassUrl || import.meta.env.VITE_HA_URL || '').replace(/\/$/, '')
     const token = import.meta.env.VITE_HA_TOKEN
     const preview = isPreviewMode()
 
-    state.status = 'connecting'
+    // Keep showing the dashboard during soft reconnects; only gate first auth
+    if (!state.everConnected) state.status = 'connecting'
+    else if (state.status !== 'connected') state.status = 'disconnected'
     state.isMock = false
     state.lastError = null
 

@@ -54,16 +54,18 @@ const showLogin = computed(() => {
   return false
 })
 
-const showBootSplash = computed(
-  () => status.value === 'idle' || status.value === 'connecting',
-)
-
 const isPreview = computed(() => {
   try {
     return new URLSearchParams(window.location.search).get('preview') === '1'
   } catch {
     return false
   }
+})
+
+// Preview iframe: never flash reconnect splash — config panel + dashboard stay independent
+const showBootSplash = computed(() => {
+  if (isPreview.value) return false
+  return status.value === 'idle' || status.value === 'connecting'
 })
 
 onMounted(() => {
