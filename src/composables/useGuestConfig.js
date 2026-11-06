@@ -48,6 +48,7 @@ export function useGuestConfig() {
     source: computed(() => state.source),
     config: computed(() => state.config),
     guestInfo: computed(() => state.config.guestInfo),
+    general: computed(() => ({ ...fallbackConfig.general, ...(state.config.general || {}) })),
     /** @deprecated alias — use pages */
     rooms: computed(() => state.config.pages || []),
     pages: computed(() => state.config.pages || []),
@@ -73,6 +74,10 @@ export function applyGuestConfig(config, source = 'ha') {
     guestInfo: {
       ...fallbackConfig.guestInfo,
       ...(config.guestInfo || {}),
+    },
+    general: {
+      ...fallbackConfig.general,
+      ...(config.general || {}),
     },
     appearance: {
       mode: 'light',

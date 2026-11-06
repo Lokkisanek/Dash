@@ -1,7 +1,7 @@
 """Constants for Guest HA Dashboard."""
 
 DOMAIN = "guest_ha_dashboard"
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 STORAGE_KEY = f"{DOMAIN}.config"
 STORAGE_VERSION = 1
 
@@ -10,15 +10,26 @@ PANEL_TITLE = "Guest Dashboard"
 PANEL_URL_PATH = "guest-dashboard"
 PANEL_COMPONENT = "guest-ha-dashboard-panel"
 
+PAGES_MAX = 4
+
+DEFAULT_GENERAL: dict = {
+    "showTime": True,
+    "use24h": True,
+    "showDate": True,
+    "showWifi": True,
+    "showTemperature": True,
+    "showHumidity": True,
+}
+
 DEFAULT_CONFIG: dict = {
     "guestInfo": {
-        "welcomeTitle": "Vítejte u nás",
-        "welcomeSubtitle": "Ovládejte dům jako doma",
         "wifiSsid": "Guest-Home",
         "wifiPassword": "",
         "wifiSecurity": "WPA",
     },
-    # Dashboard pages (ex-rooms): cards with entities, shown via Dock
+    # Top status bar of the guest dashboard
+    "general": dict(DEFAULT_GENERAL),
+    # Dashboard pages (ex-rooms): cards with entities, shown via Dock (max 4)
     "pages": [],
     # Bottom dock — max 4 page shortcuts (label optional)
     "dock": [],

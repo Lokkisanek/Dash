@@ -1,49 +1,74 @@
 /**
  * Guest HA Dashboard config panel
- * Full-screen layout + live dashboard preview (iPhone 12 Pro frame).
+ * Full-screen layout + live dashboard preview (iPhone 15 Pro frame).
  *
- * Editing draft config never touches the live preview iframe. Only Save refreshes
- * it (and publishes config to the real guest PWA via HA).
+ * The preview iframe is created once and never re-mounted; the guest page
+ * picks up saved config through its own HA subscription.
  */
-const PANEL_VERSION = "1.3.1";
+const PANEL_VERSION = "1.4.0";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
+const ORIENT_KEY = "guest_ha_panel_preview_orient";
 const DOCK_MAX = 4;
+const PAGES_MAX = 4;
 
-/** iPhone 12 Pro physical pixels (Apple: 2532 × 1170 @3x → 390 × 844 CSS pt). */
-const IPHONE_12_PRO = {
-  pxW: 1170,
-  pxH: 2532,
-  cssW: 390,
-  cssH: 844,
+/**
+ * iPhone 15 Pro — 6.1", 2556 × 1179 px @ 460 ppi (@3x → 393 × 852 pt).
+ * Display corner radius ≈ 55 pt, Dynamic Island 126 × 37 pt, 11 pt from the edge,
+ * status bar safe area 59 pt.
+ */
+const IPHONE_15_PRO = {
+  pxW: 1179,
+  pxH: 2556,
+  ppi: 460,
+  inches: 6.1,
+  w: 393,
+  h: 852,
+  radius: 55,
+  bezel: 10,
+  safeTop: 59,
+  safeSide: 59,
+};
+
+const DEFAULT_GENERAL = {
+  showTime: true,
+  use24h: true,
+  showDate: true,
+  showWifi: true,
+  showTemperature: true,
+  showHumidity: true,
 };
 
 const PANEL_I18N = {
   cs: {
-    title: "Guest Dashboard",
-    subtitle: "Config + live preview dashboardu (refresh jen po Uložit)",
+    title: "Config",
     save: "Uložit",
     saving: "Ukládám…",
     saved: "Uloženo",
+    tabGeneral: "Obecné",
     tabPages: "Pages",
     tabDock: "Dock",
-    tabGuest: "Host & Wi-Fi",
+    tabGuest: "Wi-Fi",
     tabStyles: "Styly",
     previewTitle: "Live preview",
-    previewMeta: "Live stránka · iPhone 12 Pro",
-    previewEmpty: "Nastav <b>URL hostovské PWA</b> v záložce Host &amp; Wi-Fi a Ulož — tady se ukáže ta samá live stránka.",
-    guestHint: "Texty, Wi-Fi a URL ostré PWA. Editace nic nemění v preview — až Uložit refreshne live stránku.",
+    previewMeta: `iPhone 15 Pro · 6,1″ · ${IPHONE_15_PRO.pxH} × ${IPHONE_15_PRO.pxW} · ${IPHONE_15_PRO.ppi} ppi`,
+    previewEmpty: "Nastav URL hostovské PWA v záložce Obecné a ulož.",
+    rotateLandscape: "Na šířku",
+    rotatePortrait: "Na výšku",
     dashboardUrl: "URL hostovské PWA",
-    welcomeTitle: "Uvítací titulek",
-    welcomeSubtitle: "Podtitulek",
+    headerSection: "Horní lišta",
+    genShowTime: "Čas",
+    genUse24h: "24hodinový formát",
+    genShowDate: "Datum",
+    genShowWifi: "Tlačítko Wi-Fi",
+    genShowTemperature: "Teplota",
+    genShowHumidity: "Vlhkost",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi heslo",
     wifiSecurity: "Zabezpečení",
-    stylesHint: "Vzhled hostovského dashboardu. Do live preview se propsí až po Uložit.",
     dashTheme: "Dashboard theme",
     accent: "Accent",
-    stylesAfterSave: "Po Uložit se theme i config propsí do ostré PWA a live preview se refreshne.",
-    pagesHint: "<b>Pages:</b> vytvoř si vlastní stránky a nastav entity. V Docku zvolíš, které se zobrazí na tabletu.",
+    pagesFull: (max) => `Maximum je ${max} pages.`,
     addPage: "+ Page",
     clearPages: "Smazat všechny Pages",
     pagesEmpty: "Zatím žádné Pages — přidej první tlačítkem + Page.",
@@ -55,13 +80,11 @@ const PANEL_I18N = {
     addDevice: "+ Zařízení",
     delete: "Smazat",
     deletePage: "Smazat page",
-    dockHint: "Spodní dock = přepínač Pages (max. 4). Klik přepne page. Název je volitelný.",
     dockAdd: "+ Page do docku",
     dockPage: "Page",
     dockLabel: "Název (volitelný override)",
     dockShowLabel: "Zobrazit název",
     dockFull: "Dock je plný (max. 4).",
-    dockEmpty: "Zatím žádné Pages v docku — použijí se první 4 Pages.",
     devicesCount: (n) => `${n} zařízení`,
     langAuto: "Auto (HA)",
     langCs: "Čeština",
@@ -74,30 +97,34 @@ const PANEL_I18N = {
     close: "Zavřít",
   },
   en: {
-    title: "Guest Dashboard",
-    subtitle: "Config + live dashboard preview (refreshes only on Save)",
+    title: "Config",
     save: "Save",
     saving: "Saving…",
     saved: "Saved",
+    tabGeneral: "General",
     tabPages: "Pages",
     tabDock: "Dock",
-    tabGuest: "Guest & Wi-Fi",
+    tabGuest: "Wi-Fi",
     tabStyles: "Styles",
     previewTitle: "Live preview",
-    previewMeta: "Live page · iPhone 12 Pro",
-    previewEmpty: "Set the <b>guest PWA URL</b> in Guest &amp; Wi-Fi and Save — the same live page shows here.",
-    guestHint: "Texts, Wi-Fi and the real PWA URL. Editing does nothing to preview — Save refreshes the live page.",
+    previewMeta: `iPhone 15 Pro · 6.1″ · ${IPHONE_15_PRO.pxH} × ${IPHONE_15_PRO.pxW} · ${IPHONE_15_PRO.ppi} ppi`,
+    previewEmpty: "Set the guest PWA URL in General and save.",
+    rotateLandscape: "Landscape",
+    rotatePortrait: "Portrait",
     dashboardUrl: "Guest PWA URL",
-    welcomeTitle: "Welcome title",
-    welcomeSubtitle: "Subtitle",
+    headerSection: "Top bar",
+    genShowTime: "Time",
+    genUse24h: "24-hour clock",
+    genShowDate: "Date",
+    genShowWifi: "Wi-Fi button",
+    genShowTemperature: "Temperature",
+    genShowHumidity: "Humidity",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi password",
     wifiSecurity: "Security",
-    stylesHint: "Guest dashboard look. Applied to the live preview only after Save.",
     dashTheme: "Dashboard theme",
     accent: "Accent",
-    stylesAfterSave: "After Save, theme and config push to the live PWA and the preview refreshes.",
-    pagesHint: "<b>Pages:</b> create your own pages and pick entities. Dock chooses which ones show on the tablet.",
+    pagesFull: (max) => `Maximum is ${max} pages.`,
     addPage: "+ Page",
     clearPages: "Clear all Pages",
     pagesEmpty: "No Pages yet — add one with + Page.",
@@ -109,13 +136,11 @@ const PANEL_I18N = {
     addDevice: "+ Device",
     delete: "Delete",
     deletePage: "Delete page",
-    dockHint: "Bottom dock = page switcher (max 4). Tap switches the page. Name is optional.",
     dockAdd: "+ Page to dock",
     dockPage: "Page",
     dockLabel: "Name (optional override)",
     dockShowLabel: "Show name",
     dockFull: "Dock is full (max 4).",
-    dockEmpty: "No dock pages yet — the first 4 Pages will be used.",
     devicesCount: (n) => `${n} devices`,
     langAuto: "Auto (HA)",
     langCs: "Čeština",
@@ -137,12 +162,11 @@ const DEVICE_TYPES = ["light", "switch", "cover", "climate"];
 
 const emptyConfig = () => ({
   guestInfo: {
-    welcomeTitle: "Vitejte u nas",
-    welcomeSubtitle: "Ovladajte dum jako doma",
     wifiSsid: "",
     wifiPassword: "",
     wifiSecurity: "WPA",
   },
+  general: { ...DEFAULT_GENERAL },
   pages: [],
   dock: [],
   dashboardUrl: "",
@@ -156,11 +180,12 @@ function normalizeConfig(cfg = {}) {
   else if (Array.isArray(cfg.rooms) && cfg.rooms.length) pages = cfg.rooms;
   else if (Array.isArray(cfg.pages)) pages = cfg.pages;
   // Pages are free-form cards — drop legacy area linkage
-  pages = pages.map((pg) => {
+  pages = pages.slice(0, PAGES_MAX).map((pg) => {
     if (!pg || typeof pg !== "object") return pg;
     const { haAreaId, ...rest } = pg;
     return rest;
   });
+  const g = cfg.guestInfo || {};
   const dock = (Array.isArray(cfg.dock) ? cfg.dock : [])
     .filter((d) => d && !d.entityId && !d.entity_id)
     .slice(0, DOCK_MAX)
@@ -174,6 +199,12 @@ function normalizeConfig(cfg = {}) {
   const out = {
     ...base,
     ...cfg,
+    guestInfo: {
+      wifiSsid: g.wifiSsid || "",
+      wifiPassword: g.wifiPassword || "",
+      wifiSecurity: g.wifiSecurity || "WPA",
+    },
+    general: { ...DEFAULT_GENERAL, ...(cfg.general || {}) },
     pages,
     dock,
     appearance: { ...base.appearance, ...(cfg.appearance || {}) },
@@ -193,8 +224,12 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._savedAt = null;
     this._error = null;
     this._info = null;
-    this._tab = "pages";
+    this._tab = "general";
     this._pageIdx = 0;
+    this._orient = localStorage.getItem(ORIENT_KEY) === "landscape" ? "landscape" : "portrait";
+    this._rotating = false;
+    /** Theme of the saved config — the phone screen chrome follows the live page, not the draft */
+    this._liveMode = "light";
     this._uiTheme = localStorage.getItem(UI_THEME_KEY) || "auto";
     const storedLang = localStorage.getItem(UI_LANG_KEY);
     this._uiLangPref = storedLang === "en" || storedLang === "cs" ? storedLang : "auto";
@@ -249,7 +284,16 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._narrow = next;
     this._render();
   }
-  connectedCallback() { this._syncTheme(); this._render(); }
+  connectedCallback() {
+    this._syncTheme();
+    this._render();
+    this._clockTimer = setInterval(() => this._tickStatusClock(), 15000);
+  }
+  disconnectedCallback() {
+    clearInterval(this._clockTimer);
+    this._resizeObs?.disconnect();
+    this._resizeObs = null;
+  }
 
   _isDark() {
     if (this._uiTheme === "dark") return true;
@@ -278,6 +322,7 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _syncLivePreviewSrc(config = this._config) {
     this._livePreviewSrc = this._buildPreviewSrc(config);
+    this._liveMode = config?.appearance?.mode === "dark" ? "dark" : "light";
   }
 
   async _load() {
@@ -308,7 +353,6 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._config = normalizeConfig(saved);
       this._ensureDock();
       this._savedAt = new Date();
-      this._info = this._t("saved");
       // The guest page picks up saved config over its own HA subscription;
       // the iframe is only re-pointed if the dashboard URL itself changed.
       this._syncLivePreviewSrc(this._config);
@@ -331,6 +375,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     return this._hass?.states?.[id]?.attributes?.friendly_name || id;
   }
   _addEmptyPage() {
+    if (this._config.pages.length >= PAGES_MAX) return;
     this._config.pages.push({
       id: `page_${Date.now()}`,
       label: "Nova page",
@@ -401,6 +446,7 @@ class GuestHaDashboardPanel extends HTMLElement {
         color-scheme: dark;
       }
       * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
       .shell {
         /* Right column sized for iPhone 12 Pro preview (+ a little padding) */
         display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, 0.72fr);
@@ -410,7 +456,10 @@ class GuestHaDashboardPanel extends HTMLElement {
         .shell { grid-template-columns: minmax(0, 1fr) 420px; }
       }
       @media (max-width: 980px) {
-        .shell { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(560px, 70vh); }
+        :host { overflow: auto; }
+        .shell { grid-template-columns: 1fr; grid-template-rows: auto auto; height: auto; }
+        .editor { height: auto; max-height: calc(100vh - 32px); }
+        .preview { height: max(620px, 85vh); }
       }
       .editor, .preview {
         min-height: 0; height: calc(100vh - 32px);
@@ -424,6 +473,15 @@ class GuestHaDashboardPanel extends HTMLElement {
         background: color-mix(in srgb, var(--card) 92%, transparent);
         flex-shrink: 0;
       }
+      .footer-status { flex: 1; min-width: 0; display: flex; }
+      .footer-status .msg {
+        margin: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        animation: msg-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+      }
+      @keyframes msg-in {
+        from { opacity: 0; transform: translateY(6px) scale(0.98); }
+        to { opacity: 1; transform: none; }
+      }
       .btn.save-xl {
         font-size: 1.08rem; font-weight: 700; letter-spacing: -0.01em;
         padding: 16px 34px; min-width: 168px; border-radius: 18px;
@@ -432,30 +490,58 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       .btn.save-xl:disabled { opacity: 0.6; cursor: default; }
       .gear-btn {
-        width: 42px; height: 42px; border-radius: 14px; border: 1px solid var(--border);
+        width: 52px; height: 52px; padding: 0; border-radius: 50%; border: 1px solid var(--border);
         background: var(--btn); color: var(--text); display: grid; place-items: center;
-        cursor: pointer; font-size: 1.15rem; line-height: 1;
+        cursor: pointer; font-size: 1.6rem; line-height: 1;
+        transition: border-color 0.2s, transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3);
       }
-      .gear-btn:hover { border-color: var(--accent); }
+      .gear-btn:hover { border-color: var(--accent); transform: rotate(45deg); }
       header {
-        display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start;
-        justify-content: space-between; margin-bottom: 14px;
+        display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+        justify-content: space-between; margin-bottom: 16px;
       }
-      h1 { margin: 0; font-size: 1.4rem; letter-spacing: -0.02em; }
-      .sub { color: var(--muted); font-size: 0.88rem; margin-top: 4px; }
+      h1 { margin: 0; font-size: 1.6rem; letter-spacing: -0.02em; }
       .version {
-        display: inline-flex; margin-top: 8px; padding: 4px 10px; border-radius: 999px;
-        font-size: 0.75rem; font-weight: 700;
+        display: inline-flex; padding: 5px 12px; border-radius: 999px;
+        font-size: 0.78rem; font-weight: 700;
         background: color-mix(in srgb, var(--accent) 20%, transparent);
         border: 1px solid var(--border);
       }
-      .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-      .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+      .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      .tabs {
+        display: flex; gap: 8px; flex-wrap: wrap;
+        padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--border);
+      }
+      .tab-body { animation: tab-in 0.3s ease-out; }
+      @keyframes tab-in {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: none; }
+      }
+      .toggle-list { display: grid; gap: 2px; }
+      .toggle {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        padding: 10px 2px; color: var(--text); font-size: 0.92rem; cursor: pointer;
+      }
+      .toggle input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+      .toggle .track {
+        position: relative; width: 46px; height: 28px; border-radius: 999px; flex-shrink: 0;
+        background: color-mix(in srgb, var(--text) 18%, transparent);
+        transition: background 0.25s ease;
+      }
+      .toggle .track::after {
+        content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+        border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+      }
+      .toggle input:checked + .track { background: var(--accent); }
+      .toggle input:checked + .track::after { transform: translateX(18px); }
+      .toggle input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
       .tab, button, .btn {
         font: inherit; cursor: pointer; border: 0; border-radius: 999px;
         padding: 8px 14px; background: var(--btn); color: var(--btn-text);
       }
       .tab.active, .btn.primary { background: var(--btn-primary); color: var(--btn-primary-text); }
+      button:disabled { opacity: 0.4; cursor: default; }
       .btn.danger { background: var(--danger-bg); color: var(--danger-text); }
       .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
       .seg {
@@ -472,14 +558,14 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       @media (max-width: 640px) { .row { grid-template-columns: 1fr; gap: 4px; } }
       label { font-size: 0.85rem; color: var(--muted); }
-      input, select, textarea {
+      input:not([type="checkbox"]), select, textarea {
         width: 100%; font: inherit; padding: 10px 12px; border-radius: 12px;
         border: 1px solid var(--border);
         background-color: #fff !important; color: #111 !important;
         -webkit-text-fill-color: #111 !important; caret-color: #111 !important;
         opacity: 1 !important; color-scheme: light;
       }
-      :host([dark]) input, :host([dark]) select, :host([dark]) textarea {
+      :host([dark]) input:not([type="checkbox"]), :host([dark]) select, :host([dark]) textarea {
         background-color: #1c1e24 !important; color: #f5f5f5 !important;
         -webkit-text-fill-color: #f5f5f5 !important; caret-color: #f5f5f5 !important;
         color-scheme: dark;
@@ -513,41 +599,101 @@ class GuestHaDashboardPanel extends HTMLElement {
         padding: 12px 14px; border-bottom: 1px solid var(--border);
       }
       .preview-head strong { font-size: 0.92rem; }
+      .rotate-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 14px; border: 1px solid var(--border); font-size: 0.85rem;
+      }
+      .rotate-btn svg { transition: transform 0.7s cubic-bezier(0.3, 1.2, 0.4, 1); }
+      .rotate-btn[data-orient="landscape"] svg { transform: rotate(-90deg); }
       .preview-body {
-        flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px;
+        flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 14px 12px;
         background:
           radial-gradient(ellipse at 30% 20%, rgba(255,107,0,0.12), transparent 45%),
           radial-gradient(ellipse at 80% 80%, rgba(140,100,255,0.12), transparent 40%),
           var(--bg);
       }
-      .phone-wrap {
-        display: flex; flex-direction: column; align-items: center; gap: 10px;
-        width: 100%; max-width: 420px; min-height: 0; height: 100%;
-        justify-content: center;
+      .stage {
+        position: relative; flex: 1; min-height: 0; width: 100%;
+        animation: stage-in 0.7s cubic-bezier(0.2, 0.9, 0.25, 1) both;
       }
-      /* iPhone 12 Pro frame around the exact live page URL */
-      .phone {
-        --iphone-w: ${IPHONE_12_PRO.cssW}px;
-        --iphone-h: ${IPHONE_12_PRO.cssH}px;
-        position: relative;
-        width: min(var(--iphone-w), 100%);
-        aspect-ratio: ${IPHONE_12_PRO.pxW} / ${IPHONE_12_PRO.pxH};
-        max-height: min(var(--iphone-h), calc(100vh - 130px));
-        height: auto;
-        border-radius: 36px; overflow: hidden; flex: 0 1 auto;
-        border: 3px solid var(--phone-frame); background: #000;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+      @keyframes stage-in {
+        from { opacity: 0; transform: translateY(18px); filter: blur(6px); }
+        to { opacity: 1; transform: none; filter: none; }
       }
-      .phone iframe {
-        position: absolute; inset: 0; width: 100%; height: 100%;
-        border: 0; background: #111; display: block;
+      /*
+       * iPhone 15 Pro. Size is the real point size; --s scales it to fit.
+       * Rotation: the portrait frame is turned by ±90° (which visually is the
+       * landscape box), then the layout swaps to landscape with no transition.
+       */
+      .iphone {
+        --ow: ${IPHONE_15_PRO.w + IPHONE_15_PRO.bezel * 2}px;
+        --oh: ${IPHONE_15_PRO.h + IPHONE_15_PRO.bezel * 2}px;
+        --s: 1; --r: 0deg;
+        --screen-bg: #f3f0f7; --status-fg: #000;
+        position: absolute; left: 50%; top: 50%;
+        width: var(--ow); height: var(--oh); padding: ${IPHONE_15_PRO.bezel}px;
+        border-radius: ${IPHONE_15_PRO.radius + IPHONE_15_PRO.bezel}px;
+        transform: translate(-50%, -50%) scale(var(--s)) rotate(var(--r));
+        transition: transform 0.75s cubic-bezier(0.32, 0.72, 0, 1);
+        background: linear-gradient(135deg, #8e8b86 0%, #3a3936 22%, #1c1c1e 50%, #3a3936 78%, #8e8b86 100%);
+        box-shadow:
+          inset 0 0 0 1.5px rgba(255,255,255,0.22),
+          inset 0 0 0 4px #111,
+          0 2px 0 rgba(255,255,255,0.06),
+          0 40px 80px -24px rgba(0,0,0,0.5),
+          0 18px 30px -18px rgba(0,0,0,0.45);
+        will-change: transform;
+      }
+      .iphone.no-anim { transition: none; }
+      .iphone[data-orient="landscape"] {
+        --ow: ${IPHONE_15_PRO.h + IPHONE_15_PRO.bezel * 2}px;
+        --oh: ${IPHONE_15_PRO.w + IPHONE_15_PRO.bezel * 2}px;
+      }
+      .iphone[data-mode="dark"] { --screen-bg: #0e1014; --status-fg: #fff; }
+      .iphone-screen {
+        position: relative; width: 100%; height: 100%; overflow: hidden;
+        border-radius: ${IPHONE_15_PRO.radius}px; background: var(--screen-bg);
+        transition: background 0.4s ease;
+      }
+      .iphone iframe {
+        position: absolute; border: 0; display: block; background: transparent;
+        left: 0; right: 0; bottom: 0; top: ${IPHONE_15_PRO.safeTop}px;
+        width: 100%; height: calc(100% - ${IPHONE_15_PRO.safeTop}px);
+      }
+      .iphone[data-orient="landscape"] iframe {
+        top: 0; height: 100%;
+        left: ${IPHONE_15_PRO.safeSide}px; width: calc(100% - ${IPHONE_15_PRO.safeSide * 2}px);
+      }
+      .ios-status {
+        position: absolute; top: 0; left: 0; right: 0; height: ${IPHONE_15_PRO.safeTop}px;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 4px 30px 0 46px; color: var(--status-fg);
+        font: 600 17px/1 -apple-system, "SF Pro Text", system-ui, sans-serif;
+        letter-spacing: -0.01em; pointer-events: none;
+      }
+      .ios-status .ios-icons { display: flex; gap: 6px; align-items: center; }
+      .ios-status svg { display: block; fill: currentColor; }
+      .iphone[data-orient="landscape"] .ios-status { display: none; }
+      .island {
+        position: absolute; left: 50%; top: 11px; width: 126px; height: 37px;
+        transform: translateX(-50%); border-radius: 999px; background: #000; pointer-events: none;
+      }
+      .iphone[data-orient="landscape"] .island {
+        left: 11px; top: 50%; width: 37px; height: 126px; transform: translateY(-50%);
+      }
+      .home-ind {
+        position: absolute; left: 50%; bottom: 8px; width: 134px; height: 5px;
+        transform: translateX(-50%); border-radius: 999px;
+        background: var(--status-fg); opacity: 0.85; pointer-events: none;
+      }
+      .iphone[data-orient="landscape"] .home-ind { width: 210px; bottom: 6px; }
+      .screen-empty {
+        position: absolute; inset: 0; display: grid; place-items: center; padding: 40px;
+        text-align: center; color: var(--muted); font-size: 0.95rem; line-height: 1.45;
       }
       .phone-meta {
         text-align: center; font-size: 0.72rem; color: var(--muted);
-        letter-spacing: 0.02em; flex-shrink: 0;
-      }
-      .preview-empty {
-        max-width: 280px; text-align: center; color: var(--muted); font-size: 0.9rem; line-height: 1.45;
+        letter-spacing: 0.02em; flex-shrink: 0; padding-top: 10px;
       }
     `;
   }
@@ -560,49 +706,137 @@ class GuestHaDashboardPanel extends HTMLElement {
       <div class="shell">
         <section class="editor" id="editorHost"></section>
         <aside class="preview">
-          <div class="preview-head"><strong id="previewTitle"></strong></div>
-          <div class="preview-body" id="previewHost"></div>
+          <div class="preview-head">
+            <strong id="previewTitle"></strong>
+            <button type="button" class="btn ghost rotate-btn" id="rotatePreview" data-orient="${this._orient}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="3"/><path d="M11 18h2"/></svg>
+              <span></span>
+            </button>
+          </div>
+          <div class="preview-body">
+            <div class="stage" id="previewStage">
+              <div class="iphone" id="iphone" data-orient="${this._orient}">
+                <div class="iphone-screen">
+                  <div class="ios-status">
+                    <span class="ios-time"></span>
+                    <span class="ios-icons">
+                      <svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+                      <svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true"><path d="M8 2.6c2.3 0 4.4.9 6 2.4l1.2-1.3A10.3 10.3 0 0 0 8 .8C5.2.8 2.7 1.9.8 3.7L2 5c1.6-1.5 3.7-2.4 6-2.4Zm0 3.6c1.3 0 2.5.5 3.4 1.3l1.2-1.3A6.7 6.7 0 0 0 8 4.4c-1.8 0-3.4.7-4.6 1.8l1.2 1.3c.9-.8 2.1-1.3 3.4-1.3Zm0 3.6c.4 0 .8.1 1 .4L8 11.4 7 10.2c.3-.3.6-.4 1-.4Z"/></svg>
+                      <svg width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect x="0.5" y="0.5" width="22" height="12" rx="3.8" fill="none" stroke="currentColor" opacity="0.4"/><rect x="2" y="2" width="19" height="9" rx="2.5"/><path d="M24 4.5v4c.8-.3 1.4-1.1 1.4-2s-.6-1.7-1.4-2Z" opacity="0.45"/></svg>
+                    </span>
+                  </div>
+                  <iframe title="Guest dashboard live preview" allow="fullscreen" hidden></iframe>
+                  <div class="screen-empty" hidden></div>
+                  <div class="island"></div>
+                  <div class="home-ind"></div>
+                </div>
+              </div>
+            </div>
+            <div class="phone-meta" id="phoneMeta"></div>
+          </div>
         </aside>
       </div>
     `;
+    this.shadowRoot.getElementById("rotatePreview").addEventListener("click", () => this._rotatePreview());
+    const stage = this.shadowRoot.getElementById("previewStage");
+    this._resizeObs = new ResizeObserver(() => {
+      if (!this._rotating) this._fitPreview();
+    });
+    this._resizeObs.observe(stage);
+    this._tickStatusClock();
+  }
+
+  _orientBox(orient) {
+    const { w, h, bezel } = IPHONE_15_PRO;
+    const pw = w + bezel * 2;
+    const ph = h + bezel * 2;
+    return orient === "landscape" ? { w: ph, h: pw } : { w: pw, h: ph };
+  }
+
+  _fitScale(orient) {
+    const stage = this.shadowRoot.getElementById("previewStage");
+    if (!stage) return 1;
+    const { width, height } = stage.getBoundingClientRect();
+    if (!width || !height) return 1;
+    const box = this._orientBox(orient);
+    return Math.min((width - 8) / box.w, (height - 8) / box.h, 1);
+  }
+
+  _fitPreview() {
+    const phone = this.shadowRoot.getElementById("iphone");
+    phone?.style.setProperty("--s", String(this._fitScale(this._orient)));
   }
 
   /**
-   * Detaching an iframe from the DOM always reloads it, so it is only
-   * created once and touched again solely when the dashboard URL changes.
+   * Turn the portrait frame by ±90° (its rotated bounding box equals the
+   * landscape box), then swap to the real landscape layout without a transition.
+   * Only CSS changes — the iframe stays mounted, so the page never reloads.
+   */
+  _rotatePreview() {
+    const phone = this.shadowRoot.getElementById("iphone");
+    if (!phone || this._rotating) return;
+    const next = this._orient === "portrait" ? "landscape" : "portrait";
+    this._rotating = true;
+    this.shadowRoot.getElementById("rotatePreview").dataset.orient = next;
+    phone.style.setProperty("--s", String(this._fitScale(next)));
+    phone.style.setProperty("--r", next === "landscape" ? "-90deg" : "90deg");
+
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      phone.removeEventListener("transitionend", onEnd);
+      phone.classList.add("no-anim");
+      this._orient = next;
+      localStorage.setItem(ORIENT_KEY, next);
+      phone.dataset.orient = next;
+      phone.style.setProperty("--r", "0deg");
+      void phone.offsetWidth;
+      phone.classList.remove("no-anim");
+      this._rotating = false;
+      this._renderPreview();
+    };
+    const onEnd = (e) => {
+      if (e.target === phone && e.propertyName === "transform") finish();
+    };
+    phone.addEventListener("transitionend", onEnd);
+    setTimeout(finish, 1000);
+  }
+
+  _tickStatusClock() {
+    const el = this.shadowRoot?.querySelector(".ios-time");
+    if (!el) return;
+    const now = new Date();
+    let h = now.getHours();
+    if (this._uiLang() === "en") h = h % 12 || 12;
+    el.textContent = `${h}:${String(now.getMinutes()).padStart(2, "0")}`;
+  }
+
+  /**
+   * Detaching an iframe from the DOM always reloads it, so it lives in the
+   * static shell and only its src changes — solely when the dashboard URL changes.
    */
   _renderPreview() {
     const title = this.shadowRoot.getElementById("previewTitle");
     if (title) title.textContent = this._t("previewTitle");
+    const rotate = this.shadowRoot.querySelector("#rotatePreview span");
+    if (rotate) rotate.textContent = this._orient === "portrait" ? this._t("rotateLandscape") : this._t("rotatePortrait");
+    const meta = this.shadowRoot.getElementById("phoneMeta");
+    if (meta) meta.textContent = this._t("previewMeta");
 
-    const host = this.shadowRoot.getElementById("previewHost");
-    if (!host) return;
+    const phone = this.shadowRoot.getElementById("iphone");
+    if (!phone) return;
+    phone.dataset.mode = this._liveMode;
+    if (!this._rotating) this._fitPreview();
+    this._tickStatusClock();
+
+    const frame = phone.querySelector("iframe");
+    const empty = phone.querySelector(".screen-empty");
     const src = this._livePreviewSrc;
-    let frame = host.querySelector("iframe");
-
-    if (!src) {
-      if (frame || !host.querySelector(".preview-empty")) {
-        host.innerHTML = `<div class="preview-empty"></div>`;
-      }
-      host.querySelector(".preview-empty").innerHTML = this._t("previewEmpty");
-      return;
-    }
-
-    if (!frame) {
-      host.innerHTML = `
-        <div class="phone-wrap">
-          <div class="phone">
-            <iframe title="Guest dashboard live preview" allow="fullscreen"></iframe>
-          </div>
-          <div class="phone-meta"></div>
-        </div>
-      `;
-      frame = host.querySelector("iframe");
-    }
-    if (frame.getAttribute("src") !== src) frame.setAttribute("src", src);
-
-    const meta = host.querySelector(".phone-meta");
-    if (meta) meta.textContent = `${this._t("previewMeta")} · ${IPHONE_12_PRO.pxW}×${IPHONE_12_PRO.pxH}`;
+    empty.hidden = Boolean(src);
+    empty.textContent = this._t("previewEmpty");
+    frame.hidden = !src;
+    if (src && frame.getAttribute("src") !== src) frame.setAttribute("src", src);
   }
 
   /** Full config page for panel chrome (not a popup). */
@@ -647,39 +881,48 @@ class GuestHaDashboardPanel extends HTMLElement {
     const scrollTop = scrollEl?.scrollTop || 0;
     const activeId = this.shadowRoot.activeElement?.id || null;
 
+    const status = this._error
+      ? `<div class="msg err" title="${this._escape(this._error)}">${this._escape(this._error)}</div>`
+      : this._savedAt
+        ? `<div class="msg ok">${this._t("saved")} ${this._savedAt.toLocaleTimeString(locale)}</div>`
+        : "";
+    const tabs = [
+      ["general", "tabGeneral"],
+      ["pages", "tabPages"],
+      ["dock", "tabDock"],
+      ["guest", "tabGuest"],
+      ["styles", "tabStyles"],
+    ];
+    const tabChanged = this._lastTab !== this._tab;
+    this._lastTab = this._tab;
+
     this.shadowRoot.getElementById("editorHost").innerHTML = `
           <div class="editor-scroll">
             <header>
-              <div>
-                <h1>${this._t("title")}</h1>
-                <div class="sub">${this._t("subtitle")}</div>
-                <div class="version">v${PANEL_VERSION}</div>
-              </div>
+              <h1>${this._t("title")}</h1>
               <div class="toolbar">
+                <span class="version">v${PANEL_VERSION}</span>
                 ${onSettings ? "" : `<button type="button" class="gear-btn" id="openSettings" title="${this._escape(this._t("uiSettings"))}" aria-label="${this._escape(this._t("uiSettings"))}">⚙</button>`}
               </div>
             </header>
 
-            ${this._error ? `<div class="msg err">${this._escape(this._error)}</div>` : ""}
-            ${this._info ? `<div class="msg ok">${this._escape(this._info)}</div>` : ""}
-            ${this._savedAt ? `<div class="msg ok">${this._t("saved")} ${this._savedAt.toLocaleTimeString(locale)}</div>` : ""}
-
             ${onSettings ? this._renderUiSettings() : `
             <div class="tabs">
-              <button class="tab ${this._tab === "pages" ? "active" : ""}" data-tab="pages">${this._t("tabPages")}</button>
-              <button class="tab ${this._tab === "dock" ? "active" : ""}" data-tab="dock">${this._t("tabDock")}</button>
-              <button class="tab ${this._tab === "guest" ? "active" : ""}" data-tab="guest">${this._t("tabGuest")}</button>
-              <button class="tab ${this._tab === "styles" ? "active" : ""}" data-tab="styles">${this._t("tabStyles")}</button>
+              ${tabs.map(([id, key]) => `<button class="tab ${this._tab === id ? "active" : ""}" data-tab="${id}">${this._t(key)}</button>`).join("")}
             </div>
 
-            ${this._tab === "guest" ? this._renderGuest(c) : ""}
-            ${this._tab === "pages" ? this._renderPages(c, page, sensors, lights, switches, covers, climates) : ""}
-            ${this._tab === "dock" ? this._renderDock(c) : ""}
-            ${this._tab === "styles" ? this._renderStyles(c) : ""}
+            <div class="${tabChanged ? "tab-body" : ""}">
+              ${this._tab === "general" ? this._renderGeneral(c) : ""}
+              ${this._tab === "guest" ? this._renderGuest(c) : ""}
+              ${this._tab === "pages" ? this._renderPages(c, page, sensors, lights, switches, covers, climates) : ""}
+              ${this._tab === "dock" ? this._renderDock(c) : ""}
+              ${this._tab === "styles" ? this._renderStyles(c) : ""}
+            </div>
             `}
           </div>
           ${onSettings ? "" : `
           <div class="editor-footer">
+            <div class="footer-status">${status}</div>
             <button class="btn save-xl" id="save" ${this._saving ? "disabled" : ""}>${this._saving ? this._t("saving") : this._t("save")}</button>
           </div>`}
     `;
@@ -707,7 +950,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._render();
     });
     this.shadowRoot.getElementById("backFromSettings")?.addEventListener("click", () => {
-      this._tab = "pages";
+      this._tab = "general";
       this._render();
     });
     this._on("[data-ui-lang]", "click", (e) => {
@@ -722,22 +965,55 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._render();
     });
 
+    if (this._tab === "general") this._bindGeneral();
     if (this._tab === "guest") this._bindGuest();
     if (this._tab === "pages") this._bindPages();
     if (this._tab === "dock") this._bindDock();
     if (this._tab === "styles") this._bindStyles();
   }
 
+  _toggle(attrs, checked, label) {
+    return `
+      <label class="toggle">
+        <span>${label}</span>
+        <input type="checkbox" ${attrs} ${checked ? "checked" : ""} />
+        <span class="track"></span>
+      </label>
+    `;
+  }
+
+  _renderGeneral(c) {
+    const gen = { ...DEFAULT_GENERAL, ...(c.general || {}) };
+    const items = [
+      ["showTime", "genShowTime"],
+      ["use24h", "genUse24h"],
+      ["showDate", "genShowDate"],
+      ["showWifi", "genShowWifi"],
+      ["showTemperature", "genShowTemperature"],
+      ["showHumidity", "genShowHumidity"],
+    ];
+    return `
+      <div class="row"><label>${this._t("dashboardUrl")}</label>
+        <input id="dashboardUrl" value="${this._escape(c.dashboardUrl || "")}" placeholder="https://guest.example.com" /></div>
+      <h3>${this._t("headerSection")}</h3>
+      <div class="toggle-list">
+        ${items.map(([key, label]) => this._toggle(`data-gen="${key}"`, gen[key], this._t(label))).join("")}
+      </div>
+    `;
+  }
+
+  _bindGeneral() {
+    const url = this.shadowRoot.getElementById("dashboardUrl");
+    url?.addEventListener("input", () => { this._config.dashboardUrl = url.value; });
+    this._on("[data-gen]", "change", (e) => {
+      if (!this._config.general) this._config.general = { ...DEFAULT_GENERAL };
+      this._config.general[e.currentTarget.dataset.gen] = e.currentTarget.checked;
+    });
+  }
+
   _renderGuest(c) {
     const g = c.guestInfo || {};
     return `
-      <p class="hint">${this._t("guestHint")}</p>
-      <div class="row"><label>${this._t("dashboardUrl")}</label>
-        <input id="dashboardUrl" value="${this._escape(c.dashboardUrl || "")}" placeholder="https://guest.example.com" /></div>
-      <div class="row"><label>${this._t("welcomeTitle")}</label>
-        <input id="welcomeTitle" value="${this._escape(g.welcomeTitle || "")}" /></div>
-      <div class="row"><label>${this._t("welcomeSubtitle")}</label>
-        <input id="welcomeSubtitle" value="${this._escape(g.welcomeSubtitle || "")}" /></div>
       <div class="row"><label>${this._t("wifiSsid")}</label>
         <input id="wifiSsid" value="${this._escape(g.wifiSsid || "")}" /></div>
       <div class="row"><label>${this._t("wifiPassword")}</label>
@@ -751,9 +1027,6 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _bindGuest() {
     const map = [
-      ["dashboardUrl", (v) => { this._config.dashboardUrl = v; }],
-      ["welcomeTitle", (v) => (this._config.guestInfo.welcomeTitle = v)],
-      ["welcomeSubtitle", (v) => (this._config.guestInfo.welcomeSubtitle = v)],
       ["wifiSsid", (v) => (this._config.guestInfo.wifiSsid = v)],
       ["wifiPassword", (v) => (this._config.guestInfo.wifiPassword = v)],
       ["wifiSecurity", (v) => (this._config.guestInfo.wifiSecurity = v)],
@@ -761,7 +1034,6 @@ class GuestHaDashboardPanel extends HTMLElement {
     for (const [id, fn] of map) {
       const el = this.shadowRoot.getElementById(id);
       if (!el) continue;
-      // Draft only — live preview iframe stays untouched until Save
       el.addEventListener("change", () => fn(el.value));
       el.addEventListener("input", () => fn(el.value));
     }
@@ -770,7 +1042,6 @@ class GuestHaDashboardPanel extends HTMLElement {
   _renderStyles(c) {
     const a = c.appearance || {};
     return `
-      <p class="hint">${this._t("stylesHint")}</p>
       <div class="row"><label>${this._t("dashTheme")}</label>
         <div class="seg">
           <button type="button" data-style-mode="light" class="${a.mode !== "dark" ? "active" : ""}">Light</button>
@@ -779,7 +1050,6 @@ class GuestHaDashboardPanel extends HTMLElement {
       </div>
       <div class="row"><label>${this._t("accent")}</label>
         <input id="accent" type="color" value="${this._escape(a.accent || "#ff6b00")}" /></div>
-      <p class="hint">${this._t("stylesAfterSave")}</p>
     `;
   }
 
@@ -804,7 +1074,6 @@ class GuestHaDashboardPanel extends HTMLElement {
     const dock = this._ensureDock();
     const rooms = c.pages || [];
     return `
-      <p class="hint">${this._t("dockHint")}</p>
       ${dock.length ? `<div class="card-list">${dock.map((item, i) => `
         <div class="device" data-dock-i="${i}">
           <div class="row"><label>${this._t("dockPage")}</label>
@@ -816,12 +1085,7 @@ class GuestHaDashboardPanel extends HTMLElement {
           <div class="row"><label>${this._t("dockLabel")}</label>
             <input data-k="label" value="${this._escape(item.label || "")}" placeholder="${this._escape((rooms.find((r) => r.id === item.pageId) || {}).label || "")}" />
           </div>
-          <div class="row"><label>${this._t("dockShowLabel")}</label>
-            <label style="display:flex;align-items:center;gap:8px;color:var(--text)">
-              <input type="checkbox" data-k="showLabel" ${item.showLabel !== false ? "checked" : ""} />
-              ${item.showLabel !== false ? "on" : "off"}
-            </label>
-          </div>
+          ${this._toggle('data-k="showLabel"', item.showLabel !== false, this._t("dockShowLabel"))}
           <div class="row"><label>${this._t("pageIcon")}</label>
             <select data-k="icon">${ICON_OPTIONS.map((ic) => {
               const room = rooms.find((r) => r.id === item.pageId);
@@ -831,8 +1095,8 @@ class GuestHaDashboardPanel extends HTMLElement {
           </div>
           <div class="actions"><button type="button" class="btn danger" data-remove-dock="${i}">${this._t("delete")}</button></div>
         </div>
-      `).join("")}</div>` : `<p class="hint">${this._t("dockEmpty")}</p>`}
-      <div class="actions">
+      `).join("")}</div>` : ""}
+      <div class="actions" ${dock.length ? "" : 'style="margin-top:0"'}>
         <button type="button" class="btn primary" id="addDock" ${dock.length >= DOCK_MAX || !rooms.length ? "disabled" : ""}>${this._t("dockAdd")}</button>
         ${dock.length >= DOCK_MAX ? `<span class="count">${this._t("dockFull")}</span>` : ""}
       </div>
@@ -886,11 +1150,12 @@ class GuestHaDashboardPanel extends HTMLElement {
   }
 
   _renderPages(c, page, sensors, lights, switches, covers, climates) {
+    const pagesFull = c.pages.length >= PAGES_MAX;
     return `
-      <p class="hint">${this._t("pagesHint")}</p>
-      <div class="actions" style="margin-top:0">
-        <button class="btn primary" id="addPage">${this._t("addPage")}</button>
+      <div class="actions" style="margin-top:0;align-items:center">
+        <button class="btn primary" id="addPage" ${pagesFull ? "disabled" : ""}>${this._t("addPage")}</button>
         <button class="btn ghost" id="clearPages" ${c.pages.length ? "" : "disabled"}>${this._t("clearPages")}</button>
+        <span class="count">${c.pages.length} / ${PAGES_MAX}${pagesFull ? ` · ${this._t("pagesFull", PAGES_MAX)}` : ""}</span>
       </div>
       ${!c.pages.length ? `<p class="hint" style="margin-top:14px">${this._t("pagesEmpty")}</p>` : `
         <div class="page-pills" style="margin-top:14px">

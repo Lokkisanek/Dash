@@ -136,6 +136,19 @@
   }
 }
 
+/* Apple-style continuous corners where supported; plain radius elsewhere. */
+@utility squircle {
+  @supports (corner-shape: squircle) {
+    corner-shape: squircle;
+  }
+}
+
+@supports (corner-shape: squircle) {
+  .rounded-box {
+    corner-shape: squircle;
+  }
+}
+
 @utility soft-lift {
   box-shadow: none;
 }

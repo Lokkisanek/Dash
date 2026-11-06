@@ -10,11 +10,19 @@
 
 export const guestDashboard = {
   guestInfo: {
-    welcomeTitle: 'Vítejte u nás',
-    welcomeSubtitle: 'Ovládejte dům jako doma',
     wifiSsid: 'Guest-Home',
     wifiPassword: 'vitejte2024',
     wifiSecurity: 'WPA',
+  },
+
+  /** Top status bar */
+  general: {
+    showTime: true,
+    use24h: true,
+    showDate: true,
+    showWifi: true,
+    showTemperature: true,
+    showHumidity: true,
   },
 
   appearance: {

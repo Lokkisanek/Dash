@@ -8,7 +8,20 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import DEFAULT_CONFIG, STORAGE_KEY, STORAGE_VERSION
+from .const import DEFAULT_CONFIG, DEFAULT_GENERAL, PAGES_MAX, STORAGE_KEY, STORAGE_VERSION
+
+GUEST_INFO_KEYS = ("wifiSsid", "wifiPassword", "wifiSecurity")
+
+
+def _normalize_general(raw: Any) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    return {key: bool(src.get(key, default)) for key, default in DEFAULT_GENERAL.items()}
+
+
+def _normalize_guest_info(raw: Any) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    base = DEFAULT_CONFIG["guestInfo"]
+    return {key: str(src.get(key, base[key]) or "") for key in GUEST_INFO_KEYS}
 
 
 def _normalize_pages(data: dict[str, Any]) -> list:
@@ -30,7 +43,7 @@ def _normalize_pages(data: dict[str, Any]) -> list:
             continue
         page = {k: v for k, v in item.items() if k != "haAreaId"}
         cleaned.append(page)
-    return cleaned
+    return cleaned[:PAGES_MAX]
 
 
 def _normalize_dock(raw_dock: list) -> list:
@@ -76,6 +89,8 @@ class GuestDashboardStore:
             merged["dock"] = _normalize_dock(
                 merged.get("dock") if isinstance(merged.get("dock"), list) else []
             )
+            merged["general"] = _normalize_general(merged.get("general"))
+            merged["guestInfo"] = _normalize_guest_info(merged.get("guestInfo"))
             self._data = merged
         else:
             self._data = deepcopy(DEFAULT_CONFIG)
@@ -93,7 +108,8 @@ class GuestDashboardStore:
         pages = _normalize_pages(merged)
         dock = _normalize_dock(merged.get("dock") if isinstance(merged.get("dock"), list) else [])
         cleaned = {
-            "guestInfo": merged.get("guestInfo") or deepcopy(DEFAULT_CONFIG["guestInfo"]),
+            "guestInfo": _normalize_guest_info(merged.get("guestInfo")),
+            "general": _normalize_general(merged.get("general")),
             "pages": pages if isinstance(pages, list) else [],
             "dock": dock,
             "dashboardUrl": merged.get("dashboardUrl") or "",

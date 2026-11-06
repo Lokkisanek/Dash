@@ -100,15 +100,13 @@ onMounted(() => {
       </div>
 
       <div class="flex justify-center mb-5">
-        <div class="p-3 rounded-box bg-base-200 soft-inset">
-          <img
-            v-if="qrDataUrl"
-            :src="qrDataUrl"
-            :alt="t('wifi')"
-            class="w-[200px] h-[200px]"
-            draggable="false"
-          />
-        </div>
+        <img
+          v-if="qrDataUrl"
+          :src="qrDataUrl"
+          :alt="t('wifi')"
+          class="w-[200px] h-[200px] rounded-2xl"
+          draggable="false"
+        />
       </div>
 
       <div class="space-y-3">

@@ -49,44 +49,97 @@ const dockItems = computed(() => {
   }))
 })
 
-function selectPage(id) {
+/** 'page-next' slides in from the right, 'page-prev' from the left. */
+const pageTransition = ref('page-next')
+/** Finger offset of the current page while dragging (px). */
+const dragX = ref(0)
+const dragging = ref(false)
+/** Offset at release, so the incoming page starts right next to the outgoing one. */
+const releaseX = ref(0)
+
+function indexOf(id) {
+  return pages.value.findIndex((r) => r.id === id)
+}
+
+function selectPage(id, fromX = 0) {
   if (!id || id === activePageId.value) return
   unlockAudio()
+  pageTransition.value = indexOf(id) >= indexOf(activePageId.value) ? 'page-next' : 'page-prev'
+  releaseX.value = fromX
   activePageId.value = id
 }
 
-function pageIndex() {
-  return pages.value.findIndex((r) => r.id === activePageId.value)
-}
-
-function goPageDelta(delta) {
+function neighbour(delta) {
   const list = pages.value
-  if (!list.length) return
-  let idx = pageIndex()
+  let idx = indexOf(activePageId.value)
   if (idx < 0) idx = 0
-  const next = Math.max(0, Math.min(list.length - 1, idx + delta))
-  if (list[next]) selectPage(list[next].id)
+  return list[idx + delta] || null
 }
 
-const swipe = ref({ x: 0, y: 0, active: false })
+const swipe = { x: 0, y: 0, t: 0, active: false, axis: null, width: 1 }
+let suppressClick = false
 
 function onPointerDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return
-  swipe.value = { x: e.clientX, y: e.clientY, active: true }
+  if (e.target.closest?.('input, select, textarea, dialog, [data-no-swipe]')) return
+  swipe.x = e.clientX
+  swipe.y = e.clientY
+  swipe.t = performance.now()
+  swipe.active = true
+  swipe.axis = null
+  swipe.width = e.currentTarget.clientWidth || window.innerWidth
+}
+
+function onPointerMove(e) {
+  if (!swipe.active) return
+  const dx = e.clientX - swipe.x
+  const dy = e.clientY - swipe.y
+  if (!swipe.axis) {
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      swipe.axis = 'x'
+      dragging.value = true
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    } else if (Math.abs(dy) > 10) {
+      swipe.active = false
+      return
+    } else {
+      return
+    }
+  }
+  const blocked = (dx < 0 && !neighbour(1)) || (dx > 0 && !neighbour(-1))
+  dragX.value = blocked ? dx / 3 : dx
 }
 
 function onPointerUp(e) {
-  if (!swipe.value.active) return
-  const dx = e.clientX - swipe.value.x
-  const dy = e.clientY - swipe.value.y
-  swipe.value.active = false
-  if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.2) return
-  if (dx < 0) goPageDelta(1)
-  else goPageDelta(-1)
+  if (!swipe.active) return
+  swipe.active = false
+  if (swipe.axis !== 'x') return
+  // The click that follows a drag is dispatched in the same task as pointerup.
+  suppressClick = true
+  setTimeout(() => {
+    suppressClick = false
+  }, 0)
+  dragging.value = false
+  const dx = e.clientX - swipe.x
+  const velocity = dx / Math.max(1, performance.now() - swipe.t)
+  const commit = Math.abs(dx) > swipe.width * 0.22 || Math.abs(velocity) > 0.45
+  const target = commit ? neighbour(dx < 0 ? 1 : -1) : null
+  const offset = dragX.value
+  dragX.value = 0
+  if (target) selectPage(target.id, offset)
 }
 
 function onPointerCancel() {
-  swipe.value.active = false
+  swipe.active = false
+  dragging.value = false
+  dragX.value = 0
+}
+
+function onClickCapture(e) {
+  if (!suppressClick) return
+  suppressClick = false
+  e.stopPropagation()
+  e.preventDefault()
 }
 
 watch(
@@ -150,8 +203,10 @@ onMounted(() => {
     class="dashboard-shell relative h-full w-full overflow-hidden text-base-content safe-pad"
     :class="{ 'is-dark': themeMode === 'dark' }"
     @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
     @pointerup="onPointerUp"
     @pointercancel="onPointerCancel"
+    @click.capture="onClickCapture"
   >
     <div class="dashboard-orbs" aria-hidden="true">
       <span class="orb o1" />
@@ -160,18 +215,23 @@ onMounted(() => {
       <span class="orb o4" />
     </div>
 
-    <div class="relative z-10 flex flex-col h-full px-4 pt-3 max-w-lg mx-auto">
+    <div class="relative z-10 flex flex-col h-full px-4 pt-4 max-w-lg mx-auto">
       <TopStatusBar
         :temperature-entity="activePage?.temperatureEntity"
         :humidity-entity="activePage?.humidityEntity"
       />
 
-      <div
-        data-dashboard-scroll
-        class="mt-4 flex-1 overflow-y-auto no-scrollbar overscroll-contain"
-      >
-        <div class="grid grid-cols-2 gap-3 pb-[120px]">
-          <template v-for="device in activePage?.devices || []" :key="device.id || device.label">
+      <div class="pages-viewport mt-4 -mx-4" :style="{ '--release': `${releaseX}px` }">
+        <Transition :name="pageTransition">
+          <div
+            :key="activePage?.id || 'empty'"
+            data-dashboard-scroll
+            class="page no-scrollbar overscroll-contain"
+            :class="{ 'is-dragging': dragging }"
+            :style="{ '--drag': `${dragX}px` }"
+          >
+            <div class="grid grid-cols-2 gap-3 pb-[120px]">
+              <template v-for="device in activePage?.devices || []" :key="device.id || device.label">
             <LightTile
               v-if="device.type === 'light'"
               :entity-id="device.id"
@@ -194,12 +254,14 @@ onMounted(() => {
               :entity-id="device.id"
               :label="device.label"
             />
-          </template>
-        </div>
+              </template>
+            </div>
+          </div>
+        </Transition>
       </div>
     </div>
 
-    <LiquidGlassDock v-model="activePageId" :items="dockItems" />
+    <LiquidGlassDock data-no-swipe :model-value="activePageId" :items="dockItems" @update:model-value="selectPage" />
   </div>
 </template>
 
@@ -211,6 +273,63 @@ onMounted(() => {
 
 .dashboard-shell.is-dark {
   background: #0e1014;
+}
+
+.pages-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page {
+  --page-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  position: absolute;
+  inset: 0;
+  padding: 0 1rem;
+  overflow-y: auto;
+  transform: translate3d(var(--drag, 0px), 0, 0);
+  transition: transform 0.45s var(--page-ease);
+  will-change: transform;
+}
+
+.page.is-dragging {
+  transition: none;
+}
+
+.page.page-next-enter-active,
+.page.page-next-leave-active,
+.page.page-prev-enter-active,
+.page.page-prev-leave-active {
+  transition:
+    transform 0.5s var(--page-ease),
+    opacity 0.5s var(--page-ease);
+}
+
+.page-next-enter-from {
+  transform: translate3d(calc(100% + var(--release, 0px)), 0, 0);
+}
+.page-next-leave-to {
+  transform: translate3d(-100%, 0, 0);
+  opacity: 0.4;
+}
+.page-prev-enter-from {
+  transform: translate3d(calc(-100% + var(--release, 0px)), 0, 0);
+}
+.page-prev-leave-to {
+  transform: translate3d(100%, 0, 0);
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .page-next-enter-active,
+  .page-next-leave-active,
+  .page-prev-enter-active,
+  .page-prev-leave-active {
+    transition: opacity 0.2s ease;
+    transform: none;
+  }
 }
 
 .dashboard-orbs {
