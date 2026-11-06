@@ -122,16 +122,7 @@ const showLogin = computed(() => {
   return false
 })
 
-const isPreview = computed(() => {
-  try {
-    return new URLSearchParams(window.location.search).get('preview') === '1'
-  } catch {
-    return false
-  }
-})
-
 const showBootSplash = computed(() => {
-  if (isPreview.value) return false
   return status.value === 'idle' || status.value === 'connecting'
 })
 
@@ -145,14 +136,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div
-    v-if="isPreview && showLogin"
-    class="dashboard-shell grid place-items-center h-full text-base-content/60 text-sm p-6 text-center"
-  >
-    {{ t('previewLoginHint') }}
-  </div>
-
-  <HaLogin v-else-if="showLogin" />
+  <HaLogin v-if="showLogin" />
 
   <div
     v-else-if="showBootSplash"

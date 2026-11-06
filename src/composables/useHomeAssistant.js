@@ -45,14 +45,6 @@ let initialized = false
 let configUnsub = null
 let connectInFlight = null
 
-function isPreviewMode() {
-  try {
-    return new URLSearchParams(window.location.search).get('preview') === '1'
-  } catch {
-    return false
-  }
-}
-
 function wantsMock() {
   const url = import.meta.env.VITE_HA_URL
   const mode = import.meta.env.VITE_MODE
@@ -266,7 +258,6 @@ async function connectLive(hassUrl) {
   connectInFlight = (async () => {
     const url = (hassUrl || state.hassUrl || import.meta.env.VITE_HA_URL || '').replace(/\/$/, '')
     const token = import.meta.env.VITE_HA_TOKEN
-    const preview = isPreviewMode()
 
     // Keep showing the dashboard during soft reconnects; only gate first auth
     if (!state.everConnected) state.status = 'connecting'
@@ -281,17 +272,10 @@ async function connectLive(hassUrl) {
       if (token && token !== 'mock' && url && url !== 'mock') {
         auth = createLongLivedTokenAuth(url, token)
       } else {
-        // Preview iframe: only reuse stored tokens — never kick OAuth redirect loops
-        if (preview && !loadTokens() && !hasOAuthCallback()) {
-          state.status = 'need_url'
-          state.lastError = null
-          return
-        }
         try {
           auth = await getAuth({
             hassUrl: url || undefined,
             clientId: `${window.location.origin}/`,
-            // Keep preview/theme query params out of redirect base
             redirectUrl: `${window.location.origin}${window.location.pathname}`,
             saveTokens,
             loadTokens,
@@ -303,8 +287,8 @@ async function connectLive(hassUrl) {
           }
           if (err === ERR_INVALID_AUTH) {
             saveTokens(null)
-            state.status = preview ? 'need_url' : 'login'
-            state.lastError = preview ? null : tt('loginInvalid')
+            state.status = 'login'
+            state.lastError = tt('loginInvalid')
             return
           }
           throw err
@@ -357,7 +341,7 @@ async function connectLive(hassUrl) {
       if (state.everConnected || loadTokens()) {
         state.status = 'disconnected'
       } else {
-        state.status = preview ? 'need_url' : 'login'
+        state.status = 'login'
       }
     } finally {
       connectInFlight = null

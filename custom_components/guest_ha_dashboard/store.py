@@ -12,16 +12,25 @@ from .const import DEFAULT_CONFIG, STORAGE_KEY, STORAGE_VERSION
 
 
 def _normalize_pages(data: dict[str, Any]) -> list:
-    """Prefer pages; migrate legacy rooms."""
+    """Prefer pages; migrate legacy rooms. Drop HA Area linkage."""
     pages = data.get("pages")
     if isinstance(pages, list) and pages:
-        return pages
-    rooms = data.get("rooms")
-    if isinstance(rooms, list):
-        return rooms
-    if isinstance(pages, list):
-        return pages
-    return []
+        raw = pages
+    else:
+        rooms = data.get("rooms")
+        if isinstance(rooms, list):
+            raw = rooms
+        elif isinstance(pages, list):
+            raw = pages
+        else:
+            raw = []
+    cleaned = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        page = {k: v for k, v in item.items() if k != "haAreaId"}
+        cleaned.append(page)
+    return cleaned
 
 
 def _normalize_dock(raw_dock: list) -> list:

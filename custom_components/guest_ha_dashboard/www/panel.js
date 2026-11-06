@@ -5,7 +5,7 @@
  * Editing draft config never touches the live preview iframe. Only Save refreshes
  * it (and publishes config to the real guest PWA via HA).
  */
-const PANEL_VERSION = "1.2.9";
+const PANEL_VERSION = "1.3.0";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
 const DOCK_MAX = 4;
@@ -30,8 +30,8 @@ const PANEL_I18N = {
     tabGuest: "Host & Wi-Fi",
     tabStyles: "Styly",
     previewTitle: "Live preview",
-    previewMeta: "Live dashboard · iPhone 12 Pro · refresh po Uložit",
-    previewEmpty: "Nastav <b>URL hostovské PWA</b> v záložce Host &amp; Wi-Fi a Ulož. Pak tu běží live stránka.",
+    previewMeta: "Live stránka · iPhone 12 Pro",
+    previewEmpty: "Nastav <b>URL hostovské PWA</b> v záložce Host &amp; Wi-Fi a Ulož — tady se ukáže ta samá live stránka.",
     guestHint: "Texty, Wi-Fi a URL ostré PWA. Editace nic nemění v preview — až Uložit refreshne live stránku.",
     dashboardUrl: "URL hostovské PWA",
     welcomeTitle: "Uvítací titulek",
@@ -43,19 +43,18 @@ const PANEL_I18N = {
     dashTheme: "Dashboard theme",
     accent: "Accent",
     stylesAfterSave: "Po Uložit se theme i config propsí do ostré PWA a live preview se refreshne.",
-    pagesHint: "<b>Pages:</b> vytvoř stránky (entity, teplota…). V Docku zvolíš, které se zobrazí. Uložit refreshne live preview.",
-    importAreas: "Importovat všechny Areas jako Pages",
+    pagesHint: "<b>Pages:</b> vytvoř si vlastní stránky a nastav entity. V Docku zvolíš, které se zobrazí na tabletu.",
+    addPage: "+ Page",
     clearPages: "Smazat všechny Pages",
-    noAreas: "V HA zatím nemáš Areas (Settings → Areas).",
-    advanced: "Pokročilé — upravit page / entity ručně",
+    pagesEmpty: "Zatím žádné Pages — přidej první tlačítkem + Page.",
     pageName: "Název page",
     pageIcon: "Ikona",
     pageTemp: "Teplota",
     pageHumidity: "Vlhkost",
     devices: "Zařízení",
     addDevice: "+ Zařízení",
-    resyncPage: "Znovu načíst z Area",
     delete: "Smazat",
+    deletePage: "Smazat page",
     dockHint: "Spodní dock = přepínač Pages (max. 4). Klik přepne page. Název je volitelný.",
     dockAdd: "+ Page do docku",
     dockPage: "Page",
@@ -63,10 +62,6 @@ const PANEL_I18N = {
     dockShowLabel: "Zobrazit název",
     dockFull: "Dock je plný (max. 4).",
     dockEmpty: "Zatím žádné Pages v docku — použijí se první 4 Pages.",
-    importedPages: (n) => `Naimportováno ${n} pages`,
-    pageExists: "Page už je v configu",
-    pageAdded: (name) => `Přidáno: ${name}`,
-    pageResynced: "Page znovu načtena z Area",
     devicesCount: (n) => `${n} zařízení`,
     langAuto: "Auto (HA)",
     langCs: "Čeština",
@@ -89,8 +84,8 @@ const PANEL_I18N = {
     tabGuest: "Guest & Wi-Fi",
     tabStyles: "Styles",
     previewTitle: "Live preview",
-    previewMeta: "Live dashboard · iPhone 12 Pro · refresh on Save",
-    previewEmpty: "Set the <b>guest PWA URL</b> in Guest &amp; Wi-Fi and Save. Then the live page runs here.",
+    previewMeta: "Live page · iPhone 12 Pro",
+    previewEmpty: "Set the <b>guest PWA URL</b> in Guest &amp; Wi-Fi and Save — the same live page shows here.",
     guestHint: "Texts, Wi-Fi and the real PWA URL. Editing does nothing to preview — Save refreshes the live page.",
     dashboardUrl: "Guest PWA URL",
     welcomeTitle: "Welcome title",
@@ -102,19 +97,18 @@ const PANEL_I18N = {
     dashTheme: "Dashboard theme",
     accent: "Accent",
     stylesAfterSave: "After Save, theme and config push to the live PWA and the preview refreshes.",
-    pagesHint: "<b>Pages:</b> create pages (entities, sensors…). Dock picks which ones show. Save refreshes live preview.",
-    importAreas: "Import all Areas as Pages",
+    pagesHint: "<b>Pages:</b> create your own pages and pick entities. Dock chooses which ones show on the tablet.",
+    addPage: "+ Page",
     clearPages: "Clear all Pages",
-    noAreas: "No Areas in HA yet (Settings → Areas).",
-    advanced: "Advanced — edit page / entities manually",
+    pagesEmpty: "No Pages yet — add one with + Page.",
     pageName: "Page name",
     pageIcon: "Icon",
     pageTemp: "Temperature",
     pageHumidity: "Humidity",
     devices: "Devices",
     addDevice: "+ Device",
-    resyncPage: "Reload from Area",
     delete: "Delete",
+    deletePage: "Delete page",
     dockHint: "Bottom dock = page switcher (max 4). Tap switches the page. Name is optional.",
     dockAdd: "+ Page to dock",
     dockPage: "Page",
@@ -122,10 +116,6 @@ const PANEL_I18N = {
     dockShowLabel: "Show name",
     dockFull: "Dock is full (max 4).",
     dockEmpty: "No dock pages yet — the first 4 Pages will be used.",
-    importedPages: (n) => `Imported ${n} pages`,
-    pageExists: "Page is already in the config",
-    pageAdded: (name) => `Added: ${name}`,
-    pageResynced: "Page reloaded from Area",
     devicesCount: (n) => `${n} devices`,
     langAuto: "Auto (HA)",
     langCs: "Čeština",
@@ -144,12 +134,6 @@ const ICON_OPTIONS = [
   "Fan", "Flame", "Coffee", "Power", "Sunset", "Sunrise", "Clapperboard",
 ];
 const DEVICE_TYPES = ["light", "switch", "cover", "climate"];
-const AREA_ICON_MAP = {
-  "mdi:sofa": "Sofa", "mdi:couch": "Sofa", "mdi:bed": "BedDouble",
-  "mdi:bed-double": "BedDouble", "mdi:shower": "Bath", "mdi:bathtub": "Bath",
-  "mdi:toilet": "Bath", "mdi:door": "DoorOpen", "mdi:door-open": "DoorOpen",
-  "mdi:home": "Home", "mdi:lamp": "Lamp", "mdi:floor-lamp": "Lamp",
-};
 
 const emptyConfig = () => ({
   guestInfo: {
@@ -171,6 +155,12 @@ function normalizeConfig(cfg = {}) {
   if (Array.isArray(cfg.pages) && cfg.pages.length) pages = cfg.pages;
   else if (Array.isArray(cfg.rooms) && cfg.rooms.length) pages = cfg.rooms;
   else if (Array.isArray(cfg.pages)) pages = cfg.pages;
+  // Pages are free-form cards — drop legacy area linkage
+  pages = pages.map((pg) => {
+    if (!pg || typeof pg !== "object") return pg;
+    const { haAreaId, ...rest } = pg;
+    return rest;
+  });
   const dock = (Array.isArray(cfg.dock) ? cfg.dock : [])
     .filter((d) => d && !d.entityId && !d.entity_id)
     .slice(0, DOCK_MAX)
@@ -208,7 +198,6 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._uiTheme = localStorage.getItem(UI_THEME_KEY) || "auto";
     const storedLang = localStorage.getItem(UI_LANG_KEY);
     this._uiLangPref = storedLang === "en" || storedLang === "cs" ? storedLang : "auto";
-    this._previewPageId = null;
     this._previewKey = 0;
     /** Live iframe src — updates only on load + Save, never while drafting */
     this._livePreviewSrc = "";
@@ -270,29 +259,18 @@ class GuestHaDashboardPanel extends HTMLElement {
   }
   _syncTheme() { this.toggleAttribute("dark", this._isDark()); }
 
-  _dashMode() {
-    return this._config.appearance?.mode === "dark" ? "dark" : "light";
-  }
-
-  _dashAccent() {
-    return this._config.appearance?.accent || "#ff6b00";
-  }
-
   _ensureDock() {
     if (!Array.isArray(this._config.dock)) this._config.dock = [];
     if (this._config.dock.length > DOCK_MAX) this._config.dock = this._config.dock.slice(0, DOCK_MAX);
     return this._config.dock;
   }
 
-  /** Build live PWA URL from a config object (used only on load/Save). */
+  /** Exact guest PWA URL — nothing special, just the live page. */
   _buildPreviewSrc(config) {
     const base = (config?.dashboardUrl || "").trim().replace(/\/$/, "");
     if (!base) return "";
     try {
       const u = new URL(base.includes("://") ? base : `https://${base}`);
-      u.searchParams.set("preview", "1");
-      u.searchParams.set("v", PANEL_VERSION);
-      u.searchParams.set("_r", String(this._previewKey));
       return u.toString();
     } catch {
       return "";
@@ -301,17 +279,6 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _syncLivePreviewSrc(config = this._config) {
     this._livePreviewSrc = this._buildPreviewSrc(config);
-  }
-
-  _activePreviewPage(c = this._config) {
-    const rooms = c.pages || [];
-    if (!rooms.length) return null;
-    let room = rooms.find((r) => r.id === this._previewPageId);
-    if (!room) {
-      room = rooms[this._pageIdx] || rooms[0];
-      this._previewPageId = room?.id || null;
-    }
-    return room || null;
   }
 
   async _load() {
@@ -323,7 +290,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._config = normalizeConfig(cfg);
       this._ensureDock();
       this._error = null;
-      this._previewPageId = this._config.pages?.[0]?.id || null;
+      if (this._pageIdx >= (this._config.pages?.length || 0)) this._pageIdx = 0;
       this._syncLivePreviewSrc(this._config);
     } catch (err) {
       this._error = err?.message || String(err);
@@ -364,93 +331,36 @@ class GuestHaDashboardPanel extends HTMLElement {
   _friendly(id) {
     return this._hass?.states?.[id]?.attributes?.friendly_name || id;
   }
-  _areas() {
-    return Object.values(this._hass?.areas || {}).sort((a, b) =>
-      (a.name || "").localeCompare(b.name || "", "cs"),
-    );
-  }
-  _entitiesInArea(areaId) {
-    const devices = this._hass?.devices || {};
-    const entities = this._hass?.entities || {};
-    const deviceIds = new Set(
-      Object.values(devices).filter((d) => d.area_id === areaId).map((d) => d.id),
-    );
-    return Object.values(entities)
-      .filter((e) => e.area_id === areaId || (e.device_id && deviceIds.has(e.device_id)))
-      .map((e) => e.entity_id).sort();
-  }
-  _mapAreaIcon(mdi) { return AREA_ICON_MAP[mdi] || "Home"; }
-
-  _pageFromArea(area) {
-    const ids = this._entitiesInArea(area.area_id);
-    const devices = [];
-    let temperatureEntity = "";
-    let humidityEntity = "";
-    for (const id of ids) {
-      const domain = id.split(".")[0];
-      const state = this._hass.states?.[id];
-      if (DEVICE_TYPES.includes(domain)) {
-        devices.push({
-          id, type: domain,
-          label: state?.attributes?.friendly_name || id.split(".")[1] || id,
-          supportsBrightness: domain === "light", icon: "Power",
-        });
-      }
-      if (domain === "sensor") {
-        const dc = state?.attributes?.device_class;
-        if (dc === "temperature" && !temperatureEntity) temperatureEntity = id;
-        if (dc === "humidity" && !humidityEntity) humidityEntity = id;
-      }
-    }
-    return {
-      id: area.area_id, label: area.name, icon: this._mapAreaIcon(area.icon),
-      temperatureEntity, humidityEntity, haAreaId: area.area_id, devices,
-    };
-  }
-
-  _importAllAreas() {
-    this._config.pages = this._areas().map((a) => this._pageFromArea(a));
-    this._pageIdx = 0; this._tab = "pages";
-    this._previewPageId = this._config.pages[0]?.id || null;
-    this._info = this._t("importedPages", this._config.pages.length);
-    this._render();
-  }
-  _addPageFromArea(areaId) {
-    const area = this._hass.areas?.[areaId];
-    if (!area) return;
-    if (this._config.pages.some((r) => r.haAreaId === areaId || r.id === areaId)) {
-      this._info = this._t("pageExists"); this._render(); return;
-    }
-    this._config.pages.push(this._pageFromArea(area));
-    this._pageIdx = this._config.pages.length - 1;
-    this._previewPageId = this._config.pages[this._pageIdx]?.id || null;
-    this._info = this._t("pageAdded", area.name); this._render();
-  }
   _addEmptyPage() {
     this._config.pages.push({
-      id: `page_${Date.now()}`, label: "Nova page", icon: "Home",
-      temperatureEntity: "", humidityEntity: "", devices: [],
+      id: `page_${Date.now()}`,
+      label: "Nova page",
+      icon: "Home",
+      temperatureEntity: "",
+      humidityEntity: "",
+      devices: [],
     });
-    this._pageIdx = this._config.pages.length - 1; this._render();
+    this._pageIdx = this._config.pages.length - 1;
+    this._render();
   }
   _removePage(i) {
+    const removed = this._config.pages[i];
     this._config.pages.splice(i, 1);
-    this._pageIdx = Math.max(0, Math.min(this._pageIdx, this._config.pages.length - 1));
-    this._previewPageId = this._config.pages[this._pageIdx]?.id || null;
-    this._render();
-  }
-  _addDevice(room) {
-    room.devices.push({ id: "", type: "light", label: "Zarizeni", supportsBrightness: true, icon: "Power" });
-    this._render();
-  }
-  _entities(domain, areaId = null) {
-    let ids = Object.keys(this._hass?.states || {}).filter((id) => id.startsWith(`${domain}.`)).sort();
-    if (areaId) {
-      const inArea = new Set(this._entitiesInArea(areaId));
-      const filtered = ids.filter((id) => inArea.has(id));
-      if (filtered.length) ids = filtered;
+    // Drop dock entries pointing at deleted page
+    if (removed?.id && Array.isArray(this._config.dock)) {
+      this._config.dock = this._config.dock.filter((d) => d.pageId !== removed.id);
     }
-    return ids;
+    this._pageIdx = Math.max(0, Math.min(this._pageIdx, this._config.pages.length - 1));
+    this._render();
+  }
+  _addDevice(page) {
+    page.devices.push({ id: "", type: "light", label: "Zarizeni", supportsBrightness: true, icon: "Power" });
+    this._render();
+  }
+  _entities(domain) {
+    return Object.keys(this._hass?.states || {})
+      .filter((id) => id.startsWith(`${domain}.`))
+      .sort();
   }
   _on(sel, ev, fn) {
     this.shadowRoot.querySelectorAll(sel).forEach((el) => el.addEventListener(ev, fn));
@@ -591,16 +501,12 @@ class GuestHaDashboardPanel extends HTMLElement {
       .msg.err { background: var(--danger-bg); color: var(--danger-text); }
       .msg.ok { background: var(--ok-bg); color: var(--ok-text); }
       .hint { font-size: 0.85rem; color: var(--muted); margin: 0 0 12px; line-height: 1.4; }
-      .room-pills, .area-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+      .page-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
       .pill {
         padding: 6px 12px; border-radius: 999px; background: var(--btn);
         border: 1px solid var(--border); color: var(--text); font: inherit; cursor: pointer;
       }
       .pill.active { background: var(--accent); color: #fff; border-color: transparent; }
-      .import-box {
-        margin-bottom: 16px; padding: 14px; border-radius: 16px;
-        border: 1px dashed var(--border);
-      }
       h3 { margin: 18px 0 8px; font-size: 1rem; }
       .count { color: var(--muted); font-size: 0.8rem; }
       .preview-head {
@@ -620,40 +526,29 @@ class GuestHaDashboardPanel extends HTMLElement {
         width: 100%; max-width: 420px; min-height: 0; height: 100%;
         justify-content: center;
       }
-      /* iPhone 12 Pro frame around live dashboard iframe */
+      /* iPhone 12 Pro frame around the exact live page URL */
       .phone {
         --iphone-w: ${IPHONE_12_PRO.cssW}px;
         --iphone-h: ${IPHONE_12_PRO.cssH}px;
+        position: relative;
         width: min(var(--iphone-w), 100%);
-        height: auto;
-        max-height: min(var(--iphone-h), calc(100vh - 130px));
         aspect-ratio: ${IPHONE_12_PRO.pxW} / ${IPHONE_12_PRO.pxH};
+        max-height: min(var(--iphone-h), calc(100vh - 130px));
+        height: auto;
         border-radius: 36px; overflow: hidden; flex: 0 1 auto;
         border: 3px solid var(--phone-frame); background: #000;
         box-shadow: 0 20px 50px rgba(0,0,0,0.35);
       }
-      .phone iframe { width: 100%; height: 100%; border: 0; background: #111; display: block; }
+      .phone iframe {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        border: 0; background: #111; display: block;
+      }
       .phone-meta {
         text-align: center; font-size: 0.72rem; color: var(--muted);
         letter-spacing: 0.02em; flex-shrink: 0;
       }
       .preview-empty {
         max-width: 280px; text-align: center; color: var(--muted); font-size: 0.9rem; line-height: 1.45;
-      }
-      .area-check {
-        display: flex; align-items: center; gap: 10px; width: 100%;
-        text-align: left; padding: 10px 12px; border-radius: 14px;
-        border: 1px solid var(--border); background: var(--btn); color: var(--text);
-        font: inherit; cursor: pointer;
-      }
-      .area-check.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
-      .area-check input { width: 16px; height: 16px; accent-color: var(--accent); }
-      .area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
-      details.advanced {
-        margin-top: 14px; border: 1px solid var(--border); border-radius: 16px; padding: 10px 12px;
-      }
-      details.advanced summary {
-        cursor: pointer; font-weight: 650; color: var(--text); list-style: none;
       }
     `;
   }
@@ -703,14 +598,12 @@ class GuestHaDashboardPanel extends HTMLElement {
     const c = this._config;
     if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00" };
     this._ensureDock();
-    const room = c.pages[this._pageIdx];
-    const areaFilter = room?.haAreaId || null;
-    const sensors = this._entities("sensor", areaFilter);
-    const lights = this._entities("light", areaFilter);
-    const switches = this._entities("switch", areaFilter);
-    const covers = this._entities("cover", areaFilter);
-    const climates = this._entities("climate", areaFilter);
-    const areas = this._areas();
+    const page = c.pages[this._pageIdx];
+    const sensors = this._entities("sensor");
+    const lights = this._entities("light");
+    const switches = this._entities("switch");
+    const covers = this._entities("cover");
+    const climates = this._entities("climate");
     const locale = this._uiLang() === "en" ? "en-US" : "cs-CZ";
     const onSettings = this._tab === "ui";
 
@@ -752,7 +645,7 @@ class GuestHaDashboardPanel extends HTMLElement {
             </div>
 
             ${this._tab === "guest" ? this._renderGuest(c) : ""}
-            ${this._tab === "pages" ? this._renderPages(c, room, areas, sensors, lights, switches, covers, climates) : ""}
+            ${this._tab === "pages" ? this._renderPages(c, page, sensors, lights, switches, covers, climates) : ""}
             ${this._tab === "dock" ? this._renderDock(c) : ""}
             ${this._tab === "styles" ? this._renderStyles(c) : ""}
             `}
@@ -978,105 +871,67 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
   }
 
-  _isAreaSelected(areaId) {
-    return this._config.pages.some((r) => r.haAreaId === areaId || r.id === areaId);
-  }
-
-  _toggleArea(areaId, on) {
-    if (on) this._addPageFromArea(areaId);
-    else {
-      const idx = this._config.pages.findIndex((r) => r.haAreaId === areaId || r.id === areaId);
-      if (idx >= 0) this._removePage(idx);
-    }
-  }
-
-  _renderPages(c, room, areas, sensors, lights, switches, covers, climates) {
+  _renderPages(c, page, sensors, lights, switches, covers, climates) {
     return `
       <p class="hint">${this._t("pagesHint")}</p>
       <div class="actions" style="margin-top:0">
-        <button class="btn primary" id="importAreas">${this._t("importAreas")}</button>
-        <button class="btn ghost" id="clearPages">${this._t("clearPages")}</button>
+        <button class="btn primary" id="addPage">${this._t("addPage")}</button>
+        <button class="btn ghost" id="clearPages" ${c.pages.length ? "" : "disabled"}>${this._t("clearPages")}</button>
       </div>
-      <div class="area-grid" style="margin-top:12px">
-        ${areas.length ? areas.map((a) => {
-          const on = this._isAreaSelected(a.area_id);
-          const count = this._pageFromArea(a).devices.length;
-          return `<button type="button" class="area-check ${on ? "on" : ""}" data-toggle-area="${this._escape(a.area_id)}" data-on="${on ? "1" : "0"}">
-            <input type="checkbox" ${on ? "checked" : ""} tabindex="-1" />
-            <span><b>${this._escape(a.name)}</b><br/><span class="count">${this._t("devicesCount", count)}</span></span>
-          </button>`;
-        }).join("") : `<p class="hint">${this._t("noAreas")}</p>`}
-      </div>
-
-      ${c.pages.length ? `
-        <details class="advanced">
-          <summary>${this._t("advanced")}</summary>
-          <div class="room-pills" style="margin-top:10px">
-            ${c.pages.map((r, i) => `<button class="pill ${i === this._pageIdx ? "active" : ""}" data-page="${i}">${this._escape(r.label || r.id)} <span class="count">(${(r.devices || []).length})</span></button>`).join("")}
+      ${!c.pages.length ? `<p class="hint" style="margin-top:14px">${this._t("pagesEmpty")}</p>` : `
+        <div class="page-pills" style="margin-top:14px">
+          ${c.pages.map((r, i) => `<button class="pill ${i === this._pageIdx ? "active" : ""}" data-page="${i}">${this._escape(r.label || r.id)} <span class="count">(${(r.devices || []).length})</span></button>`).join("")}
+        </div>
+        ${!page ? "" : `
+          <div class="row"><label>${this._t("pageName")}</label><input id="pageLabel" value="${this._escape(page.label || "")}" /></div>
+          <div class="row"><label>${this._t("pageIcon")}</label>
+            <select id="pageIcon">${ICON_OPTIONS.map((i) => `<option ${page.icon === i ? "selected" : ""}>${i}</option>`).join("")}</select></div>
+          <div class="row"><label>${this._t("pageTemp")}</label>
+            <select id="pageTemp"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${page.temperatureEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
+          <div class="row"><label>${this._t("pageHumidity")}</label>
+            <select id="pageHum"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${page.humidityEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
+          <h3>${this._t("devices")}</h3>
+          <div class="card-list">
+            ${(page.devices || []).map((d, di) => {
+              const pool = d.type === "light" ? lights : d.type === "switch" ? switches : d.type === "cover" ? covers : climates;
+              return `<div class="device" data-di="${di}"><div class="device-grid">
+                <input data-k="label" value="${this._escape(d.label || "")}" placeholder="Label" />
+                <select data-k="type">${DEVICE_TYPES.map((t) => `<option value="${t}" ${d.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+                <select data-k="id"><option value="">- entity -</option>${pool.map((e) => `<option value="${e}" ${d.id === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}</select>
+                <button class="btn danger" data-remove-device="${di}">${this._t("delete")}</button>
+              </div></div>`;
+            }).join("")}
           </div>
-          ${!room ? "" : `
-            <div class="row"><label>${this._t("pageName")}</label><input id="pageLabel" value="${this._escape(room.label || "")}" /></div>
-            <div class="row"><label>${this._t("pageIcon")}</label>
-              <select id="pageIcon">${ICON_OPTIONS.map((i) => `<option ${room.icon === i ? "selected" : ""}>${i}</option>`).join("")}</select></div>
-            <div class="row"><label>${this._t("pageTemp")}</label>
-              <select id="pageTemp"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.temperatureEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
-            <div class="row"><label>${this._t("pageHumidity")}</label>
-              <select id="pageHum"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.humidityEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
-            <h3>${this._t("devices")}</h3>
-            <div class="card-list">
-              ${(room.devices || []).map((d, di) => {
-                const pool = d.type === "light" ? lights : d.type === "switch" ? switches : d.type === "cover" ? covers : climates;
-                return `<div class="device" data-di="${di}"><div class="device-grid">
-                  <input data-k="label" value="${this._escape(d.label || "")}" placeholder="Label" />
-                  <select data-k="type">${DEVICE_TYPES.map((t) => `<option value="${t}" ${d.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
-                  <select data-k="id"><option value="">- entity -</option>${pool.map((e) => `<option value="${e}" ${d.id === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}</select>
-                  <button class="btn danger" data-remove-device="${di}">${this._t("delete")}</button>
-                </div></div>`;
-              }).join("")}
-            </div>
-            <div class="actions">
-              <button class="btn" id="addDevice">${this._t("addDevice")}</button>
-              <button class="btn ghost" id="resyncPage">${this._t("resyncPage")}</button>
-            </div>`}
-        </details>` : ""}
+          <div class="actions">
+            <button class="btn" id="addDevice">${this._t("addDevice")}</button>
+            <button class="btn danger" id="deletePage">${this._t("deletePage")}</button>
+          </div>`}
+      `}
     `;
   }
 
   _bindPages() {
-    this._on("[data-toggle-area]", "click", (e) => {
-      const id = e.currentTarget.dataset.toggleArea;
-      const on = e.currentTarget.dataset.on === "1";
-      this._toggleArea(id, !on);
-    });
-    this.shadowRoot.getElementById("importAreas")?.addEventListener("click", () => this._importAllAreas());
+    this.shadowRoot.getElementById("addPage")?.addEventListener("click", () => this._addEmptyPage());
     this.shadowRoot.getElementById("clearPages")?.addEventListener("click", () => {
       this._config.pages = [];
+      this._config.dock = [];
       this._pageIdx = 0;
-      this._previewPageId = null;
       this._render();
     });
     this._on(".pill[data-page]", "click", (e) => {
       this._pageIdx = Number(e.currentTarget.dataset.page);
-      this._previewPageId = this._config.pages[this._pageIdx]?.id || null;
       this._render();
     });
     this.shadowRoot.getElementById("addDevice")?.addEventListener("click", () => {
-      const room = this._config.pages[this._pageIdx];
-      if (room) this._addDevice(room);
+      const page = this._config.pages[this._pageIdx];
+      if (page) this._addDevice(page);
     });
-    this.shadowRoot.getElementById("resyncPage")?.addEventListener("click", () => {
-      const room = this._config.pages[this._pageIdx];
-      const areaId = room?.haAreaId || room?.id;
-      const area = this._hass.areas?.[areaId];
-      if (!area || !room) return;
-      const fresh = this._pageFromArea(area);
-      this._config.pages[this._pageIdx] = { ...fresh, label: room.label || fresh.label };
-      this._info = this._t("pageResynced");
-      this._render();
+    this.shadowRoot.getElementById("deletePage")?.addEventListener("click", () => {
+      this._removePage(this._pageIdx);
     });
 
-    const room = this._config.pages[this._pageIdx];
-    if (!room) return;
+    const page = this._config.pages[this._pageIdx];
+    if (!page) return;
     const bind = (id, fn) => {
       const el = this.shadowRoot.getElementById(id);
       if (!el) return;
@@ -1085,12 +940,13 @@ class GuestHaDashboardPanel extends HTMLElement {
         el.addEventListener("input", () => { fn(el.value); });
       }
     };
-    bind("pageLabel", (v) => (room.label = v));
-    bind("pageIcon", (v) => (room.icon = v));
-    bind("pageTemp", (v) => (room.temperatureEntity = v));
-    bind("pageHum", (v) => (room.humidityEntity = v));
+    bind("pageLabel", (v) => (page.label = v));
+    bind("pageIcon", (v) => (page.icon = v));
+    bind("pageTemp", (v) => (page.temperatureEntity = v));
+    bind("pageHum", (v) => (page.humidityEntity = v));
     this.shadowRoot.querySelectorAll(".device").forEach((card) => {
-      const device = room.devices[Number(card.dataset.di)];
+      const device = page.devices[Number(card.dataset.di)];
+      if (!device) return;
       card.querySelectorAll("[data-k]").forEach((el) => {
         el.addEventListener("change", () => {
           const key = el.dataset.k;
@@ -1105,7 +961,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       });
     });
     this._on("[data-remove-device]", "click", (e) => {
-      room.devices.splice(Number(e.currentTarget.dataset.removeDevice), 1);
+      page.devices.splice(Number(e.currentTarget.dataset.removeDevice), 1);
       this._render();
     });
   }

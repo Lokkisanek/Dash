@@ -2,7 +2,6 @@
 export const messages = {
   cs: {
     connecting: 'Připojuji k Home Assistant…',
-    previewLoginHint: 'Nejdřív se přihlas v hlavním okně tabletu / PWA, pak preview ožije.',
     controllerSuffix: 'Controller',
     loginTitle: 'Přihlášení přes Home Assistant',
     loginLead: 'Zadej URL své HA instance. Otevře se normální přihlášení Home Assistantu.',
@@ -41,7 +40,6 @@ export const messages = {
   },
   en: {
     connecting: 'Connecting to Home Assistant…',
-    previewLoginHint: 'Sign in from the main tablet / PWA window first, then the preview will come alive.',
     controllerSuffix: 'Controller',
     loginTitle: 'Sign in with Home Assistant',
     loginLead: 'Enter your HA instance URL. The normal Home Assistant login will open.',
