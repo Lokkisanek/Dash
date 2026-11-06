@@ -3,6 +3,7 @@ import { ref, watch, onMounted, nextTick } from 'vue'
 import { X, Copy, Check, Wifi } from 'lucide-vue-next'
 import QRCode from 'qrcode'
 import { playTick } from '@/composables/useSound'
+import { useI18n } from '@/composables/useI18n'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -12,6 +13,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
+const { t } = useI18n()
 
 const dialogEl = ref(null)
 const qrDataUrl = ref('')
@@ -81,7 +83,7 @@ onMounted(() => {
       <button
         type="button"
         class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"
-        aria-label="Zavřít"
+        :aria-label="t('close')"
         @click="close"
       >
         <X :size="18" />
@@ -92,8 +94,8 @@ onMounted(() => {
           <Wifi :size="20" />
         </div>
         <div>
-          <h3 class="font-bold text-lg">Wi-Fi pro hosty</h3>
-          <p class="text-sm text-base-content/50">Naskenujte nebo zkopírujte heslo</p>
+          <h3 class="font-bold text-lg">{{ t('wifiTitle') }}</h3>
+          <p class="text-sm text-base-content/50">{{ t('wifiHint') }}</p>
         </div>
       </div>
 
@@ -102,7 +104,7 @@ onMounted(() => {
           <img
             v-if="qrDataUrl"
             :src="qrDataUrl"
-            alt="Wi-Fi QR kód"
+            :alt="t('wifi')"
             class="w-[200px] h-[200px]"
             draggable="false"
           />
@@ -111,19 +113,19 @@ onMounted(() => {
 
       <div class="space-y-3">
         <div class="rounded-box bg-base-200 px-4 py-3">
-          <p class="text-[11px] uppercase tracking-wider text-base-content/40 mb-0.5">Síť</p>
+          <p class="text-[11px] uppercase tracking-wider text-base-content/40 mb-0.5">{{ t('wifiNetwork') }}</p>
           <p class="text-base font-medium">{{ ssid }}</p>
         </div>
 
         <div class="rounded-box bg-base-200 px-4 py-3 flex items-center justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-[11px] uppercase tracking-wider text-base-content/40 mb-0.5">Heslo</p>
+            <p class="text-[11px] uppercase tracking-wider text-base-content/40 mb-0.5">{{ t('wifiPassword') }}</p>
             <p class="text-base font-medium font-mono tracking-wide truncate">{{ password }}</p>
           </div>
           <button type="button" class="btn btn-sm gap-1.5 shrink-0" @click="copyPassword">
             <Check v-if="copied" :size="16" class="text-success" />
             <Copy v-else :size="16" />
-            {{ copied ? 'Zkopírováno' : 'Kopírovat' }}
+            {{ copied ? t('copied') : t('copy') }}
           </button>
         </div>
       </div>

@@ -20,6 +20,7 @@ export const guestDashboard = {
   appearance: {
     mode: 'light', // light | dark
     accent: '#ff6b00',
+    language: 'cs', // cs | en
   },
 
   /** Quick-action scene pills shown above the room grid */

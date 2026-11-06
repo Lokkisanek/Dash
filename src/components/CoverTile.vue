@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Blinds, ChevronUp, ChevronDown, Square } from 'lucide-vue-next'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
+import { useI18n } from '@/composables/useI18n'
 import { unlockAudio } from '@/composables/useSound'
 
 const props = defineProps({
@@ -10,15 +11,16 @@ const props = defineProps({
 })
 
 const { getEntityState, setCover } = useHomeAssistant()
+const { t } = useI18n()
 
 const entity = computed(() => getEntityState(props.entityId))
 const position = computed(() => entity.value?.attributes?.current_position ?? null)
 const statusLabel = computed(() => {
   const s = entity.value?.state
-  if (s === 'open') return 'Otevřeno'
-  if (s === 'closed') return 'Zavřeno'
-  if (s === 'opening') return 'Otevírá se…'
-  if (s === 'closing') return 'Zavírá se…'
+  if (s === 'open') return t('coverOpen')
+  if (s === 'closed') return t('coverClosed')
+  if (s === 'opening') return t('coverOpening')
+  if (s === 'closing') return t('coverClosing')
   return s || '—'
 })
 
@@ -48,7 +50,7 @@ async function action(kind) {
           <button
             type="button"
             class="btn btn-sm join-item flex-1 bg-base-200 border-0"
-            aria-label="Nahoru"
+            :aria-label="t('coverUp')"
             @click="action('open')"
           >
             <ChevronUp :size="16" />
@@ -56,7 +58,7 @@ async function action(kind) {
           <button
             type="button"
             class="btn btn-sm join-item flex-1 bg-base-200 border-0"
-            aria-label="Stop"
+            :aria-label="t('coverStop')"
             @click="action('stop')"
           >
             <Square :size="12" fill="currentColor" />
@@ -64,7 +66,7 @@ async function action(kind) {
           <button
             type="button"
             class="btn btn-sm join-item flex-1 bg-base-200 border-0"
-            aria-label="Dolů"
+            :aria-label="t('coverDown')"
             @click="action('close')"
           >
             <ChevronDown :size="16" />

@@ -1,8 +1,10 @@
 <script setup>
 import { ref } from 'vue'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
+import { useI18n } from '@/composables/useI18n'
 
 const { status, lastError, hassUrl, loginWithHassUrl, startMockMode } = useHomeAssistant()
+const { t } = useI18n()
 
 const url = ref(hassUrl.value || 'https://')
 const busy = ref(false)
@@ -21,9 +23,9 @@ async function submit() {
   <div class="login-shell">
     <div class="login-card">
       <p class="eyebrow">Guest Home Controller</p>
-      <h1>Přihlášení přes Home Assistant</h1>
+      <h1>{{ t('loginTitle') }}</h1>
       <p class="lead">
-        Zadej URL své HA instance. Otevře se normální přihlášení Home Assistantu.
+        {{ t('loginLead') }}
       </p>
 
       <label class="field">
@@ -39,14 +41,14 @@ async function submit() {
       </label>
 
       <p v-if="lastError" class="error">{{ lastError }}</p>
-      <p v-if="status === 'connecting'" class="hint">Připojuji…</p>
+      <p v-if="status === 'connecting'" class="hint">{{ t('loginConnecting') }}</p>
 
       <button type="button" class="btn-primary" :disabled="busy || status === 'connecting'" @click="submit">
-        Pokračovat do HA
+        {{ t('loginContinue') }}
       </button>
 
       <button type="button" class="btn-ghost" @click="startMockMode">
-        Pokračovat v demo (mock)
+        {{ t('loginMock') }}
       </button>
     </div>
   </div>

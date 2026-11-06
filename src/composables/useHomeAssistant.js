@@ -15,6 +15,12 @@ import {
   getGuestConfig,
 } from './useGuestConfig'
 import { playTick } from './useSound'
+import { translate, normalizeLang } from '@/i18n/messages'
+
+function tt(key) {
+  const lang = normalizeLang(getGuestConfig()?.appearance?.language)
+  return translate(lang, key)
+}
 
 /** @typedef {'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'mock' | 'need_url' | 'login'} HaStatus */
 
@@ -309,7 +315,7 @@ async function connectLive(hassUrl) {
           if (err === ERR_INVALID_AUTH) {
             saveTokens(null)
             state.status = preview ? 'need_url' : 'login'
-            state.lastError = preview ? null : 'Neplatné přihlášení — zkus to znovu'
+            state.lastError = preview ? null : tt('loginInvalid')
             return
           }
           throw err
@@ -347,7 +353,7 @@ async function connectLive(hassUrl) {
         if (ev === ERR_INVALID_AUTH || ev?.detail === ERR_INVALID_AUTH) {
           saveTokens(null)
           state.status = 'login'
-          state.lastError = 'Session vypršela — přihlas se znovu'
+          state.lastError = tt('sessionExpired')
           return
         }
         state.status = 'disconnected'
@@ -375,7 +381,7 @@ async function connectLive(hassUrl) {
 export async function loginWithHassUrl(hassUrl) {
   const cleaned = hassUrl.trim().replace(/\/$/, '')
   if (!cleaned) {
-    state.lastError = 'Zadej URL Home Assistantu'
+    state.lastError = tt('loginNeedUrl')
     return
   }
   state.hassUrl = cleaned

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Wifi } from 'lucide-vue-next'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
 import { useGuestConfig } from '@/composables/useGuestConfig'
+import { useI18n } from '@/composables/useI18n'
 import { playTick } from '@/composables/useSound'
 import WifiModal from './WifiModal.vue'
 
@@ -13,6 +14,7 @@ const props = defineProps({
 
 const { status, getEntityState } = useHomeAssistant()
 const { guestInfo } = useGuestConfig()
+const { t, locale } = useI18n()
 const wifiOpen = ref(false)
 
 const now = ref(new Date())
@@ -29,11 +31,11 @@ onUnmounted(() => {
 })
 
 const timeStr = computed(() =>
-  now.value.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }),
+  now.value.toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' }),
 )
 
 const dateStr = computed(() =>
-  now.value.toLocaleDateString('cs-CZ', {
+  now.value.toLocaleDateString(locale.value, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -56,10 +58,10 @@ const humidity = computed(() => {
 
 const statusMeta = computed(() => {
   const s = status.value
-  if (s === 'connected') return { color: 'status-success', label: 'Live', badge: 'badge-success' }
-  if (s === 'mock') return { color: 'status-warning', label: 'Mock', badge: 'badge-warning' }
+  if (s === 'connected') return { color: 'status-success', label: t('live'), badge: 'badge-success' }
+  if (s === 'mock') return { color: 'status-warning', label: t('mock'), badge: 'badge-warning' }
   if (s === 'connecting') return { color: 'status-info', label: '…', badge: 'badge-info' }
-  return { color: 'status-error', label: 'Offline', badge: 'badge-error' }
+  return { color: 'status-error', label: t('offline'), badge: 'badge-error' }
 })
 
 function openWifi() {
@@ -90,7 +92,7 @@ function openWifi() {
     <div class="navbar-end shrink-0">
       <button type="button" class="btn btn-sm gap-2 shadow-none bg-base-100 border-0" @click="openWifi">
         <Wifi :size="16" class="text-primary" />
-        Wi-Fi
+        {{ t('wifi') }}
       </button>
     </div>
 

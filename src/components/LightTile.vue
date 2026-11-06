@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Lightbulb } from 'lucide-vue-next'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
+import { useI18n } from '@/composables/useI18n'
 import { unlockAudio } from '@/composables/useSound'
 
 const props = defineProps({
@@ -11,6 +12,7 @@ const props = defineProps({
 })
 
 const { getEntityState, toggleLight, setLightBrightness } = useHomeAssistant()
+const { t } = useI18n()
 
 const dragging = ref(false)
 const localPct = ref(null)
@@ -67,14 +69,14 @@ function onRangeEnd() {
           class="badge badge-soft badge-sm tabular-nums"
           :class="isOn ? 'badge-primary' : 'badge-ghost'"
         >
-          {{ isOn ? `${displayPct}%` : 'Vyp' }}
+          {{ isOn ? `${displayPct}%` : t('offShort') }}
         </span>
       </div>
 
       <div>
         <h3 class="card-title text-[15px] font-semibold tracking-tight">{{ label }}</h3>
         <p class="text-xs" :class="isOn ? 'text-primary' : 'text-base-content/40'">
-          {{ isOn ? 'Zapnuto' : 'Vypnuto' }}
+          {{ isOn ? t('on') : t('off') }}
         </p>
       </div>
 
@@ -85,7 +87,7 @@ function onRangeEnd() {
         max="100"
         :value="displayPct || 1"
         class="range range-xs range-primary w-full"
-        :aria-label="`Jas ${label}`"
+        :aria-label="`${t('brightness')} ${label}`"
         @click.stop
         @pointerdown.stop
         @input.stop="onRangeInput"

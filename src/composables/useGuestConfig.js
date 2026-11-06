@@ -32,12 +32,16 @@ export function useGuestConfig() {
     appearance: computed(() => ({
       mode: 'light',
       accent: '#ff6b00',
+      language: 'cs',
       ...(state.config.appearance || {}),
     })),
+    // Saved HA config wins — draft panel edits must not leak via ?theme= before Save
     themeMode: computed(() => {
+      if (state.config.appearance?.mode === 'dark') return 'dark'
+      if (state.config.appearance?.mode === 'light') return 'light'
       const urlTheme = readUrlTheme()
       if (urlTheme) return urlTheme
-      return state.config.appearance?.mode === 'dark' ? 'dark' : 'light'
+      return 'light'
     }),
   }
 }

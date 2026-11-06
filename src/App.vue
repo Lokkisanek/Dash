@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
 import { useGuestConfig } from '@/composables/useGuestConfig'
+import { useI18n } from '@/composables/useI18n'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { unlockAudio } from '@/composables/useSound'
 
@@ -16,6 +17,7 @@ import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
 
 const { status } = useHomeAssistant()
 const { guestInfo, rooms, appearance, themeMode } = useGuestConfig()
+const { t } = useI18n()
 useWakeLock()
 
 const activeRoomId = ref(rooms.value[0]?.id)
@@ -83,7 +85,7 @@ onMounted(() => {
     v-if="isPreview && showLogin"
     class="dashboard-shell grid place-items-center h-full text-base-content/60 text-sm p-6 text-center"
   >
-    Nejdřív se přihlas v hlavním okně tabletu / PWA, pak preview ožije.
+    {{ t('previewLoginHint') }}
   </div>
 
   <HaLogin v-else-if="showLogin" />
@@ -92,7 +94,7 @@ onMounted(() => {
     v-else-if="showBootSplash"
     class="dashboard-shell grid place-items-center h-full text-base-content/50 text-sm"
   >
-    Připojuji k Home Assistant…
+    {{ t('connecting') }}
   </div>
 
   <div
@@ -114,7 +116,7 @@ onMounted(() => {
 
       <h1 class="text-2xl leading-tight tracking-tight mb-3">
         Smart <span class="font-bold">Guest Home</span>
-        <span class="font-normal text-base-content/50"> Controller</span>
+        <span class="font-normal text-base-content/50"> {{ t('controllerSuffix') }}</span>
       </h1>
 
       <TopStatusBar

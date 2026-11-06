@@ -50,6 +50,9 @@ class GuestDashboardStore:
                 "mode": appearance.get("mode")
                 if appearance.get("mode") in ("light", "dark")
                 else DEFAULT_CONFIG["appearance"]["mode"],
+                "language": appearance.get("language")
+                if appearance.get("language") in ("cs", "en")
+                else DEFAULT_CONFIG["appearance"]["language"],
             },
         }
         self._data = cleaned

@@ -1,7 +1,7 @@
 """Constants for Guest HA Dashboard."""
 
 DOMAIN = "guest_ha_dashboard"
-VERSION = "1.2.3"
+VERSION = "1.2.4"
 STORAGE_KEY = f"{DOMAIN}.config"
 STORAGE_VERSION = 1
 
@@ -24,5 +24,6 @@ DEFAULT_CONFIG: dict = {
     "appearance": {
         "mode": "light",  # light | dark
         "accent": "#ff6b00",
+        "language": "cs",  # cs | en
     },
 }

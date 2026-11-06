@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Guest HA Dashboard",
+        "description": "Přidá panel v postranní liště, kde nastavíš místnosti, zařízení, scény a Wi‑Fi pro hostovskou PWA."
+      }
+    },
+    "abort": {
+      "already_configured": "Guest HA Dashboard je už nastavený."
+    }
+  }
+}

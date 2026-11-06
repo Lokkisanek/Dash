@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Minus, Plus, Thermometer } from 'lucide-vue-next'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
+import { useI18n } from '@/composables/useI18n'
 import { unlockAudio } from '@/composables/useSound'
 
 const props = defineProps({
@@ -10,6 +11,7 @@ const props = defineProps({
 })
 
 const { getEntityState, setClimateTemp } = useHomeAssistant()
+const { t } = useI18n()
 
 const entity = computed(() => getEntityState(props.entityId))
 
@@ -46,7 +48,7 @@ async function adjust(delta) {
             {{ target.toFixed(1) }}°
           </p>
           <p v-if="current != null" class="text-xs text-base-content/40 mt-1 tabular-nums">
-            teď {{ current.toFixed(1) }}°
+            {{ t('climateNow') }} {{ current.toFixed(1) }}°
           </p>
         </div>
       </div>
@@ -57,7 +59,7 @@ async function adjust(delta) {
           <button
             type="button"
             class="btn btn-sm join-item flex-1 bg-base-200 border-0"
-            aria-label="Snížit teplotu"
+            :aria-label="t('climateDown')"
             @click="adjust(-0.5)"
           >
             <Minus :size="16" />
@@ -65,7 +67,7 @@ async function adjust(delta) {
           <button
             type="button"
             class="btn btn-sm join-item flex-1 bg-base-200 border-0"
-            aria-label="Zvýšit teplotu"
+            :aria-label="t('climateUp')"
             @click="adjust(0.5)"
           >
             <Plus :size="16" />

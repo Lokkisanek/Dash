@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
+import { useI18n } from '@/composables/useI18n'
 import { unlockAudio } from '@/composables/useSound'
 import { resolveIcon } from '@/lib/icons'
 
@@ -11,6 +12,7 @@ const props = defineProps({
 })
 
 const { getEntityState, toggleSwitch } = useHomeAssistant()
+const { t } = useI18n()
 
 const entity = computed(() => getEntityState(props.entityId))
 const isOn = computed(() => entity.value?.state === 'on')
@@ -38,14 +40,14 @@ async function onToggle() {
           <component :is="Icon" :size="18" />
         </div>
         <span class="badge badge-soft badge-sm" :class="isOn ? 'badge-info' : 'badge-ghost'">
-          {{ isOn ? 'Zap' : 'Vyp' }}
+          {{ isOn ? t('onShort') : t('offShort') }}
         </span>
       </div>
 
       <div>
         <h3 class="card-title text-[15px] font-semibold tracking-tight">{{ label }}</h3>
         <p class="text-xs" :class="isOn ? 'text-info' : 'text-base-content/40'">
-          {{ isOn ? 'Zapnuto' : 'Vypnuto' }}
+          {{ isOn ? t('on') : t('off') }}
         </p>
       </div>
     </div>
