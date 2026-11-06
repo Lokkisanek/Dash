@@ -5,6 +5,8 @@
  * Home Assistant (Zigbee2MQTT naming conventions work great).
  *
  * Device types: light | switch | cover | climate | media_player
+ * Grid: 4 square columns; `style` + `size` ("<cols>x<rows>") per device,
+ * see src/lib/tileStyles.js for the allowed combinations.
  * ─────────────────────────────────────────────────────────────
  */
 
@@ -15,8 +17,13 @@ export const guestDashboard = {
     wifiSecurity: 'WPA',
   },
 
-  /** Top status bar */
   general: {
+    /** Whole top status bar */
+    showTopBar: true,
+    /** "Good evening, <HA user>" + outside weather */
+    showWelcome: true,
+    /** '' = first weather.* entity, else Open-Meteo at the HA home location */
+    weatherEntity: '',
     showTime: true,
     use24h: true,
     showDate: true,
@@ -30,7 +37,7 @@ export const guestDashboard = {
     accent: '#ff6b00',
   },
 
-  /** Bottom dock — max 4 page shortcuts. Empty = first 4 pages. */
+  /** Bottom dock — max 6 page shortcuts. Empty = first 6 pages. */
   dock: [],
 
   pages: [
@@ -38,45 +45,68 @@ export const guestDashboard = {
       id: 'obyvak',
       label: 'Obývák',
       icon: 'Sofa',
-      temperatureEntity: 'sensor.obyvak_teplota',
-      humidityEntity: 'sensor.obyvak_vlhkost',
       devices: [
         {
           id: 'light.obyvak_strop',
           type: 'light',
           label: 'Strop',
+          style: 'slider',
+          size: '4x1',
           supportsBrightness: true,
-          supportsColorTemp: true,
         },
         {
           id: 'light.obyvak_lampa',
           type: 'light',
-          label: 'Stojací lampa',
+          label: 'Lampa',
+          icon: 'LampFloor',
+          style: 'vertical',
+          size: '1x2',
           supportsBrightness: true,
-          supportsColorTemp: true,
         },
         {
           id: 'light.obyvak_led_pas',
           type: 'light',
           label: 'LED pás',
-          supportsBrightness: true,
-          supportsColorTemp: false,
-        },
-        {
-          id: 'switch.obyvak_tv',
-          type: 'switch',
-          label: 'TV zásuvka',
-          icon: 'Tv',
+          icon: 'Sparkles',
+          style: 'button',
+          size: '1x1',
         },
         {
           id: 'cover.obyvak_zaluzie',
           type: 'cover',
           label: 'Žaluzie',
+          style: 'vertical',
+          size: '1x2',
+        },
+        {
+          id: 'switch.kava',
+          type: 'switch',
+          label: 'Kávovar',
+          icon: 'Coffee',
+          style: 'button',
+          size: '1x1',
+        },
+        {
+          id: 'media_player.obyvak',
+          type: 'media_player',
+          label: 'Reproduktor',
+          style: 'tile',
+          size: '4x2',
         },
         {
           id: 'climate.obyvak',
           type: 'climate',
           label: 'Topení',
+          style: 'dial',
+          size: '4x3',
+        },
+        {
+          id: 'switch.obyvak_tv',
+          type: 'switch',
+          label: 'TV',
+          icon: 'Tv',
+          style: 'row',
+          size: '4x1',
         },
       ],
     },

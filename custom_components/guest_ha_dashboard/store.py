@@ -8,14 +8,25 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import DEFAULT_CONFIG, DEFAULT_GENERAL, PAGES_MAX, STORAGE_KEY, STORAGE_VERSION
+from .const import (
+    DEFAULT_CONFIG,
+    DEFAULT_GENERAL,
+    DOCK_MAX,
+    PAGES_MAX,
+    STORAGE_KEY,
+    STORAGE_VERSION,
+)
 
 GUEST_INFO_KEYS = ("wifiSsid", "wifiPassword", "wifiSecurity")
 
 
 def _normalize_general(raw: Any) -> dict:
     src = raw if isinstance(raw, dict) else {}
-    return {key: bool(src.get(key, default)) for key, default in DEFAULT_GENERAL.items()}
+    out = {}
+    for key, default in DEFAULT_GENERAL.items():
+        value = src.get(key, default)
+        out[key] = str(value or "") if isinstance(default, str) else bool(value)
+    return out
 
 
 def _normalize_guest_info(raw: Any) -> dict:
@@ -48,7 +59,7 @@ def _normalize_pages(data: dict[str, Any]) -> list:
 
 def _normalize_dock(raw_dock: list) -> list:
     dock = []
-    for item in raw_dock[:4]:
+    for item in raw_dock[:DOCK_MAX]:
         if not isinstance(item, dict):
             continue
         if item.get("entityId") or item.get("entity_id"):

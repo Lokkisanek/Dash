@@ -121,11 +121,18 @@
   }
 }
 
+:root {
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--frame-safe-top, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--frame-safe-right, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--frame-safe-bottom, 0px));
+  --safe-left: max(env(safe-area-inset-left, 0px), var(--frame-safe-left, 0px));
+}
+
 @utility safe-pad {
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
 }
 
 @utility no-scrollbar {

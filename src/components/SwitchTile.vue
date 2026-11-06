@@ -27,7 +27,7 @@ async function onToggle() {
 <template>
   <button
     type="button"
-    class="card bg-base-100 shadow-none min-h-[156px] w-full text-left select-none active:scale-[0.98] transition-transform duration-150"
+    class="card bg-base-100 shadow-none h-full w-full text-left select-none active:scale-[0.98] transition-transform duration-150"
     :class="isOn ? 'ring-1 ring-info/30' : ''"
     @click="onToggle"
   >

@@ -53,7 +53,7 @@ function onRangeEnd() {
 
 <template>
   <div
-    class="card bg-base-100 shadow-none min-h-[156px] select-none active:scale-[0.98] transition-transform duration-150"
+    class="card bg-base-100 shadow-none h-full select-none active:scale-[0.98] transition-transform duration-150"
     :class="isOn ? 'ring-1 ring-primary/25' : ''"
     @click="onToggle"
   >

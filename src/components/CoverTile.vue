@@ -31,7 +31,7 @@ async function action(kind) {
 </script>
 
 <template>
-  <div class="card bg-base-100 shadow-none min-h-[156px] select-none">
+  <div class="card bg-base-100 shadow-none h-full select-none">
     <div class="card-body p-4 gap-2 justify-between">
       <div class="flex items-start justify-between">
         <div class="btn btn-circle btn-sm pointer-events-none border-0 bg-base-200 text-base-content/50">

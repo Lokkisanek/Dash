@@ -24,11 +24,13 @@ function normalizePages(config) {
   return []
 }
 
+export const DOCK_MAX = 6
+
 function normalizeDock(config) {
   if (!Array.isArray(config?.dock)) return []
   return config.dock
     .filter((d) => d && !d.entityId && !d.entity_id)
-    .slice(0, 4)
+    .slice(0, DOCK_MAX)
     .map((d) => ({
       pageId: d.pageId || d.page_id || d.roomId || d.room_id || '',
       label: d.label || '',
@@ -52,7 +54,7 @@ export function useGuestConfig() {
     /** @deprecated alias — use pages */
     rooms: computed(() => state.config.pages || []),
     pages: computed(() => state.config.pages || []),
-    dock: computed(() => (Array.isArray(state.config.dock) ? state.config.dock.slice(0, 4) : [])),
+    dock: computed(() => (Array.isArray(state.config.dock) ? state.config.dock.slice(0, DOCK_MAX) : [])),
     appearance: computed(() => ({
       mode: 'light',
       accent: '#ff6b00',

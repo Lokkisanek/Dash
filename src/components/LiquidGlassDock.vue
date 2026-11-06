@@ -18,8 +18,15 @@ let glass = null
 
 const DOCK_H = 88
 const DOCK_R = 44
+const DOCK_MAX = 6
 
-const visibleItems = computed(() => (props.items || []).filter((i) => i?.id).slice(0, 4))
+const visibleItems = computed(() => (props.items || []).filter((i) => i?.id).slice(0, DOCK_MAX))
+const dockWidth = ref(360)
+
+function computeDockWidth() {
+  const n = Math.max(1, visibleItems.value.length)
+  return Math.min(window.innerWidth - 40, Math.max(280, n * 86 + 16))
+}
 
 function itemIcon(item) {
   return resolveIcon(item.icon || 'Home', 'Home')
@@ -41,15 +48,15 @@ function mountGlass() {
   const defsHost = svgRef.value?.querySelector('defs')
   if (!glassEl || !defsHost || !visibleItems.value.length) return
 
-  const dockWidth = Math.min(360, Math.max(280, window.innerWidth - 40))
-  glassEl.style.width = `${dockWidth}px`
+  dockWidth.value = computeDockWidth()
+  glassEl.style.width = `${dockWidth.value}px`
   glassEl.style.height = `${DOCK_H}px`
   glassEl.style.borderRadius = `${DOCK_R}px`
 
   try {
     glass = mountSvgLiquidGlass(glassEl, defsHost, {
       ...DOCK_GLASS,
-      width: dockWidth,
+      width: dockWidth.value,
       height: DOCK_H,
       radius: DOCK_R,
       bezelWidth: 36,
@@ -66,9 +73,18 @@ function mountGlass() {
   }
 }
 
+let resizeTimer = null
+function onResize() {
+  clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(() => {
+    if (computeDockWidth() !== dockWidth.value) mountGlass()
+  }, 120)
+}
+
 onMounted(async () => {
   await nextTick()
   mountGlass()
+  window.addEventListener('resize', onResize)
 })
 
 watch(visibleItems, async () => {
@@ -77,6 +93,8 @@ watch(visibleItems, async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
+  clearTimeout(resizeTimer)
   glass?.destroy()
   glass = null
 })
@@ -98,8 +116,9 @@ onUnmounted(() => {
     <div
       ref="glassRef"
       class="liquid-dock__glass"
+      :class="{ 'is-dense': visibleItems.length > 4 }"
       :style="{
-        width: 'min(360px, calc(100vw - 40px))',
+        width: `${dockWidth}px`,
         height: `${DOCK_H}px`,
         borderRadius: `${DOCK_R}px`,
       }"
@@ -135,7 +154,8 @@ onUnmounted(() => {
   z-index: 30;
   display: flex;
   justify-content: center;
-  padding: 0 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 0 calc(20px + var(--safe-right, 0px)) calc(12px + var(--safe-bottom, 0px))
+    calc(20px + var(--safe-left, 0px));
   pointer-events: none;
   background: transparent;
 }
@@ -235,6 +255,19 @@ onUnmounted(() => {
 
 .liquid-dock__tab.is-icon-only {
   gap: 0;
+}
+
+.is-dense .liquid-dock__tab {
+  font-size: 10px;
+  letter-spacing: -0.02em;
+}
+
+.is-dense .liquid-dock__tab span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px;
 }
 
 .liquid-dock__tab.is-active {

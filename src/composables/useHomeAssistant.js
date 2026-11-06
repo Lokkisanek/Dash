@@ -37,6 +37,10 @@ const state = reactive({
   hassUrl: localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL || '',
   /** True once we have successfully connected in this tab session */
   everConnected: false,
+  /** Display name of the HA user signed in on this dashboard */
+  userName: '',
+  /** HA core config subset: home location for weather */
+  haConfig: null,
 })
 
 let connection = null
@@ -162,14 +166,36 @@ function buildMockEntities() {
             temperature: 21.5,
             current_temperature: 21.2,
             hvac_modes: ['off', 'heat', 'auto'],
-            min_temp: 16,
-            max_temp: 28,
+            hvac_action: 'heating',
+            min_temp: 10,
+            max_temp: 30,
+          },
+          last_changed: now,
+          last_updated: now,
+        }
+      } else if (device.type === 'media_player') {
+        entities[device.id] = {
+          entity_id: device.id,
+          state: 'playing',
+          attributes: {
+            friendly_name: device.label,
+            media_title: 'Midnight City',
+            media_artist: 'M83',
+            volume_level: 0.35,
           },
           last_changed: now,
           last_updated: now,
         }
       }
     }
+  }
+
+  entities['weather.forecast_home'] = {
+    entity_id: 'weather.forecast_home',
+    state: 'partlycloudy',
+    attributes: { friendly_name: 'Forecast Home', temperature: 12.4, humidity: 71 },
+    last_changed: now,
+    last_updated: now,
   }
 
   setLightMock(entities, 'light.obyvak_strop', true, 70, 3000)
@@ -217,6 +243,27 @@ function startMockMode() {
   useFallbackGuestConfig('mock')
   state.entities = buildMockEntities()
   state.lastError = null
+  state.userName = 'Host'
+  state.haConfig = { latitude: 50.08, longitude: 14.42, location_name: 'Home' }
+}
+
+async function loadSessionInfo(conn) {
+  try {
+    const user = await conn.sendMessagePromise({ type: 'auth/current_user' })
+    state.userName = user?.name || ''
+  } catch (err) {
+    console.warn('[HA] current_user failed:', err)
+  }
+  try {
+    const cfg = await conn.sendMessagePromise({ type: 'get_config' })
+    state.haConfig = {
+      latitude: cfg?.latitude,
+      longitude: cfg?.longitude,
+      location_name: cfg?.location_name || '',
+    }
+  } catch (err) {
+    console.warn('[HA] get_config failed:', err)
+  }
 }
 
 async function loadRemoteConfig(conn) {
@@ -312,6 +359,7 @@ async function connectLive(hassUrl) {
       })
 
       await loadRemoteConfig(connection)
+      loadSessionInfo(connection)
 
       connection.addEventListener('ready', () => {
         state.status = 'connected'
@@ -460,15 +508,35 @@ function handleMockService(domain, service, data) {
       e.attributes.current_position = 0
     } else if (service === 'stop_cover') {
       e.state = e.attributes.current_position > 50 ? 'open' : 'closed'
+    } else if (service === 'set_cover_position') {
+      e.attributes = { ...e.attributes, current_position: data.position }
+      e.state = data.position > 0 ? 'open' : 'closed'
     }
     e.last_updated = now
   } else if (domain === 'climate' && entityId) {
     const e = state.entities[entityId]
     if (!e) return
     if (service === 'set_temperature' && data.temperature != null) {
-      e.attributes.temperature = data.temperature
-      e.last_updated = now
+      e.attributes = { ...e.attributes, temperature: data.temperature }
+    } else if (service === 'turn_off') {
+      e.state = 'off'
+    } else if (service === 'turn_on') {
+      e.state = 'heat'
     }
+    e.last_updated = now
+  } else if (domain === 'media_player' && entityId) {
+    const e = state.entities[entityId]
+    if (!e) return
+    if (service === 'media_play_pause') {
+      e.state = e.state === 'playing' ? 'paused' : 'playing'
+    } else if (service === 'volume_set') {
+      e.attributes = { ...e.attributes, volume_level: data.volume_level }
+    } else if (service === 'turn_off') {
+      e.state = 'off'
+    } else if (service === 'turn_on') {
+      e.state = 'paused'
+    }
+    e.last_updated = now
   } else if (domain === 'scene' && service === 'turn_on' && entityId) {
     // Scenes removed from guest UI — keep mock hook for optional future use
     if (entityId && cfg.pages) {
@@ -552,6 +620,29 @@ export async function setClimateTemp(entityId, temperature) {
   })
 }
 
+export async function setClimatePower(entityId, on) {
+  await callService('climate', on ? 'turn_on' : 'turn_off', { entity_id: entityId })
+}
+
+export async function setCoverPosition(entityId, position) {
+  await callService('cover', 'set_cover_position', {
+    entity_id: entityId,
+    position: Math.max(0, Math.min(100, Math.round(position))),
+  })
+}
+
+/** media_player services: media_play_pause, media_next_track, volume_set, … */
+export async function mediaCommand(entityId, service, data = {}) {
+  await callService('media_player', service, { entity_id: entityId, ...data })
+}
+
+/** HA serves entity pictures as relative URLs; make them absolute for the PWA origin. */
+export function haAssetUrl(path) {
+  if (!path) return ''
+  if (/^https?:\/\//.test(path) || path.startsWith('data:')) return path
+  return `${(state.hassUrl || '').replace(/\/$/, '')}${path}`
+}
+
 export function initHomeAssistant() {
   if (initialized) return
   initialized = true
@@ -583,6 +674,8 @@ export function useHomeAssistant() {
     isMock: computed(() => state.isMock),
     lastError: computed(() => state.lastError),
     hassUrl: computed(() => state.hassUrl),
+    userName: computed(() => state.userName),
+    haConfig: computed(() => state.haConfig),
     getEntity,
     getEntityState,
     callService,
@@ -593,6 +686,10 @@ export function useHomeAssistant() {
     toggleSwitch,
     setCover,
     setClimateTemp,
+    setClimatePower,
+    setCoverPosition,
+    mediaCommand,
+    haAssetUrl,
     loginWithHassUrl,
     logoutHa,
     startMockMode,

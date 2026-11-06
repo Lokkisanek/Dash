@@ -5,14 +5,11 @@ import { useHomeAssistant } from '@/composables/useHomeAssistant'
 import { useGuestConfig } from '@/composables/useGuestConfig'
 import { useI18n } from '@/composables/useI18n'
 import { playTick } from '@/composables/useSound'
+import { useWeather } from '@/composables/useWeather'
 import WifiModal from './WifiModal.vue'
 
-const props = defineProps({
-  temperatureEntity: { type: String, default: null },
-  humidityEntity: { type: String, default: null },
-})
-
-const { status, getEntityState } = useHomeAssistant()
+const { status } = useHomeAssistant()
+const weather = useWeather()
 const { guestInfo, general } = useGuestConfig()
 const { t, locale } = useI18n()
 const wifiOpen = ref(false)
@@ -47,17 +44,13 @@ const dateStr = computed(() =>
 )
 
 const temp = computed(() => {
-  const e = props.temperatureEntity ? getEntityState(props.temperatureEntity) : null
-  if (!e) return null
-  const n = parseFloat(e.state)
-  return Number.isFinite(n) ? n.toFixed(1) : null
+  const n = weather.value?.temperature
+  return n == null ? null : Number(n).toLocaleString(locale.value, { maximumFractionDigits: 1 })
 })
 
 const humidity = computed(() => {
-  const e = props.humidityEntity ? getEntityState(props.humidityEntity) : null
-  if (!e) return null
-  const n = parseFloat(e.state)
-  return Number.isFinite(n) ? Math.round(n) : null
+  const n = weather.value?.humidity
+  return n == null ? null : Math.round(n)
 })
 
 /** Only shown when something is wrong — a healthy connection needs no badge. */
