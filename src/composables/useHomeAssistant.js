@@ -123,7 +123,7 @@ function buildMockEntities() {
     }
   }
 
-  for (const room of cfg.rooms || []) {
+  for (const room of cfg.pages || cfg.rooms || []) {
     for (const device of room.devices || []) {
       if (device.type === 'light') {
         entities[device.id] = {
@@ -180,17 +180,6 @@ function buildMockEntities() {
     }
   }
 
-  for (const scene of cfg.scenes || []) {
-    if (!scene.entityId) continue
-    entities[scene.entityId] = {
-      entity_id: scene.entityId,
-      state: 'scening',
-      attributes: { friendly_name: scene.label },
-      last_changed: now,
-      last_updated: now,
-    }
-  }
-
   setLightMock(entities, 'light.obyvak_strop', true, 70, 3000)
   setLightMock(entities, 'light.obyvak_lampa', true, 45, 2700)
   setLightMock(entities, 'light.chodba_vstup', true, 40, 3000)
@@ -243,7 +232,7 @@ async function loadRemoteConfig(conn) {
     const config = await conn.sendMessagePromise({
       type: 'guest_ha_dashboard/get_config',
     })
-    if (config?.rooms?.length || config?.guestInfo) {
+    if (config?.pages?.length || config?.rooms?.length || config?.guestInfo) {
       applyGuestConfig(config, 'ha')
     } else {
       useFallbackGuestConfig('fallback')
@@ -497,8 +486,10 @@ function handleMockService(domain, service, data) {
       e.last_updated = now
     }
   } else if (domain === 'scene' && service === 'turn_on' && entityId) {
-    const scene = (cfg.scenes || []).find((s) => s.entityId === entityId)
-    if (scene?.mockAction) applyMockScene(scene.mockAction)
+    // Scenes removed from guest UI — keep mock hook for optional future use
+    if (entityId && cfg.pages) {
+      /* no-op */
+    }
   }
 }
 

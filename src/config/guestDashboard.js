@@ -1,7 +1,7 @@
 /**
  * AI-FRIENDLY CENTRAL CONFIG
  * ─────────────────────────────────────────────────────────────
- * Edit rooms / lights / scenes here. Entity IDs must match
+ * Edit pages / lights here. Entity IDs must match
  * Home Assistant (Zigbee2MQTT naming conventions work great).
  *
  * Device types: light | switch | cover | climate | media_player
@@ -22,47 +22,10 @@ export const guestDashboard = {
     accent: '#ff6b00',
   },
 
-  /** Bottom dock — max 4 room shortcuts (label optional). Empty = first 4 rooms. */
+  /** Bottom dock — max 4 page shortcuts. Empty = first 4 pages. */
   dock: [],
 
-  /** Quick-action scene pills shown above the room grid */
-  scenes: [
-    {
-      id: 'all_off',
-      label: 'Vše zhasnout',
-      icon: 'Power',
-      accent: '#ef4444',
-      entityId: 'scene.vse_zhasnout',
-      // Fallback mock: turns all lights off
-      mockAction: 'all_off',
-    },
-    {
-      id: 'evening',
-      label: 'Večerní pohoda',
-      icon: 'Sunset',
-      accent: '#f59e0b',
-      entityId: 'scene.vecerni_pohoda',
-      mockAction: 'evening',
-    },
-    {
-      id: 'cinema',
-      label: 'Kino režim',
-      icon: 'Clapperboard',
-      accent: '#8b5cf6',
-      entityId: 'scene.kino_rezim',
-      mockAction: 'cinema',
-    },
-    {
-      id: 'morning',
-      label: 'Ranní světlo',
-      icon: 'Sunrise',
-      accent: '#38bdf8',
-      entityId: 'scene.ranni_svetlo',
-      mockAction: 'morning',
-    },
-  ],
-
-  rooms: [
+  pages: [
     {
       id: 'obyvak',
       label: 'Obývák',

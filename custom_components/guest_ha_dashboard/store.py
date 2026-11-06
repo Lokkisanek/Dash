@@ -11,6 +11,42 @@ from homeassistant.helpers.storage import Store
 from .const import DEFAULT_CONFIG, STORAGE_KEY, STORAGE_VERSION
 
 
+def _normalize_pages(data: dict[str, Any]) -> list:
+    """Prefer pages; migrate legacy rooms."""
+    pages = data.get("pages")
+    if isinstance(pages, list) and pages:
+        return pages
+    rooms = data.get("rooms")
+    if isinstance(rooms, list):
+        return rooms
+    if isinstance(pages, list):
+        return pages
+    return []
+
+
+def _normalize_dock(raw_dock: list) -> list:
+    dock = []
+    for item in raw_dock[:4]:
+        if not isinstance(item, dict):
+            continue
+        if item.get("entityId") or item.get("entity_id"):
+            continue
+        page_id = str(
+            item.get("pageId") or item.get("page_id") or item.get("roomId") or item.get("room_id") or ""
+        ).strip()
+        if not page_id:
+            continue
+        dock.append(
+            {
+                "pageId": page_id,
+                "label": str(item.get("label") or "").strip(),
+                "showLabel": bool(item.get("showLabel", True)),
+                "icon": str(item.get("icon") or "Home"),
+            }
+        )
+    return dock
+
+
 class GuestDashboardStore:
     """Load / save dashboard JSON config."""
 
@@ -24,7 +60,14 @@ class GuestDashboardStore:
         """Load from disk (or defaults)."""
         stored = await self._store.async_load()
         if stored:
-            self._data = {**deepcopy(DEFAULT_CONFIG), **stored}
+            merged = {**deepcopy(DEFAULT_CONFIG), **stored}
+            merged["pages"] = _normalize_pages(merged)
+            merged.pop("rooms", None)
+            merged.pop("scenes", None)
+            merged["dock"] = _normalize_dock(
+                merged.get("dock") if isinstance(merged.get("dock"), list) else []
+            )
+            self._data = merged
         else:
             self._data = deepcopy(DEFAULT_CONFIG)
         return self._data
@@ -37,31 +80,12 @@ class GuestDashboardStore:
     async def async_save(self, data: dict[str, Any]) -> dict[str, Any]:
         """Validate lightly, persist, notify listeners."""
         merged = {**deepcopy(DEFAULT_CONFIG), **data}
-        # Keep known top-level keys only
         appearance = merged.get("appearance") if isinstance(merged.get("appearance"), dict) else {}
-        raw_dock = merged.get("dock") if isinstance(merged.get("dock"), list) else []
-        dock = []
-        for item in raw_dock[:4]:
-            if not isinstance(item, dict):
-                continue
-            # Legacy entity dock entries are dropped
-            if item.get("entityId") or item.get("entity_id"):
-                continue
-            room_id = str(item.get("roomId") or item.get("room_id") or "").strip()
-            if not room_id:
-                continue
-            dock.append(
-                {
-                    "roomId": room_id,
-                    "label": str(item.get("label") or "").strip(),
-                    "showLabel": bool(item.get("showLabel", True)),
-                    "icon": str(item.get("icon") or "Home"),
-                }
-            )
+        pages = _normalize_pages(merged)
+        dock = _normalize_dock(merged.get("dock") if isinstance(merged.get("dock"), list) else [])
         cleaned = {
             "guestInfo": merged.get("guestInfo") or deepcopy(DEFAULT_CONFIG["guestInfo"]),
-            "scenes": merged.get("scenes") if isinstance(merged.get("scenes"), list) else [],
-            "rooms": merged.get("rooms") if isinstance(merged.get("rooms"), list) else [],
+            "pages": pages if isinstance(pages, list) else [],
             "dock": dock,
             "dashboardUrl": merged.get("dashboardUrl") or "",
             "appearance": {

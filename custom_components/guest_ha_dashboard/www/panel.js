@@ -5,7 +5,7 @@
  * Editing draft config never touches the live preview iframe. Only Save refreshes
  * it (and publishes config to the real guest PWA via HA).
  */
-const PANEL_VERSION = "1.2.8";
+const PANEL_VERSION = "1.2.9";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
 const DOCK_MAX = 4;
@@ -25,9 +25,8 @@ const PANEL_I18N = {
     save: "Uložit",
     saving: "Ukládám…",
     saved: "Uloženo",
-    tabRooms: "Místnosti",
+    tabPages: "Pages",
     tabDock: "Dock",
-    tabScenes: "Scény",
     tabGuest: "Host & Wi-Fi",
     tabStyles: "Styly",
     previewTitle: "Live preview",
@@ -44,38 +43,37 @@ const PANEL_I18N = {
     dashTheme: "Dashboard theme",
     accent: "Accent",
     stylesAfterSave: "Po Uložit se theme i config propsí do ostré PWA a live preview se refreshne.",
-    roomsHint: "<b>Jednoduchý setup:</b> zapni místnosti z HA Areas. Zařízení se načtou sama. Uložit pošle na PWA a refreshne preview.",
-    importAreas: "Zapnout všechny Areas",
-    clearRooms: "Vypnout vše",
+    pagesHint: "<b>Pages:</b> vytvoř stránky (entity, teplota…). V Docku zvolíš, které se zobrazí. Uložit refreshne live preview.",
+    importAreas: "Importovat všechny Areas jako Pages",
+    clearPages: "Smazat všechny Pages",
     noAreas: "V HA zatím nemáš Areas (Settings → Areas).",
-    advanced: "Pokročilé — upravit místnost / entity ručně",
-    roomName: "Název",
-    roomIcon: "Ikona",
-    roomTemp: "Teplota",
-    roomHumidity: "Vlhkost",
+    advanced: "Pokročilé — upravit page / entity ručně",
+    pageName: "Název page",
+    pageIcon: "Ikona",
+    pageTemp: "Teplota",
+    pageHumidity: "Vlhkost",
     devices: "Zařízení",
     addDevice: "+ Zařízení",
-    resyncRoom: "Znovu načíst z Area",
+    resyncPage: "Znovu načíst z Area",
     delete: "Smazat",
-    scenesHint: "Rychlé scény v horní liště tabletu. Propsí se až po Uložit.",
-    addScene: "Scéna",
-    dockHint: "Spodní dock = přepínač místností (max. 4). Klik přepne kartu místnosti. Název je volitelný.",
-    dockAdd: "+ Místnost do docku",
-    dockRoom: "Místnost",
+    dockHint: "Spodní dock = přepínač Pages (max. 4). Klik přepne page. Název je volitelný.",
+    dockAdd: "+ Page do docku",
+    dockPage: "Page",
     dockLabel: "Název (volitelný override)",
     dockShowLabel: "Zobrazit název",
     dockFull: "Dock je plný (max. 4).",
-    dockEmpty: "Zatím žádné místnosti v docku — použijí se první 4 z Mistnosti.",
-    importedRooms: (n) => `Naimportováno ${n} místností`,
-    roomExists: "Místnost už je v configu",
-    roomAdded: (name) => `Přidáno: ${name}`,
-    roomResynced: "Místnost znovu načtena z Area",
+    dockEmpty: "Zatím žádné Pages v docku — použijí se první 4 Pages.",
+    importedPages: (n) => `Naimportováno ${n} pages`,
+    pageExists: "Page už je v configu",
+    pageAdded: (name) => `Přidáno: ${name}`,
+    pageResynced: "Page znovu načtena z Area",
     devicesCount: (n) => `${n} zařízení`,
     langAuto: "Auto (HA)",
     langCs: "Čeština",
     langEn: "English",
     uiSettings: "Nastavení config rozhraní",
     uiSettingsHint: "Jen vzhled tohoto config panelu. Žádný guest config.",
+    uiSettingsBack: "← Zpět na config",
     uiTheme: "Vzhled panelu",
     uiLanguage: "Jazyk panelu",
     close: "Zavřít",
@@ -86,9 +84,8 @@ const PANEL_I18N = {
     save: "Save",
     saving: "Saving…",
     saved: "Saved",
-    tabRooms: "Rooms",
+    tabPages: "Pages",
     tabDock: "Dock",
-    tabScenes: "Scenes",
     tabGuest: "Guest & Wi-Fi",
     tabStyles: "Styles",
     previewTitle: "Live preview",
@@ -105,38 +102,37 @@ const PANEL_I18N = {
     dashTheme: "Dashboard theme",
     accent: "Accent",
     stylesAfterSave: "After Save, theme and config push to the live PWA and the preview refreshes.",
-    roomsHint: "<b>Simple setup:</b> enable rooms from HA Areas. Devices load automatically. Save publishes to the PWA and refreshes preview.",
-    importAreas: "Enable all Areas",
-    clearRooms: "Disable all",
+    pagesHint: "<b>Pages:</b> create pages (entities, sensors…). Dock picks which ones show. Save refreshes live preview.",
+    importAreas: "Import all Areas as Pages",
+    clearPages: "Clear all Pages",
     noAreas: "No Areas in HA yet (Settings → Areas).",
-    advanced: "Advanced — edit room / entities manually",
-    roomName: "Name",
-    roomIcon: "Icon",
-    roomTemp: "Temperature",
-    roomHumidity: "Humidity",
+    advanced: "Advanced — edit page / entities manually",
+    pageName: "Page name",
+    pageIcon: "Icon",
+    pageTemp: "Temperature",
+    pageHumidity: "Humidity",
     devices: "Devices",
     addDevice: "+ Device",
-    resyncRoom: "Reload from Area",
+    resyncPage: "Reload from Area",
     delete: "Delete",
-    scenesHint: "Quick scenes in the tablet top bar. Applied only after Save.",
-    addScene: "Scene",
-    dockHint: "Bottom dock = room switcher (max 4). Tap switches the room card. Name is optional.",
-    dockAdd: "+ Room to dock",
-    dockRoom: "Room",
+    dockHint: "Bottom dock = page switcher (max 4). Tap switches the page. Name is optional.",
+    dockAdd: "+ Page to dock",
+    dockPage: "Page",
     dockLabel: "Name (optional override)",
     dockShowLabel: "Show name",
     dockFull: "Dock is full (max 4).",
-    dockEmpty: "No dock rooms yet — the first 4 Rooms will be used.",
-    importedRooms: (n) => `Imported ${n} rooms`,
-    roomExists: "Room is already in the config",
-    roomAdded: (name) => `Added: ${name}`,
-    roomResynced: "Room reloaded from Area",
+    dockEmpty: "No dock pages yet — the first 4 Pages will be used.",
+    importedPages: (n) => `Imported ${n} pages`,
+    pageExists: "Page is already in the config",
+    pageAdded: (name) => `Added: ${name}`,
+    pageResynced: "Page reloaded from Area",
     devicesCount: (n) => `${n} devices`,
     langAuto: "Auto (HA)",
     langCs: "Čeština",
     langEn: "English",
     uiSettings: "Config UI settings",
     uiSettingsHint: "Only this config panel chrome. No guest dashboard config here.",
+    uiSettingsBack: "← Back to config",
     uiTheme: "Panel theme",
     uiLanguage: "Panel language",
     close: "Close",
@@ -163,12 +159,40 @@ const emptyConfig = () => ({
     wifiPassword: "",
     wifiSecurity: "WPA",
   },
-  scenes: [],
-  rooms: [],
+  pages: [],
   dock: [],
   dashboardUrl: "",
   appearance: { mode: "light", accent: "#ff6b00" },
 });
+
+function normalizeConfig(cfg = {}) {
+  const base = emptyConfig();
+  let pages = [];
+  if (Array.isArray(cfg.pages) && cfg.pages.length) pages = cfg.pages;
+  else if (Array.isArray(cfg.rooms) && cfg.rooms.length) pages = cfg.rooms;
+  else if (Array.isArray(cfg.pages)) pages = cfg.pages;
+  const dock = (Array.isArray(cfg.dock) ? cfg.dock : [])
+    .filter((d) => d && !d.entityId && !d.entity_id)
+    .slice(0, DOCK_MAX)
+    .map((d) => ({
+      pageId: d.pageId || d.page_id || d.roomId || d.room_id || "",
+      label: d.label || "",
+      showLabel: d.showLabel !== false,
+      icon: d.icon || "Home",
+    }))
+    .filter((d) => d.pageId);
+  const out = {
+    ...base,
+    ...cfg,
+    pages,
+    dock,
+    appearance: { ...base.appearance, ...(cfg.appearance || {}) },
+  };
+  delete out.rooms;
+  delete out.scenes;
+  return out;
+}
+
 
 class GuestHaDashboardPanel extends HTMLElement {
   constructor() {
@@ -179,13 +203,12 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._savedAt = null;
     this._error = null;
     this._info = null;
-    this._tab = "rooms";
-    this._roomIdx = 0;
+    this._tab = "pages";
+    this._pageIdx = 0;
     this._uiTheme = localStorage.getItem(UI_THEME_KEY) || "auto";
     const storedLang = localStorage.getItem(UI_LANG_KEY);
     this._uiLangPref = storedLang === "en" || storedLang === "cs" ? storedLang : "auto";
-    this._settingsOpen = false;
-    this._previewRoomId = null;
+    this._previewPageId = null;
     this._previewKey = 0;
     /** Live iframe src — updates only on load + Save, never while drafting */
     this._livePreviewSrc = "";
@@ -280,13 +303,13 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._livePreviewSrc = this._buildPreviewSrc(config);
   }
 
-  _activePreviewRoom(c = this._config) {
-    const rooms = c.rooms || [];
+  _activePreviewPage(c = this._config) {
+    const rooms = c.pages || [];
     if (!rooms.length) return null;
-    let room = rooms.find((r) => r.id === this._previewRoomId);
+    let room = rooms.find((r) => r.id === this._previewPageId);
     if (!room) {
-      room = rooms[this._roomIdx] || rooms[0];
-      this._previewRoomId = room?.id || null;
+      room = rooms[this._pageIdx] || rooms[0];
+      this._previewPageId = room?.id || null;
     }
     return room || null;
   }
@@ -297,15 +320,10 @@ class GuestHaDashboardPanel extends HTMLElement {
       const cfg = await this._hass.connection.sendMessagePromise({
         type: "guest_ha_dashboard/get_config",
       });
-      this._config = {
-        ...emptyConfig(),
-        ...cfg,
-        dock: Array.isArray(cfg.dock) ? cfg.dock.slice(0, DOCK_MAX) : [],
-        appearance: { ...emptyConfig().appearance, ...(cfg.appearance || {}) },
-      };
+      this._config = normalizeConfig(cfg);
       this._ensureDock();
       this._error = null;
-      this._previewRoomId = this._config.rooms?.[0]?.id || null;
+      this._previewPageId = this._config.pages?.[0]?.id || null;
       this._syncLivePreviewSrc(this._config);
     } catch (err) {
       this._error = err?.message || String(err);
@@ -321,12 +339,7 @@ class GuestHaDashboardPanel extends HTMLElement {
         type: "guest_ha_dashboard/set_config",
         config: this._config,
       });
-      this._config = {
-        ...emptyConfig(),
-        ...saved,
-        dock: Array.isArray(saved.dock) ? saved.dock.slice(0, DOCK_MAX) : [],
-        appearance: { ...emptyConfig().appearance, ...(saved.appearance || {}) },
-      };
+      this._config = normalizeConfig(saved);
       this._ensureDock();
       this._savedAt = new Date();
       this._info = this._t("saved");
@@ -368,7 +381,7 @@ class GuestHaDashboardPanel extends HTMLElement {
   }
   _mapAreaIcon(mdi) { return AREA_ICON_MAP[mdi] || "Home"; }
 
-  _roomFromArea(area) {
+  _pageFromArea(area) {
     const ids = this._entitiesInArea(area.area_id);
     const devices = [];
     let temperatureEntity = "";
@@ -396,45 +409,39 @@ class GuestHaDashboardPanel extends HTMLElement {
   }
 
   _importAllAreas() {
-    this._config.rooms = this._areas().map((a) => this._roomFromArea(a));
-    this._roomIdx = 0; this._tab = "rooms";
-    this._previewRoomId = this._config.rooms[0]?.id || null;
-    this._info = this._t("importedRooms", this._config.rooms.length);
+    this._config.pages = this._areas().map((a) => this._pageFromArea(a));
+    this._pageIdx = 0; this._tab = "pages";
+    this._previewPageId = this._config.pages[0]?.id || null;
+    this._info = this._t("importedPages", this._config.pages.length);
     this._render();
   }
-  _addRoomFromArea(areaId) {
+  _addPageFromArea(areaId) {
     const area = this._hass.areas?.[areaId];
     if (!area) return;
-    if (this._config.rooms.some((r) => r.haAreaId === areaId || r.id === areaId)) {
-      this._info = this._t("roomExists"); this._render(); return;
+    if (this._config.pages.some((r) => r.haAreaId === areaId || r.id === areaId)) {
+      this._info = this._t("pageExists"); this._render(); return;
     }
-    this._config.rooms.push(this._roomFromArea(area));
-    this._roomIdx = this._config.rooms.length - 1;
-    this._previewRoomId = this._config.rooms[this._roomIdx]?.id || null;
-    this._info = this._t("roomAdded", area.name); this._render();
+    this._config.pages.push(this._pageFromArea(area));
+    this._pageIdx = this._config.pages.length - 1;
+    this._previewPageId = this._config.pages[this._pageIdx]?.id || null;
+    this._info = this._t("pageAdded", area.name); this._render();
   }
-  _addEmptyRoom() {
-    this._config.rooms.push({
-      id: `room_${Date.now()}`, label: "Nova mistnost", icon: "Home",
+  _addEmptyPage() {
+    this._config.pages.push({
+      id: `page_${Date.now()}`, label: "Nova page", icon: "Home",
       temperatureEntity: "", humidityEntity: "", devices: [],
     });
-    this._roomIdx = this._config.rooms.length - 1; this._render();
+    this._pageIdx = this._config.pages.length - 1; this._render();
   }
-  _removeRoom(i) {
-    this._config.rooms.splice(i, 1);
-    this._roomIdx = Math.max(0, Math.min(this._roomIdx, this._config.rooms.length - 1));
-    this._previewRoomId = this._config.rooms[this._roomIdx]?.id || null;
+  _removePage(i) {
+    this._config.pages.splice(i, 1);
+    this._pageIdx = Math.max(0, Math.min(this._pageIdx, this._config.pages.length - 1));
+    this._previewPageId = this._config.pages[this._pageIdx]?.id || null;
     this._render();
   }
   _addDevice(room) {
     room.devices.push({ id: "", type: "light", label: "Zarizeni", supportsBrightness: true, icon: "Power" });
     this._render();
-  }
-  _addScene() {
-    this._config.scenes.push({
-      id: `scene_${Date.now()}`, label: "Nova scena", icon: "Sunset", accent: "#f59e0b", entityId: "",
-    });
-    this._tab = "scenes"; this._render();
   }
   _entities(domain, areaId = null) {
     let ids = Object.keys(this._hass?.states || {}).filter((id) => id.startsWith(`${domain}.`)).sort();
@@ -521,18 +528,6 @@ class GuestHaDashboardPanel extends HTMLElement {
         cursor: pointer; font-size: 1.15rem; line-height: 1;
       }
       .gear-btn:hover { border-color: var(--accent); }
-      .settings-backdrop {
-        position: absolute; inset: 0; z-index: 40;
-        background: rgba(0,0,0,0.45); display: grid; place-items: center; padding: 20px;
-      }
-      .settings-card {
-        width: min(360px, 100%); border-radius: 20px; padding: 18px 16px 16px;
-        background: var(--card); border: 1px solid var(--border); color: var(--text);
-        box-shadow: 0 24px 60px rgba(0,0,0,0.35);
-      }
-      .settings-card h3 { margin: 0 0 6px; font-size: 1.05rem; }
-      .settings-card .hint { margin-bottom: 14px; }
-      .settings-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
       header {
         display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start;
         justify-content: space-between; margin-bottom: 14px;
@@ -679,30 +674,24 @@ class GuestHaDashboardPanel extends HTMLElement {
     `;
   }
 
-  _renderSettingsModal() {
-    if (!this._settingsOpen) return "";
+  /** Full config page for panel chrome (not a popup). */
+  _renderUiSettings() {
     return `
-      <div class="settings-backdrop" id="settingsBackdrop">
-        <div class="settings-card" role="dialog" aria-label="${this._escape(this._t("uiSettings"))}">
-          <h3>${this._t("uiSettings")}</h3>
-          <p class="hint">${this._t("uiSettingsHint")}</p>
-          <div class="row"><label>${this._t("uiTheme")}</label>
-            <div class="seg">
-              <button type="button" data-ui-theme="light" class="${this._uiTheme === "light" ? "active" : ""}">Light</button>
-              <button type="button" data-ui-theme="dark" class="${this._uiTheme === "dark" ? "active" : ""}">Dark</button>
-              <button type="button" data-ui-theme="auto" class="${this._uiTheme === "auto" ? "active" : ""}">Auto</button>
-            </div>
-          </div>
-          <div class="row"><label>${this._t("uiLanguage")}</label>
-            <div class="seg">
-              <button type="button" data-ui-lang="auto" class="${this._uiLangPref === "auto" ? "active" : ""}">${this._t("langAuto")}</button>
-              <button type="button" data-ui-lang="cs" class="${this._uiLangPref === "cs" ? "active" : ""}">${this._t("langCs")}</button>
-              <button type="button" data-ui-lang="en" class="${this._uiLangPref === "en" ? "active" : ""}">${this._t("langEn")}</button>
-            </div>
-          </div>
-          <div class="settings-actions">
-            <button type="button" class="btn" id="closeSettings">${this._t("close")}</button>
-          </div>
+      <button type="button" class="btn ghost" id="backFromSettings" style="margin-bottom:12px">${this._t("uiSettingsBack")}</button>
+      <h3 style="margin-top:0">${this._t("uiSettings")}</h3>
+      <p class="hint">${this._t("uiSettingsHint")}</p>
+      <div class="row"><label>${this._t("uiTheme")}</label>
+        <div class="seg">
+          <button type="button" data-ui-theme="light" class="${this._uiTheme === "light" ? "active" : ""}">Light</button>
+          <button type="button" data-ui-theme="dark" class="${this._uiTheme === "dark" ? "active" : ""}">Dark</button>
+          <button type="button" data-ui-theme="auto" class="${this._uiTheme === "auto" ? "active" : ""}">Auto</button>
+        </div>
+      </div>
+      <div class="row"><label>${this._t("uiLanguage")}</label>
+        <div class="seg">
+          <button type="button" data-ui-lang="auto" class="${this._uiLangPref === "auto" ? "active" : ""}">${this._t("langAuto")}</button>
+          <button type="button" data-ui-lang="cs" class="${this._uiLangPref === "cs" ? "active" : ""}">${this._t("langCs")}</button>
+          <button type="button" data-ui-lang="en" class="${this._uiLangPref === "en" ? "active" : ""}">${this._t("langEn")}</button>
         </div>
       </div>
     `;
@@ -714,16 +703,16 @@ class GuestHaDashboardPanel extends HTMLElement {
     const c = this._config;
     if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00" };
     this._ensureDock();
-    const room = c.rooms[this._roomIdx];
+    const room = c.pages[this._pageIdx];
     const areaFilter = room?.haAreaId || null;
     const sensors = this._entities("sensor", areaFilter);
     const lights = this._entities("light", areaFilter);
     const switches = this._entities("switch", areaFilter);
     const covers = this._entities("cover", areaFilter);
     const climates = this._entities("climate", areaFilter);
-    const scenes = this._entities("scene");
     const areas = this._areas();
     const locale = this._uiLang() === "en" ? "en-US" : "cs-CZ";
+    const onSettings = this._tab === "ui";
 
     // Keep live iframe alive across editor re-renders — remount only after Save/load
     const prevFrame = this.shadowRoot.getElementById("previewFrame");
@@ -746,7 +735,7 @@ class GuestHaDashboardPanel extends HTMLElement {
                 <div class="version">v${PANEL_VERSION}</div>
               </div>
               <div class="toolbar">
-                <button type="button" class="gear-btn" id="openSettings" title="${this._escape(this._t("uiSettings"))}" aria-label="${this._escape(this._t("uiSettings"))}">⚙</button>
+                ${onSettings ? "" : `<button type="button" class="gear-btn" id="openSettings" title="${this._escape(this._t("uiSettings"))}" aria-label="${this._escape(this._t("uiSettings"))}">⚙</button>`}
               </div>
             </header>
 
@@ -754,24 +743,24 @@ class GuestHaDashboardPanel extends HTMLElement {
             ${this._info ? `<div class="msg ok">${this._escape(this._info)}</div>` : ""}
             ${this._savedAt ? `<div class="msg ok">${this._t("saved")} ${this._savedAt.toLocaleTimeString(locale)}</div>` : ""}
 
+            ${onSettings ? this._renderUiSettings() : `
             <div class="tabs">
-              <button class="tab ${this._tab === "rooms" ? "active" : ""}" data-tab="rooms">${this._t("tabRooms")}</button>
+              <button class="tab ${this._tab === "pages" ? "active" : ""}" data-tab="pages">${this._t("tabPages")}</button>
               <button class="tab ${this._tab === "dock" ? "active" : ""}" data-tab="dock">${this._t("tabDock")}</button>
-              <button class="tab ${this._tab === "scenes" ? "active" : ""}" data-tab="scenes">${this._t("tabScenes")}</button>
               <button class="tab ${this._tab === "guest" ? "active" : ""}" data-tab="guest">${this._t("tabGuest")}</button>
               <button class="tab ${this._tab === "styles" ? "active" : ""}" data-tab="styles">${this._t("tabStyles")}</button>
             </div>
 
             ${this._tab === "guest" ? this._renderGuest(c) : ""}
-            ${this._tab === "rooms" ? this._renderRooms(c, room, areas, sensors, lights, switches, covers, climates) : ""}
+            ${this._tab === "pages" ? this._renderPages(c, room, areas, sensors, lights, switches, covers, climates) : ""}
             ${this._tab === "dock" ? this._renderDock(c) : ""}
-            ${this._tab === "scenes" ? this._renderScenes(c, scenes) : ""}
             ${this._tab === "styles" ? this._renderStyles(c) : ""}
+            `}
           </div>
+          ${onSettings ? "" : `
           <div class="editor-footer">
             <button class="btn save-xl" id="save" ${this._saving ? "disabled" : ""}>${this._saving ? this._t("saving") : this._t("save")}</button>
-          </div>
-          ${this._renderSettingsModal()}
+          </div>`}
         </section>
 
         <aside class="preview">
@@ -806,18 +795,13 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
     this.shadowRoot.getElementById("save")?.addEventListener("click", () => this._save());
     this.shadowRoot.getElementById("openSettings")?.addEventListener("click", () => {
-      this._settingsOpen = true;
+      this._tab = "ui";
+      this._info = null;
       this._render();
     });
-    this.shadowRoot.getElementById("closeSettings")?.addEventListener("click", () => {
-      this._settingsOpen = false;
+    this.shadowRoot.getElementById("backFromSettings")?.addEventListener("click", () => {
+      this._tab = "pages";
       this._render();
-    });
-    this.shadowRoot.getElementById("settingsBackdrop")?.addEventListener("click", (e) => {
-      if (e.target?.id === "settingsBackdrop") {
-        this._settingsOpen = false;
-        this._render();
-      }
     });
     this._on("[data-ui-lang]", "click", (e) => {
       const v = e.currentTarget.dataset.uiLang;
@@ -832,9 +816,8 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
 
     if (this._tab === "guest") this._bindGuest();
-    if (this._tab === "rooms") this._bindRooms();
+    if (this._tab === "pages") this._bindPages();
     if (this._tab === "dock") this._bindDock();
-    if (this._tab === "scenes") this._bindScenes();
     if (this._tab === "styles") this._bindStyles();
   }
 
@@ -912,19 +895,19 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _renderDock(c) {
     const dock = this._ensureDock();
-    const rooms = c.rooms || [];
+    const rooms = c.pages || [];
     return `
       <p class="hint">${this._t("dockHint")}</p>
       ${dock.length ? `<div class="card-list">${dock.map((item, i) => `
         <div class="device" data-dock-i="${i}">
-          <div class="row"><label>${this._t("dockRoom")}</label>
-            <select data-k="roomId">
+          <div class="row"><label>${this._t("dockPage")}</label>
+            <select data-k="pageId">
               <option value="">—</option>
-              ${rooms.map((r) => `<option value="${this._escape(r.id)}" ${item.roomId === r.id ? "selected" : ""}>${this._escape(r.label || r.id)}</option>`).join("")}
+              ${rooms.map((r) => `<option value="${this._escape(r.id)}" ${item.pageId === r.id ? "selected" : ""}>${this._escape(r.label || r.id)}</option>`).join("")}
             </select>
           </div>
           <div class="row"><label>${this._t("dockLabel")}</label>
-            <input data-k="label" value="${this._escape(item.label || "")}" placeholder="${this._escape((rooms.find((r) => r.id === item.roomId) || {}).label || "")}" />
+            <input data-k="label" value="${this._escape(item.label || "")}" placeholder="${this._escape((rooms.find((r) => r.id === item.pageId) || {}).label || "")}" />
           </div>
           <div class="row"><label>${this._t("dockShowLabel")}</label>
             <label style="display:flex;align-items:center;gap:8px;color:var(--text)">
@@ -932,9 +915,9 @@ class GuestHaDashboardPanel extends HTMLElement {
               ${item.showLabel !== false ? "on" : "off"}
             </label>
           </div>
-          <div class="row"><label>${this._t("roomIcon")}</label>
+          <div class="row"><label>${this._t("pageIcon")}</label>
             <select data-k="icon">${ICON_OPTIONS.map((ic) => {
-              const room = rooms.find((r) => r.id === item.roomId);
+              const room = rooms.find((r) => r.id === item.pageId);
               const selected = item.icon || room?.icon || "Home";
               return `<option ${selected === ic ? "selected" : ""}>${ic}</option>`;
             }).join("")}</select>
@@ -953,10 +936,10 @@ class GuestHaDashboardPanel extends HTMLElement {
     this.shadowRoot.getElementById("addDock")?.addEventListener("click", () => {
       const dock = this._ensureDock();
       if (dock.length >= DOCK_MAX) return;
-      const used = new Set(dock.map((d) => d.roomId).filter(Boolean));
-      const nextRoom = (this._config.rooms || []).find((r) => !used.has(r.id));
+      const used = new Set(dock.map((d) => d.pageId).filter(Boolean));
+      const nextRoom = (this._config.pages || []).find((r) => !used.has(r.id));
       dock.push({
-        roomId: nextRoom?.id || "",
+        pageId: nextRoom?.id || "",
         label: "",
         showLabel: true,
         icon: nextRoom?.icon || "Home",
@@ -981,11 +964,11 @@ class GuestHaDashboardPanel extends HTMLElement {
           } else {
             item[key] = el.value;
           }
-          if (key === "roomId" && el.value) {
-            const room = (this._config.rooms || []).find((r) => r.id === el.value);
+          if (key === "pageId" && el.value) {
+            const room = (this._config.pages || []).find((r) => r.id === el.value);
             if (room?.icon) item.icon = room.icon;
           }
-          if (key === "showLabel" || key === "roomId" || key === "icon") this._render();
+          if (key === "showLabel" || key === "pageId" || key === "icon") this._render();
         };
         el.addEventListener("change", apply);
         if (el.tagName === "INPUT" && el.type !== "checkbox") {
@@ -996,28 +979,28 @@ class GuestHaDashboardPanel extends HTMLElement {
   }
 
   _isAreaSelected(areaId) {
-    return this._config.rooms.some((r) => r.haAreaId === areaId || r.id === areaId);
+    return this._config.pages.some((r) => r.haAreaId === areaId || r.id === areaId);
   }
 
   _toggleArea(areaId, on) {
-    if (on) this._addRoomFromArea(areaId);
+    if (on) this._addPageFromArea(areaId);
     else {
-      const idx = this._config.rooms.findIndex((r) => r.haAreaId === areaId || r.id === areaId);
-      if (idx >= 0) this._removeRoom(idx);
+      const idx = this._config.pages.findIndex((r) => r.haAreaId === areaId || r.id === areaId);
+      if (idx >= 0) this._removePage(idx);
     }
   }
 
-  _renderRooms(c, room, areas, sensors, lights, switches, covers, climates) {
+  _renderPages(c, room, areas, sensors, lights, switches, covers, climates) {
     return `
-      <p class="hint">${this._t("roomsHint")}</p>
+      <p class="hint">${this._t("pagesHint")}</p>
       <div class="actions" style="margin-top:0">
         <button class="btn primary" id="importAreas">${this._t("importAreas")}</button>
-        <button class="btn ghost" id="clearRooms">${this._t("clearRooms")}</button>
+        <button class="btn ghost" id="clearPages">${this._t("clearPages")}</button>
       </div>
       <div class="area-grid" style="margin-top:12px">
         ${areas.length ? areas.map((a) => {
           const on = this._isAreaSelected(a.area_id);
-          const count = this._roomFromArea(a).devices.length;
+          const count = this._pageFromArea(a).devices.length;
           return `<button type="button" class="area-check ${on ? "on" : ""}" data-toggle-area="${this._escape(a.area_id)}" data-on="${on ? "1" : "0"}">
             <input type="checkbox" ${on ? "checked" : ""} tabindex="-1" />
             <span><b>${this._escape(a.name)}</b><br/><span class="count">${this._t("devicesCount", count)}</span></span>
@@ -1025,20 +1008,20 @@ class GuestHaDashboardPanel extends HTMLElement {
         }).join("") : `<p class="hint">${this._t("noAreas")}</p>`}
       </div>
 
-      ${c.rooms.length ? `
+      ${c.pages.length ? `
         <details class="advanced">
           <summary>${this._t("advanced")}</summary>
           <div class="room-pills" style="margin-top:10px">
-            ${c.rooms.map((r, i) => `<button class="pill ${i === this._roomIdx ? "active" : ""}" data-room="${i}">${this._escape(r.label || r.id)} <span class="count">(${(r.devices || []).length})</span></button>`).join("")}
+            ${c.pages.map((r, i) => `<button class="pill ${i === this._pageIdx ? "active" : ""}" data-page="${i}">${this._escape(r.label || r.id)} <span class="count">(${(r.devices || []).length})</span></button>`).join("")}
           </div>
           ${!room ? "" : `
-            <div class="row"><label>${this._t("roomName")}</label><input id="roomLabel" value="${this._escape(room.label || "")}" /></div>
-            <div class="row"><label>${this._t("roomIcon")}</label>
-              <select id="roomIcon">${ICON_OPTIONS.map((i) => `<option ${room.icon === i ? "selected" : ""}>${i}</option>`).join("")}</select></div>
-            <div class="row"><label>${this._t("roomTemp")}</label>
-              <select id="roomTemp"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.temperatureEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
-            <div class="row"><label>${this._t("roomHumidity")}</label>
-              <select id="roomHum"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.humidityEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
+            <div class="row"><label>${this._t("pageName")}</label><input id="pageLabel" value="${this._escape(room.label || "")}" /></div>
+            <div class="row"><label>${this._t("pageIcon")}</label>
+              <select id="pageIcon">${ICON_OPTIONS.map((i) => `<option ${room.icon === i ? "selected" : ""}>${i}</option>`).join("")}</select></div>
+            <div class="row"><label>${this._t("pageTemp")}</label>
+              <select id="pageTemp"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.temperatureEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
+            <div class="row"><label>${this._t("pageHumidity")}</label>
+              <select id="pageHum"><option value="">-</option>${sensors.map((s) => `<option value="${s}" ${room.humidityEntity === s ? "selected" : ""}>${this._escape(this._friendly(s))}</option>`).join("")}</select></div>
             <h3>${this._t("devices")}</h3>
             <div class="card-list">
               ${(room.devices || []).map((d, di) => {
@@ -1053,46 +1036,46 @@ class GuestHaDashboardPanel extends HTMLElement {
             </div>
             <div class="actions">
               <button class="btn" id="addDevice">${this._t("addDevice")}</button>
-              <button class="btn ghost" id="resyncRoom">${this._t("resyncRoom")}</button>
+              <button class="btn ghost" id="resyncPage">${this._t("resyncPage")}</button>
             </div>`}
         </details>` : ""}
     `;
   }
 
-  _bindRooms() {
+  _bindPages() {
     this._on("[data-toggle-area]", "click", (e) => {
       const id = e.currentTarget.dataset.toggleArea;
       const on = e.currentTarget.dataset.on === "1";
       this._toggleArea(id, !on);
     });
     this.shadowRoot.getElementById("importAreas")?.addEventListener("click", () => this._importAllAreas());
-    this.shadowRoot.getElementById("clearRooms")?.addEventListener("click", () => {
-      this._config.rooms = [];
-      this._roomIdx = 0;
-      this._previewRoomId = null;
+    this.shadowRoot.getElementById("clearPages")?.addEventListener("click", () => {
+      this._config.pages = [];
+      this._pageIdx = 0;
+      this._previewPageId = null;
       this._render();
     });
-    this._on(".pill[data-room]", "click", (e) => {
-      this._roomIdx = Number(e.currentTarget.dataset.room);
-      this._previewRoomId = this._config.rooms[this._roomIdx]?.id || null;
+    this._on(".pill[data-page]", "click", (e) => {
+      this._pageIdx = Number(e.currentTarget.dataset.page);
+      this._previewPageId = this._config.pages[this._pageIdx]?.id || null;
       this._render();
     });
     this.shadowRoot.getElementById("addDevice")?.addEventListener("click", () => {
-      const room = this._config.rooms[this._roomIdx];
+      const room = this._config.pages[this._pageIdx];
       if (room) this._addDevice(room);
     });
-    this.shadowRoot.getElementById("resyncRoom")?.addEventListener("click", () => {
-      const room = this._config.rooms[this._roomIdx];
+    this.shadowRoot.getElementById("resyncPage")?.addEventListener("click", () => {
+      const room = this._config.pages[this._pageIdx];
       const areaId = room?.haAreaId || room?.id;
       const area = this._hass.areas?.[areaId];
       if (!area || !room) return;
-      const fresh = this._roomFromArea(area);
-      this._config.rooms[this._roomIdx] = { ...fresh, label: room.label || fresh.label };
-      this._info = this._t("roomResynced");
+      const fresh = this._pageFromArea(area);
+      this._config.pages[this._pageIdx] = { ...fresh, label: room.label || fresh.label };
+      this._info = this._t("pageResynced");
       this._render();
     });
 
-    const room = this._config.rooms[this._roomIdx];
+    const room = this._config.pages[this._pageIdx];
     if (!room) return;
     const bind = (id, fn) => {
       const el = this.shadowRoot.getElementById(id);
@@ -1102,10 +1085,10 @@ class GuestHaDashboardPanel extends HTMLElement {
         el.addEventListener("input", () => { fn(el.value); });
       }
     };
-    bind("roomLabel", (v) => (room.label = v));
-    bind("roomIcon", (v) => (room.icon = v));
-    bind("roomTemp", (v) => (room.temperatureEntity = v));
-    bind("roomHum", (v) => (room.humidityEntity = v));
+    bind("pageLabel", (v) => (room.label = v));
+    bind("pageIcon", (v) => (room.icon = v));
+    bind("pageTemp", (v) => (room.temperatureEntity = v));
+    bind("pageHum", (v) => (room.humidityEntity = v));
     this.shadowRoot.querySelectorAll(".device").forEach((card) => {
       const device = room.devices[Number(card.dataset.di)];
       card.querySelectorAll("[data-k]").forEach((el) => {
@@ -1127,44 +1110,6 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
   }
 
-  _renderScenes(c, sceneEntities) {
-    return `
-      <p class="hint">${this._t("scenesHint")}</p>
-      <div class="actions" style="margin-top:0"><button class="btn primary" id="addScene">+ ${this._t("addScene")}</button></div>
-      <div class="card-list">
-        ${(c.scenes || []).map((s, i) => `
-          <div class="device" data-si="${i}"><div class="device-grid">
-            <input data-k="label" value="${this._escape(s.label || "")}" placeholder="Label" />
-            <select data-k="icon">${ICON_OPTIONS.map((ic) => `<option ${s.icon === ic ? "selected" : ""}>${ic}</option>`).join("")}</select>
-            <select data-k="entityId"><option value="">- scene.* -</option>${sceneEntities.map((e) => `<option value="${e}" ${s.entityId === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}</select>
-            <button class="btn danger" data-remove-scene="${i}">${this._t("delete")}</button>
-          </div></div>`).join("")}
-      </div>
-    `;
-  }
-
-  _bindScenes() {
-    this.shadowRoot.getElementById("addScene")?.addEventListener("click", () => this._addScene());
-    this.shadowRoot.querySelectorAll(".device[data-si]").forEach((card) => {
-      const scene = this._config.scenes[Number(card.dataset.si)];
-      card.querySelectorAll("[data-k]").forEach((el) => {
-        el.addEventListener("change", () => {
-          scene[el.dataset.k] = el.value;
-          if (el.dataset.k === "entityId" && el.value) {
-            scene.label = this._friendly(el.value);
-            this._render();
-          }
-        });
-        if (el.tagName === "INPUT") {
-          el.addEventListener("input", () => { scene[el.dataset.k] = el.value; });
-        }
-      });
-    });
-    this._on("[data-remove-scene]", "click", (e) => {
-      this._config.scenes.splice(Number(e.currentTarget.dataset.removeScene), 1);
-      this._render();
-    });
-  }
 }
 
 customElements.define("guest-ha-dashboard-panel", GuestHaDashboardPanel);

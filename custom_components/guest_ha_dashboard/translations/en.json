@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Guest HA Dashboard",
-        "description": "Adds a sidebar panel to configure rooms, devices, scenes, language and guest Wi‑Fi for the hosted guest PWA."
+        "description": "Adds a sidebar panel to configure pages, dock, styles and guest Wi‑Fi for the hosted guest PWA."
       }
     },
     "abort": {

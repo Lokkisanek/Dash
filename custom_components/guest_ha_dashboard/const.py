@@ -1,7 +1,7 @@
 """Constants for Guest HA Dashboard."""
 
 DOMAIN = "guest_ha_dashboard"
-VERSION = "1.2.8"
+VERSION = "1.2.9"
 STORAGE_KEY = f"{DOMAIN}.config"
 STORAGE_VERSION = 1
 
@@ -18,9 +18,9 @@ DEFAULT_CONFIG: dict = {
         "wifiPassword": "",
         "wifiSecurity": "WPA",
     },
-    "scenes": [],
-    "rooms": [],
-    # Bottom dock — max 4 room shortcuts (label optional)
+    # Dashboard pages (ex-rooms): cards with entities, shown via Dock
+    "pages": [],
+    # Bottom dock — max 4 page shortcuts (label optional)
     "dock": [],
     "dashboardUrl": "",
     "appearance": {

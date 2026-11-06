@@ -17,6 +17,27 @@ function readUrlTheme() {
   return null
 }
 
+function normalizePages(config) {
+  if (Array.isArray(config?.pages) && config.pages.length) return config.pages
+  if (Array.isArray(config?.rooms)) return config.rooms
+  if (Array.isArray(config?.pages)) return config.pages
+  return []
+}
+
+function normalizeDock(config) {
+  if (!Array.isArray(config?.dock)) return []
+  return config.dock
+    .filter((d) => d && !d.entityId && !d.entity_id)
+    .slice(0, 4)
+    .map((d) => ({
+      pageId: d.pageId || d.page_id || d.roomId || d.room_id || '',
+      label: d.label || '',
+      showLabel: d.showLabel !== false,
+      icon: d.icon || 'Home',
+    }))
+    .filter((d) => d.pageId)
+}
+
 export function getGuestConfig() {
   return state.config
 }
@@ -27,15 +48,15 @@ export function useGuestConfig() {
     source: computed(() => state.source),
     config: computed(() => state.config),
     guestInfo: computed(() => state.config.guestInfo),
-    rooms: computed(() => state.config.rooms || []),
-    scenes: computed(() => state.config.scenes || []),
+    /** @deprecated alias — use pages */
+    rooms: computed(() => state.config.pages || []),
+    pages: computed(() => state.config.pages || []),
     dock: computed(() => (Array.isArray(state.config.dock) ? state.config.dock.slice(0, 4) : [])),
     appearance: computed(() => ({
       mode: 'light',
       accent: '#ff6b00',
       ...(state.config.appearance || {}),
     })),
-    // Saved HA config wins — draft panel edits must not leak via ?theme= before Save
     themeMode: computed(() => {
       if (state.config.appearance?.mode === 'dark') return 'dark'
       if (state.config.appearance?.mode === 'light') return 'light'
@@ -48,17 +69,6 @@ export function useGuestConfig() {
 
 export function applyGuestConfig(config, source = 'ha') {
   if (!config || typeof config !== 'object') return
-  const dock = Array.isArray(config.dock)
-    ? config.dock
-        .filter((d) => d && (d.roomId || d.room_id) && !d.entityId && !d.entity_id)
-        .slice(0, 4)
-        .map((d) => ({
-          roomId: d.roomId || d.room_id || '',
-          label: d.label || '',
-          showLabel: d.showLabel !== false,
-          icon: d.icon || 'Home',
-        }))
-    : []
   state.config = {
     guestInfo: {
       ...fallbackConfig.guestInfo,
@@ -69,9 +79,8 @@ export function applyGuestConfig(config, source = 'ha') {
       accent: '#ff6b00',
       ...(config.appearance || {}),
     },
-    scenes: Array.isArray(config.scenes) ? config.scenes : [],
-    rooms: Array.isArray(config.rooms) ? config.rooms : [],
-    dock,
+    pages: normalizePages(config),
+    dock: normalizeDock(config),
     dashboardUrl: config.dashboardUrl || '',
   }
   state.source = source

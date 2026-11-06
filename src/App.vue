@@ -8,7 +8,6 @@ import { unlockAudio } from '@/composables/useSound'
 
 import HaLogin from '@/components/HaLogin.vue'
 import TopStatusBar from '@/components/TopStatusBar.vue'
-import SceneBar from '@/components/SceneBar.vue'
 import LightTile from '@/components/LightTile.vue'
 import ClimateTile from '@/components/ClimateTile.vue'
 import SwitchTile from '@/components/SwitchTile.vue'
@@ -16,28 +15,28 @@ import CoverTile from '@/components/CoverTile.vue'
 import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
 
 const { status } = useHomeAssistant()
-const { guestInfo, rooms, dock, appearance, themeMode } = useGuestConfig()
+const { pages, dock, appearance, themeMode } = useGuestConfig()
 const { t } = useI18n()
 useWakeLock()
 
-const activeRoomId = ref(rooms.value[0]?.id)
+const activePageId = ref(pages.value[0]?.id)
 
-/** Dock entries resolved to rooms (max 4). Fallback: first 4 rooms. */
+/** Dock entries resolved to pages (max 4). Fallback: first 4 pages. */
 const dockItems = computed(() => {
-  const list = rooms.value || []
-  const configured = (dock.value || []).filter((d) => d?.roomId).slice(0, 4)
+  const list = pages.value || []
+  const configured = (dock.value || []).filter((d) => d?.pageId).slice(0, 4)
   if (configured.length) {
     return configured
       .map((d) => {
-        const room = list.find((r) => r.id === d.roomId)
-        if (!room) return null
+        const page = list.find((r) => r.id === d.pageId)
+        if (!page) return null
         const label =
-          d.showLabel === false ? '' : String(d.label || room.label || room.id).trim()
+          d.showLabel === false ? '' : String(d.label || page.label || page.id).trim()
         return {
-          id: room.id,
+          id: page.id,
           label,
           showLabel: d.showLabel !== false && Boolean(label),
-          icon: d.icon || room.icon || 'Home',
+          icon: d.icon || page.icon || 'Home',
         }
       })
       .filter(Boolean)
@@ -50,26 +49,25 @@ const dockItems = computed(() => {
   }))
 })
 
-function selectRoom(id) {
-  if (!id || id === activeRoomId.value) return
+function selectPage(id) {
+  if (!id || id === activePageId.value) return
   unlockAudio()
-  activeRoomId.value = id
+  activePageId.value = id
 }
 
-function roomIndex() {
-  return rooms.value.findIndex((r) => r.id === activeRoomId.value)
+function pageIndex() {
+  return pages.value.findIndex((r) => r.id === activePageId.value)
 }
 
-function goRoomDelta(delta) {
-  const list = rooms.value
+function goPageDelta(delta) {
+  const list = pages.value
   if (!list.length) return
-  let idx = roomIndex()
+  let idx = pageIndex()
   if (idx < 0) idx = 0
   const next = Math.max(0, Math.min(list.length - 1, idx + delta))
-  if (list[next]) selectRoom(list[next].id)
+  if (list[next]) selectPage(list[next].id)
 }
 
-/* Horizontal swipe between room cards */
 const swipe = ref({ x: 0, y: 0, active: false })
 
 function onPointerDown(e) {
@@ -82,10 +80,9 @@ function onPointerUp(e) {
   const dx = e.clientX - swipe.value.x
   const dy = e.clientY - swipe.value.y
   swipe.value.active = false
-  // Require clear horizontal swipe (not a vertical scroll)
   if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.2) return
-  if (dx < 0) goRoomDelta(1)
-  else goRoomDelta(-1)
+  if (dx < 0) goPageDelta(1)
+  else goPageDelta(-1)
 }
 
 function onPointerCancel() {
@@ -93,11 +90,11 @@ function onPointerCancel() {
 }
 
 watch(
-  rooms,
+  pages,
   (list) => {
     if (!list?.length) return
-    if (!list.some((r) => r.id === activeRoomId.value)) {
-      activeRoomId.value = list[0].id
+    if (!list.some((r) => r.id === activePageId.value)) {
+      activePageId.value = list[0].id
     }
   },
   { immediate: true, deep: true },
@@ -115,8 +112,8 @@ watch(
   { immediate: true, deep: true },
 )
 
-const activeRoom = computed(
-  () => rooms.value.find((r) => r.id === activeRoomId.value) || rooms.value[0],
+const activePage = computed(
+  () => pages.value.find((r) => r.id === activePageId.value) || pages.value[0],
 )
 
 const showLogin = computed(() => {
@@ -180,30 +177,17 @@ onMounted(() => {
     </div>
 
     <div class="relative z-10 flex flex-col h-full px-4 pt-3 max-w-lg mx-auto">
-      <p class="text-[11px] uppercase tracking-[0.18em] text-base-content/40 mb-1">
-        {{ guestInfo.welcomeTitle }}
-      </p>
-
-      <h1 class="text-2xl leading-tight tracking-tight mb-3">
-        Smart <span class="font-bold">Guest Home</span>
-        <span class="font-normal text-base-content/50"> {{ t('controllerSuffix') }}</span>
-      </h1>
-
       <TopStatusBar
-        :temperature-entity="activeRoom?.temperatureEntity"
-        :humidity-entity="activeRoom?.humidityEntity"
+        :temperature-entity="activePage?.temperatureEntity"
+        :humidity-entity="activePage?.humidityEntity"
       />
-
-      <div class="mt-4">
-        <SceneBar />
-      </div>
 
       <div
         data-dashboard-scroll
         class="mt-4 flex-1 overflow-y-auto no-scrollbar overscroll-contain"
       >
         <div class="grid grid-cols-2 gap-3 pb-[120px]">
-          <template v-for="device in activeRoom?.devices || []" :key="device.id || device.label">
+          <template v-for="device in activePage?.devices || []" :key="device.id || device.label">
             <LightTile
               v-if="device.type === 'light'"
               :entity-id="device.id"
@@ -231,7 +215,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <LiquidGlassDock v-model="activeRoomId" :items="dockItems" />
+    <LiquidGlassDock v-model="activePageId" :items="dockItems" />
   </div>
 </template>
 
