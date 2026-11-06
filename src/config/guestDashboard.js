@@ -17,6 +17,11 @@ export const guestDashboard = {
     wifiSecurity: 'WPA',
   },
 
+  appearance: {
+    mode: 'light', // light | dark
+    accent: '#ff6b00',
+  },
+
   /** Quick-action scene pills shown above the room grid */
   scenes: [
     {

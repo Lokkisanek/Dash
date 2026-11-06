@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @plugin "daisyui" {
-  themes: false;
+  themes: heliogrid --default, heliogrid-dark --prefersdark;
 }
 @plugin "daisyui/theme" {
   name: "heliogrid";
@@ -24,6 +24,53 @@
 
   --color-neutral: #2d2d2d;
   --color-neutral-content: #ffffff;
+
+  --color-info: #5b9dff;
+  --color-info-content: #ffffff;
+
+  --color-success: #7dd87d;
+  --color-success-content: #0f2a0f;
+
+  --color-warning: #ffb020;
+  --color-warning-content: #2a1a00;
+
+  --color-error: #ff5a5a;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 2rem;
+  --radius-field: 1.5rem;
+  --radius-box: 2rem;
+
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+
+  --border: 1px;
+
+  --depth: 0;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "heliogrid-dark";
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: #1a1c22;
+  --color-base-200: #12141a;
+  --color-base-300: #2a2d36;
+  --color-base-content: #f3f4f6;
+
+  --color-primary: #ff6b00;
+  --color-primary-content: #ffffff;
+
+  --color-secondary: #e8e8e8;
+  --color-secondary-content: #1a1a1a;
+
+  --color-accent: #b8e986;
+  --color-accent-content: #1a1a1a;
+
+  --color-neutral: #e8e8e8;
+  --color-neutral-content: #1a1a1a;
 
   --color-info: #5b9dff;
   --color-info-content: #ffffff;

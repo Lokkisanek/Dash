@@ -15,7 +15,7 @@ import CoverTile from '@/components/CoverTile.vue'
 import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
 
 const { status } = useHomeAssistant()
-const { guestInfo, rooms } = useGuestConfig()
+const { guestInfo, rooms, appearance, themeMode } = useGuestConfig()
 useWakeLock()
 
 const activeRoomId = ref(rooms.value[0]?.id)
@@ -27,6 +27,18 @@ watch(
     if (!list.some((r) => r.id === activeRoomId.value)) {
       activeRoomId.value = list[0].id
     }
+  },
+  { immediate: true, deep: true },
+)
+
+watch(
+  [themeMode, appearance],
+  () => {
+    const mode = themeMode.value
+    const theme = mode === 'dark' ? 'heliogrid-dark' : 'heliogrid'
+    document.documentElement.setAttribute('data-theme', theme)
+    document.documentElement.style.setProperty('--guest-accent', appearance.value.accent || '#ff6b00')
+    document.documentElement.classList.toggle('dark', mode === 'dark')
   },
   { immediate: true, deep: true },
 )
@@ -59,6 +71,7 @@ onMounted(() => {
   <div
     v-else
     class="dashboard-shell relative h-full w-full overflow-hidden text-base-content safe-pad"
+    :class="{ 'is-dark': themeMode === 'dark' }"
   >
     <div class="dashboard-orbs" aria-hidden="true">
       <span class="orb o1" />
@@ -128,6 +141,10 @@ onMounted(() => {
   background: #f3f0f7;
 }
 
+.dashboard-shell.is-dark {
+  background: #0e1014;
+}
+
 .dashboard-orbs {
   position: absolute;
   inset: 0;
@@ -141,6 +158,11 @@ onMounted(() => {
   filter: blur(48px);
   opacity: 0.7;
   mix-blend-mode: multiply;
+}
+
+.dashboard-shell.is-dark .orb {
+  opacity: 0.45;
+  mix-blend-mode: screen;
 }
 
 .o1 {

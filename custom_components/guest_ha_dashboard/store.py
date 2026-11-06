@@ -38,11 +38,19 @@ class GuestDashboardStore:
         """Validate lightly, persist, notify listeners."""
         merged = {**deepcopy(DEFAULT_CONFIG), **data}
         # Keep known top-level keys only
+        appearance = merged.get("appearance") if isinstance(merged.get("appearance"), dict) else {}
         cleaned = {
             "guestInfo": merged.get("guestInfo") or deepcopy(DEFAULT_CONFIG["guestInfo"]),
             "scenes": merged.get("scenes") if isinstance(merged.get("scenes"), list) else [],
             "rooms": merged.get("rooms") if isinstance(merged.get("rooms"), list) else [],
             "dashboardUrl": merged.get("dashboardUrl") or "",
+            "appearance": {
+                **deepcopy(DEFAULT_CONFIG["appearance"]),
+                **appearance,
+                "mode": appearance.get("mode")
+                if appearance.get("mode") in ("light", "dark")
+                else DEFAULT_CONFIG["appearance"]["mode"],
+            },
         }
         self._data = cleaned
         await self._store.async_save(cleaned)
