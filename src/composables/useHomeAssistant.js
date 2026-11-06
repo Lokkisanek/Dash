@@ -17,6 +17,14 @@ import {
 import { playTick } from './useSound'
 import { translate } from '@/i18n/messages'
 import { detectUiLang } from './useI18n'
+import {
+  isEmbedded,
+  hassUrlFromPath,
+  pathForHassUrl,
+  storageKey,
+  requestParentAuth,
+  createParentAuth,
+} from '@/lib/hassTarget'
 
 function tt(key) {
   return translate(detectUiLang(), key)
@@ -24,8 +32,13 @@ function tt(key) {
 
 /** @typedef {'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'mock' | 'need_url' | 'login'} HaStatus */
 
-const TOKENS_KEY = 'guest_ha_tokens'
+const LEGACY_TOKENS_KEY = 'guest_ha_tokens'
+const TOKENS_KEY = 'dash_tokens'
 const HASS_URL_KEY = 'guest_ha_url'
+/** Set after the first successful sign-in; the hello.dash intro never shows again. */
+const SETUP_DONE_KEY = 'dash_setup_done'
+
+const pathHassUrl = hassUrlFromPath()
 
 const state = reactive({
   /** @type {Record<string, object>} */
@@ -34,7 +47,10 @@ const state = reactive({
   status: 'idle',
   isMock: false,
   lastError: null,
-  hassUrl: localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL || '',
+  /** Running inside the HA config panel's live preview */
+  isPreview: isEmbedded,
+  setupDone: localStorage.getItem(SETUP_DONE_KEY) === '1',
+  hassUrl: pathHassUrl || localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL || '',
   /** True once we have successfully connected in this tab session */
   everConnected: false,
   /** Display name of the HA user signed in on this dashboard */
@@ -75,19 +91,46 @@ function hasOAuthCallback() {
   }
 }
 
+/** Tokens are kept per HA host so several homes can share one browser. */
+function tokensKey() {
+  return storageKey(TOKENS_KEY, state.hassUrl)
+}
+
 function saveTokens(tokens) {
-  if (tokens) localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens))
-  else localStorage.removeItem(TOKENS_KEY)
+  if (tokens) localStorage.setItem(tokensKey(), JSON.stringify(tokens))
+  else localStorage.removeItem(tokensKey())
+  localStorage.removeItem(LEGACY_TOKENS_KEY)
 }
 
 function loadTokens() {
-  const raw = localStorage.getItem(TOKENS_KEY)
-  if (!raw) return null
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return null
+  const parse = (raw) => {
+    try {
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
   }
+  const tokens = parse(localStorage.getItem(tokensKey()))
+  if (tokens) return tokens
+  const legacy = parse(localStorage.getItem(LEGACY_TOKENS_KEY))
+  if (legacy && (!state.hassUrl || legacy.hassUrl?.replace(/\/$/, '') === state.hassUrl.replace(/\/$/, ''))) {
+    return legacy
+  }
+  return null
+}
+
+function markSetupDone() {
+  if (state.setupDone || state.isPreview) return
+  state.setupDone = true
+  localStorage.setItem(SETUP_DONE_KEY, '1')
+}
+
+/** Without a baked-in HA URL, keep the HA host in the path: /<ha-host>. */
+function syncPathWithHassUrl(url) {
+  if (import.meta.env.VITE_HA_URL || state.isPreview || !url) return
+  const path = pathForHassUrl(url)
+  if (window.location.pathname === path) return
+  window.history.replaceState({}, document.title, `${path}${window.location.search}${window.location.hash}`)
 }
 
 /* ─── Mock entity factory ─────────────────────────────────── */
@@ -314,9 +357,12 @@ async function connectLive(hassUrl) {
 
     try {
       let auth
+      const parent = state.isPreview ? await requestParentAuth() : null
 
-      // Optional escape hatch: long-lived token (CI / kiosk without OAuth)
-      if (token && token !== 'mock' && url && url !== 'mock') {
+      if (parent) {
+        auth = createParentAuth(parent)
+      } else if (token && token !== 'mock' && url && url !== 'mock') {
+        // Optional escape hatch: long-lived token (CI / kiosk without OAuth)
         auth = createLongLivedTokenAuth(url, token)
       } else {
         try {
@@ -342,17 +388,16 @@ async function connectLive(hassUrl) {
         }
       }
 
-      if (auth.data?.hassUrl) {
-        state.hassUrl = auth.data.hassUrl
-        localStorage.setItem(HASS_URL_KEY, auth.data.hassUrl)
-      } else if (url) {
-        state.hassUrl = url
-        localStorage.setItem(HASS_URL_KEY, url)
+      const resolvedUrl = auth.data?.hassUrl || url
+      if (resolvedUrl) {
+        state.hassUrl = resolvedUrl
+        if (!parent) localStorage.setItem(HASS_URL_KEY, resolvedUrl)
       }
 
       connection = await createConnection({ auth })
       state.status = 'connected'
       state.everConnected = true
+      markSetupDone()
 
       subscribeEntities(connection, (entities) => {
         state.entities = entities
@@ -407,6 +452,8 @@ export async function loginWithHassUrl(hassUrl) {
   }
   state.hassUrl = cleaned
   localStorage.setItem(HASS_URL_KEY, cleaned)
+  // OAuth redirects back to the current path, so put the HA host there first
+  syncPathWithHassUrl(cleaned)
   await connectLive(cleaned)
 }
 
@@ -643,6 +690,33 @@ export function haAssetUrl(path) {
   return `${(state.hassUrl || '').replace(/\/$/, '')}${path}`
 }
 
+/** Ids of the standby photos stored by the HA integration. */
+export async function listPhotos() {
+  if (!connection) return []
+  try {
+    const res = await connection.sendMessagePromise({ type: 'guest_ha_dashboard/photo_list' })
+    return Array.isArray(res?.photos) ? res.photos : []
+  } catch (err) {
+    console.warn('[HA] photo_list failed:', err)
+    return []
+  }
+}
+
+/** Standby photo from the HA integration as an object URL (null if unavailable). */
+export async function fetchPhoto(id) {
+  if (!connection || !id) return null
+  try {
+    const res = await connection.sendMessagePromise({ type: 'guest_ha_dashboard/photo_get', id })
+    const bin = atob(res.data)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return URL.createObjectURL(new Blob([bytes], { type: res.mime || 'image/jpeg' }))
+  } catch (err) {
+    console.warn('[HA] photo_get failed:', err)
+    return null
+  }
+}
+
 export function initHomeAssistant() {
   if (initialized) return
   initialized = true
@@ -652,9 +726,13 @@ export function initHomeAssistant() {
     return
   }
 
-  const savedUrl = localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL
+  const savedUrl = pathHassUrl || localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL
+  if (!pathHassUrl && savedUrl && savedUrl !== 'mock') syncPathWithHassUrl(savedUrl)
   const canResume =
-    hasOAuthCallback() || Boolean(loadTokens()) || (Boolean(savedUrl) && savedUrl !== 'mock')
+    state.isPreview ||
+    hasOAuthCallback() ||
+    Boolean(loadTokens()) ||
+    (Boolean(savedUrl) && savedUrl !== 'mock' && state.setupDone)
 
   if (canResume) {
     // If we only have a URL but no tokens yet, still try — getAuth will redirect once
@@ -674,6 +752,8 @@ export function useHomeAssistant() {
     isMock: computed(() => state.isMock),
     lastError: computed(() => state.lastError),
     hassUrl: computed(() => state.hassUrl),
+    isPreview: computed(() => state.isPreview),
+    setupDone: computed(() => state.setupDone),
     userName: computed(() => state.userName),
     haConfig: computed(() => state.haConfig),
     getEntity,
@@ -690,6 +770,8 @@ export function useHomeAssistant() {
     setCoverPosition,
     mediaCommand,
     haAssetUrl,
+    fetchPhoto,
+    listPhotos,
     loginWithHassUrl,
     logoutHa,
     startMockMode,

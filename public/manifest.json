@@ -1,13 +1,12 @@
 {
-  "name": "Guest Home Controller",
-  "short_name": "Guest Home",
-  "description": "Smart Home Guest Controller for MagSafe kiosk",
+  "name": "dash",
+  "short_name": "dash",
+  "description": "Open-source wall & guest dashboard for Home Assistant",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#f2f2f2",
   "theme_color": "#f2f2f2",
-
   "icons": [
     {
       "src": "/apple-touch-icon.png",

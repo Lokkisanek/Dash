@@ -11,13 +11,35 @@ from homeassistant.helpers.storage import Store
 from .const import (
     DEFAULT_CONFIG,
     DEFAULT_GENERAL,
+    DEFAULT_STANDBY,
     DOCK_MAX,
-    PAGES_MAX,
     STORAGE_KEY,
     STORAGE_VERSION,
 )
 
 GUEST_INFO_KEYS = ("wifiSsid", "wifiPassword", "wifiSecurity")
+STANDBY_MODES = ("clock", "photos")
+CLOCK_STYLES = ("bold", "minimal")
+
+
+def _clamp_int(value: Any, low: int, high: int, default: int) -> int:
+    try:
+        return max(low, min(high, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_standby(raw: Any) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    return {
+        "enabled": bool(src.get("enabled", DEFAULT_STANDBY["enabled"])),
+        "idleMinutes": _clamp_int(src.get("idleMinutes"), 1, 120, DEFAULT_STANDBY["idleMinutes"]),
+        "mode": src.get("mode") if src.get("mode") in STANDBY_MODES else DEFAULT_STANDBY["mode"],
+        "clockStyle": src.get("clockStyle")
+        if src.get("clockStyle") in CLOCK_STYLES
+        else DEFAULT_STANDBY["clockStyle"],
+        "photoSeconds": _clamp_int(src.get("photoSeconds"), 3, 600, DEFAULT_STANDBY["photoSeconds"]),
+    }
 
 
 def _normalize_general(raw: Any) -> dict:
@@ -54,7 +76,7 @@ def _normalize_pages(data: dict[str, Any]) -> list:
             continue
         page = {k: v for k, v in item.items() if k != "haAreaId"}
         cleaned.append(page)
-    return cleaned[:PAGES_MAX]
+    return cleaned
 
 
 def _normalize_dock(raw_dock: list) -> list:
@@ -102,6 +124,10 @@ class GuestDashboardStore:
             )
             merged["general"] = _normalize_general(merged.get("general"))
             merged["guestInfo"] = _normalize_guest_info(merged.get("guestInfo"))
+            merged["standby"] = _normalize_standby(merged.get("standby"))
+            if merged.get("hosting") not in ("hosted", "self"):
+                # Installs from before 2.0 already point at their own URL
+                merged["hosting"] = "self" if merged.get("dashboardUrl") else "hosted"
             self._data = merged
         else:
             self._data = deepcopy(DEFAULT_CONFIG)
@@ -121,8 +147,10 @@ class GuestDashboardStore:
         cleaned = {
             "guestInfo": _normalize_guest_info(merged.get("guestInfo")),
             "general": _normalize_general(merged.get("general")),
+            "standby": _normalize_standby(merged.get("standby")),
             "pages": pages if isinstance(pages, list) else [],
             "dock": dock,
+            "hosting": merged.get("hosting") if merged.get("hosting") in ("hosted", "self") else "hosted",
             "dashboardUrl": merged.get("dashboardUrl") or "",
             "appearance": {
                 **deepcopy(DEFAULT_CONFIG["appearance"]),

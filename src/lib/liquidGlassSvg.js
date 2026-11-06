@@ -129,6 +129,44 @@ function generateSpecularMap(w, h, radius, bezelWidth, angle = Math.PI / 3) {
   return c.toDataURL()
 }
 
+/**
+ * Alpha mask that is opaque on the bezel and fades to clear inside, so the
+ * refracted lens only shows where real glass bends light the most.
+ */
+function generateEdgeMask(w, h, radius, bezelWidth, inner = 0.12) {
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const ctx = c.getContext('2d')
+  const img = ctx.createImageData(w, h)
+  const d = img.data
+  const r = radius
+  for (let y1 = 0; y1 < h; y1++) {
+    for (let x1 = 0; x1 < w; x1++) {
+      const x = x1 < r ? r - x1 : x1 >= w - r ? x1 - (w - r) + 1 : 0
+      const y = y1 < r ? r - y1 : y1 >= h - r ? y1 - (h - r) + 1 : 0
+      // distance from the rounded edge (0 at the rim)
+      const fromEdge = x || y ? r - Math.sqrt(x * x + y * y) : Math.min(x1, y1, w - 1 - x1, h - 1 - y1)
+      const t = Math.max(0, Math.min(1, fromEdge / bezelWidth))
+      const s = t * t * (3 - 2 * t)
+      const a = fromEdge < 0 ? 0 : 1 - (1 - inner) * s
+      const idx = (y1 * w + x1) * 4
+      d[idx] = d[idx + 1] = d[idx + 2] = 255
+      d[idx + 3] = (a * 255) | 0
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+  return c.toDataURL()
+}
+
+/** Chromium can refract the live backdrop; WebKit/Gecko can't (no url() in backdrop-filter). */
+export function supportsSvgBackdrop() {
+  if (typeof navigator === 'undefined') return false
+  if (new URLSearchParams(window.location.search).get('glass') === 'lens') return false
+  const ua = navigator.userAgent
+  return /Chrome|Chromium|Edg\//.test(ua) && !/CriOS|EdgiOS|FxiOS/.test(ua)
+}
+
 /** Pill defaults tuned for the room dock (no outer shadow). */
 export const DOCK_GLASS = {
   width: 360,
@@ -185,13 +223,16 @@ export function mountSvgLiquidGlass(glassEl, defsHost, options = {}) {
       </filter>
     `
 
-    // SVG backdrop-filter only works in Chromium; others keep CSS blur via var() fallback
-    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
-    const isBlink = /Chrome|Chromium|Edg\//.test(ua)
-    if (isBlink) {
+    // Chromium refracts the real backdrop. Elsewhere the same filter runs as a
+    // plain `filter` on a lens layer (a copy of the background), masked to the rim.
+    if (supportsSvgBackdrop()) {
       glassEl.style.setProperty('--lg-filter', `url(#${filterId})`)
+      glassEl.style.removeProperty('--lg-lens-filter')
+      glassEl.style.removeProperty('--lg-lens-mask')
     } else {
       glassEl.style.removeProperty('--lg-filter')
+      glassEl.style.setProperty('--lg-lens-filter', `url(#${filterId})`)
+      glassEl.style.setProperty('--lg-lens-mask', `url(${generateEdgeMask(w, h, radius, bezelW * 1.15)})`)
     }
     glassEl.style.setProperty('--lg-radius', `${radius}px`)
     glassEl.style.setProperty('--lg-tint', `rgba(255, 255, 255, ${opts.tintOpacity})`)

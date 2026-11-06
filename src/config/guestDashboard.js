@@ -32,6 +32,15 @@ export const guestDashboard = {
     showHumidity: true,
   },
 
+  /** Idle screen: big clock or a cross-fading photo frame */
+  standby: {
+    enabled: false,
+    idleMinutes: 2,
+    mode: 'clock', // clock | photos
+    clockStyle: 'bold', // bold | minimal
+    photoSeconds: 8,
+  },
+
   appearance: {
     mode: 'light', // light | dark
     accent: '#ff6b00',

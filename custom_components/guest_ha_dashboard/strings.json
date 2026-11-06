@@ -2,12 +2,12 @@
   "config": {
     "step": {
       "user": {
-        "title": "Guest HA Dashboard",
-        "description": "Adds a sidebar panel where you configure pages, dock, styles and guest Wi‑Fi for the hosted guest PWA. The guest page logs in with a normal Home Assistant account."
+        "title": "dash",
+        "description": "Adds a sidebar panel where you configure pages, dock, styles and guest Wi‑Fi for your dash web dashboard. The dashboard logs in with a normal Home Assistant account."
       }
     },
     "abort": {
-      "already_configured": "Guest HA Dashboard is already configured."
+      "already_configured": "dash is already configured."
     }
   }
 }

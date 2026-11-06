@@ -1,13 +1,15 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { mountSvgLiquidGlass, DOCK_GLASS } from '@/lib/liquidGlassSvg'
+import { mountSvgLiquidGlass, supportsSvgBackdrop, DOCK_GLASS } from '@/lib/liquidGlassSvg'
 import { resolveIcon } from '@/lib/icons'
 import { unlockAudio } from '@/composables/useSound'
+import BackgroundOrbs from './BackgroundOrbs.vue'
 
 const props = defineProps({
   /** @type {{ id: string, label?: string, showLabel?: boolean, icon?: string }[]} */
   items: { type: Array, default: () => [] },
   modelValue: { type: String, default: '' },
+  dark: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -15,6 +17,22 @@ const emit = defineEmits(['update:modelValue'])
 const glassRef = ref(null)
 const svgRef = ref(null)
 let glass = null
+
+/**
+ * WebKit (every iOS browser) can't put an SVG filter in backdrop-filter, so the
+ * dock carries its own copy of the background, aligned to the page, and bends
+ * that with the same displacement filter.
+ */
+const useLens = !supportsSvgBackdrop()
+const lensScene = ref({ left: 0, top: 0, width: 0, height: 0 })
+
+function alignLens() {
+  const shell = glassRef.value?.closest('.dashboard-shell')
+  if (!useLens || !shell || !glassRef.value) return
+  const s = shell.getBoundingClientRect()
+  const g = glassRef.value.getBoundingClientRect()
+  lensScene.value = { left: s.left - g.left, top: s.top - g.top, width: s.width, height: s.height }
+}
 
 const DOCK_H = 88
 const DOCK_R = 44
@@ -71,6 +89,7 @@ function mountGlass() {
   } catch (err) {
     console.warn('[LiquidGlassDock] SVG glass failed:', err)
   }
+  nextTick(alignLens)
 }
 
 let resizeTimer = null
@@ -78,6 +97,7 @@ function onResize() {
   clearTimeout(resizeTimer)
   resizeTimer = setTimeout(() => {
     if (computeDockWidth() !== dockWidth.value) mountGlass()
+    else alignLens()
   }, 120)
 }
 
@@ -123,6 +143,20 @@ onUnmounted(() => {
         borderRadius: `${DOCK_R}px`,
       }"
     >
+      <div v-if="useLens" class="liquid-dock__lens" aria-hidden="true">
+        <div
+          class="liquid-dock__lens-scene"
+          :class="{ 'is-dark': dark }"
+          :style="{
+            left: `${lensScene.left}px`,
+            top: `${lensScene.top}px`,
+            width: `${lensScene.width}px`,
+            height: `${lensScene.height}px`,
+          }"
+        >
+          <BackgroundOrbs :dark="dark" />
+        </div>
+      </div>
       <nav class="liquid-dock__nav" aria-label="Rooms">
         <button
           v-for="item in visibleItems"
@@ -191,6 +225,27 @@ onUnmounted(() => {
   -webkit-backdrop-filter: blur(22px) saturate(1.85) brightness(1.05);
   backdrop-filter: var(--lg-filter, blur(22px) saturate(1.85) brightness(1.05));
   -webkit-backdrop-filter: var(--lg-filter, blur(22px) saturate(1.85) brightness(1.05));
+}
+
+.liquid-dock__lens {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  filter: var(--lg-lens-filter, none);
+  -webkit-mask: var(--lg-lens-mask) 0 0 / 100% 100% no-repeat;
+  mask: var(--lg-lens-mask) 0 0 / 100% 100% no-repeat;
+}
+
+.liquid-dock__lens-scene {
+  position: absolute;
+  background: #f3f0f7;
+}
+
+.liquid-dock__lens-scene.is-dark {
+  background: #0e1014;
 }
 
 .liquid-dock__glass::before {

@@ -205,6 +205,13 @@ async function onUp() {
   letter-spacing: -0.02em;
 }
 
+.ticks {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 7px;
+  pointer-events: none;
+}
+
 .ticks span {
   position: absolute;
   bottom: 0;

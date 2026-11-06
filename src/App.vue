@@ -1,5 +1,7 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useIdle } from '@/composables/useIdle'
+import StandbyScreen from '@/components/StandbyScreen.vue'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
 import { useGuestConfig } from '@/composables/useGuestConfig'
 import { useI18n } from '@/composables/useI18n'
@@ -11,11 +13,27 @@ import TopStatusBar from '@/components/TopStatusBar.vue'
 import WelcomeHeader from '@/components/WelcomeHeader.vue'
 import DeviceTile from '@/components/DeviceTile.vue'
 import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
+import BackgroundOrbs from '@/components/BackgroundOrbs.vue'
 
 const { status } = useHomeAssistant()
-const { pages, dock, appearance, themeMode, general } = useGuestConfig()
+const { pages, dock, appearance, themeMode, general, standby } = useGuestConfig()
 const { t } = useI18n()
 useWakeLock()
+
+const forceStandby = new URLSearchParams(window.location.search).get('standby') === '1'
+const { idle, wake, sleep } = useIdle(
+  () => standby.value.idleMinutes,
+  () => standby.value.enabled || forceStandby,
+)
+if (forceStandby) onMounted(sleep)
+
+/** The HA config panel can show the standby screen in its preview. */
+function onPanelMessage(e) {
+  if (e.source !== window.parent || window.parent === window) return
+  if (e.data?.type === 'guest-ha:standby') e.data.on ? sleep() : wake()
+}
+onMounted(() => window.addEventListener('message', onPanelMessage))
+onUnmounted(() => window.removeEventListener('message', onPanelMessage))
 
 const DOCK_MAX = 6
 const activePageId = ref(pages.value[0]?.id)
@@ -214,12 +232,7 @@ onMounted(() => {
     @pointercancel="onPointerCancel"
     @click.capture="onClickCapture"
   >
-    <div class="dashboard-orbs" aria-hidden="true">
-      <span class="orb o1" />
-      <span class="orb o2" />
-      <span class="orb o3" />
-      <span class="orb o4" />
-    </div>
+    <BackgroundOrbs :dark="themeMode === 'dark'" />
     <div class="top-fade" aria-hidden="true" />
 
     <div class="relative z-10 flex flex-col h-full px-4 pt-4 max-w-lg mx-auto">
@@ -247,7 +260,17 @@ onMounted(() => {
       </div>
     </div>
 
-    <LiquidGlassDock data-no-swipe :model-value="activePageId" :items="dockItems" @update:model-value="selectPage" />
+    <LiquidGlassDock
+      data-no-swipe
+      :model-value="activePageId"
+      :items="dockItems"
+      :dark="themeMode === 'dark'"
+      @update:model-value="selectPage"
+    />
+
+    <Transition name="standby">
+      <StandbyScreen v-if="idle" :settings="standby" :use24h="general.use24h" @wake="wake" />
+    </Transition>
   </div>
 </template>
 
@@ -269,20 +292,24 @@ onMounted(() => {
   overflow: hidden;
 }
 
-/* Status-bar area: shell colour that softly dissolves into the background. */
+/*
+ * Status-bar area: solid shell colour (like the native iOS status bar), then a
+ * short eased fade so the tinted background starts below it.
+ */
 .top-fade {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 5;
-  height: calc(var(--safe-top, 0px) + 36px);
+  height: calc(var(--safe-top, 0px) + 22px);
   pointer-events: none;
   background: linear-gradient(
     to bottom,
     var(--shell-bg) 0,
-    var(--shell-bg) calc(var(--safe-top, 0px) * 0.55),
-    color-mix(in srgb, var(--shell-bg) 55%, transparent) var(--safe-top, 0px),
+    var(--shell-bg) var(--safe-top, 0px),
+    color-mix(in srgb, var(--shell-bg) 70%, transparent) calc(var(--safe-top, 0px) + 7px),
+    color-mix(in srgb, var(--shell-bg) 25%, transparent) calc(var(--safe-top, 0px) + 15px),
     transparent 100%
   );
 }
@@ -343,6 +370,17 @@ onMounted(() => {
   opacity: 0.4;
 }
 
+.standby-enter-active {
+  transition: opacity 1.2s ease;
+}
+.standby-leave-active {
+  transition: opacity 0.45s ease;
+}
+.standby-enter-from,
+.standby-leave-to {
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page,
   .page-next-enter-active,
@@ -354,55 +392,4 @@ onMounted(() => {
   }
 }
 
-.dashboard-orbs {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(48px);
-  opacity: 0.7;
-  mix-blend-mode: multiply;
-}
-
-.dashboard-shell.is-dark .orb {
-  opacity: 0.45;
-  mix-blend-mode: screen;
-}
-
-.o1 {
-  width: 280px;
-  height: 280px;
-  top: -8%;
-  left: -10%;
-  background: #ff8ad0;
-}
-
-.o2 {
-  width: 320px;
-  height: 320px;
-  top: 10%;
-  right: -16%;
-  background: #b08cff;
-}
-
-.o3 {
-  width: 260px;
-  height: 260px;
-  bottom: 18%;
-  right: 8%;
-  background: #ff9a6a;
-}
-
-.o4 {
-  width: 220px;
-  height: 220px;
-  bottom: 8%;
-  left: -6%;
-  background: #ff6eb5;
-}
 </style>

@@ -1,13 +1,25 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
 import { useI18n } from '@/composables/useI18n'
+import { hassUrlFromPath } from '@/lib/hassTarget'
+import IntroHello from './IntroHello.vue'
 
-const { status, lastError, hassUrl, loginWithHassUrl, startMockMode } = useHomeAssistant()
+const { status, lastError, hassUrl, setupDone, loginWithHassUrl, startMockMode } = useHomeAssistant()
 const { t } = useI18n()
 
-const url = ref(hassUrl.value || 'https://')
+const introDone = ref(setupDone.value)
+const pathUrl = hassUrlFromPath()
+const editUrl = ref(!pathUrl)
+const url = ref(pathUrl || hassUrl.value || 'https://')
 const busy = ref(false)
+const pathHost = computed(() => {
+  try {
+    return new URL(pathUrl).host
+  } catch {
+    return ''
+  }
+})
 
 async function submit() {
   busy.value = true
@@ -20,36 +32,48 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-shell">
-    <div class="login-card">
-      <p class="eyebrow">Guest Home Controller</p>
-      <h1>{{ t('loginTitle') }}</h1>
-      <p class="lead">
-        {{ t('loginLead') }}
-      </p>
+  <Transition name="intro-out">
+    <IntroHello v-if="!introDone" @done="introDone = true" />
+  </Transition>
 
-      <label class="field">
-        <span>Home Assistant URL</span>
-        <input
-          v-model="url"
-          type="url"
-          inputmode="url"
-          autocomplete="url"
-          placeholder="https://homeassistant.local:8123"
-          @keyup.enter="submit"
-        />
-      </label>
+  <div class="login-shell" :class="{ 'is-in': introDone }">
+    <div class="login-card">
+      <p class="eyebrow">dash</p>
+      <h1>{{ t('loginTitle') }}</h1>
+
+      <template v-if="!editUrl">
+        <p class="lead host">{{ pathHost }}</p>
+      </template>
+      <template v-else>
+        <p class="lead">{{ t('loginLead') }}</p>
+        <label class="field">
+          <span>Home Assistant URL</span>
+          <input
+            v-model="url"
+            type="url"
+            inputmode="url"
+            autocomplete="url"
+            placeholder="https://homeassistant.example.com"
+            @keyup.enter="submit"
+          />
+        </label>
+      </template>
 
       <p v-if="lastError" class="error">{{ lastError }}</p>
       <p v-if="status === 'connecting'" class="hint">{{ t('loginConnecting') }}</p>
 
       <button type="button" class="btn-primary" :disabled="busy || status === 'connecting'" @click="submit">
-        {{ t('loginContinue') }}
+        {{ editUrl ? t('loginContinue') : t('loginSignIn') }}
       </button>
 
+      <button v-if="!editUrl" type="button" class="btn-ghost" @click="editUrl = true">
+        {{ t('loginOther') }}
+      </button>
       <button type="button" class="btn-ghost" @click="startMockMode">
         {{ t('loginMock') }}
       </button>
+
+      <p class="privacy">{{ t('loginPrivacy') }}</p>
     </div>
   </div>
 </template>
@@ -60,6 +84,9 @@ async function submit() {
   display: grid;
   place-items: center;
   padding: 24px;
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 0.6s ease 0.15s, transform 0.7s cubic-bezier(0.32, 0.72, 0, 1) 0.15s;
   background:
     radial-gradient(ellipse at 20% 15%, rgba(255, 138, 208, 0.45), transparent 42%),
     radial-gradient(ellipse at 80% 20%, rgba(176, 140, 255, 0.4), transparent 40%),
@@ -157,5 +184,31 @@ h1 {
   margin: 0 0 10px;
   font-size: 0.88rem;
   color: rgba(26, 18, 32, 0.5);
+}
+
+.login-shell.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+.host {
+  font-weight: 600;
+  color: #1a1220;
+  word-break: break-all;
+}
+
+.privacy {
+  margin: 14px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(26, 18, 32, 0.45);
+  text-align: center;
+}
+
+.intro-out-leave-active {
+  transition: opacity 0.3s ease;
+}
+.intro-out-leave-to {
+  opacity: 0;
 }
 </style>

@@ -39,7 +39,13 @@ const view = computed(() => {
     case 'cover:vertical':
       return [SliderTile, { ...base, kind: 'cover', icon: d.icon, vertical: true }]
     case 'media_player:tile':
-      return [MediaTile, { ...base, compact: cols < 4 || rows < 2 }]
+      return [MediaTile, { ...base, variant: 'card', compact: cols < 4 || rows < 2 }]
+    case 'media_player:mini':
+      return [MediaTile, { ...base, variant: 'mini' }]
+    case 'media_player:cover':
+      return [MediaTile, { ...base, variant: 'cover', rich: cols === 4 && rows >= 3 }]
+    case 'media_player:button':
+      return [MediaTile, { ...base, variant: 'button' }]
     case 'switch:tile':
       return [SwitchTile, { ...base, icon: d.icon || 'Power' }]
     case 'climate:tile':

@@ -1,18 +1,20 @@
 /**
- * Guest HA Dashboard config panel
+ * dash — config panel
  * Full-screen layout + live dashboard preview (iPhone 15 Pro frame).
  *
- * The preview iframe is created once and never re-mounted; the guest page
+ * The preview iframe is created once and never re-mounted; the dashboard
  * picks up saved config through its own HA subscription.
  */
-import { ICONS } from "./icons.js?v=1.5.0";
+import { ICONS } from "./icons.js?v=2.0.0";
 
-const PANEL_VERSION = "1.5.0";
+const PANEL_VERSION = "2.0.0";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
 const ORIENT_KEY = "guest_ha_panel_preview_orient";
+const PREVIEW_KEY = "guest_ha_panel_preview"; // on | off
 const DOCK_MAX = 6;
-const PAGES_MAX = 6;
+/** Free hosted dash: https://dash.matyas.online/<ha-host> */
+const HOSTED_BASE = "https://dash.matyas.online";
 
 /**
  * Control-Center-like grid (4 square columns). First entry = default.
@@ -20,10 +22,31 @@ const PAGES_MAX = 6;
  */
 const TILE_STYLES = {
   light: { tile: ["2x2", "4x2"], slider: ["4x1", "2x1"], vertical: ["1x2", "2x2"], button: ["1x1", "2x1"] },
-  switch: { tile: ["2x2"], row: ["4x1"], button: ["1x1", "2x1"] },
+  switch: { tile: ["2x2", "4x2"], row: ["4x1"], button: ["1x1", "2x1"] },
   climate: { tile: ["2x2"], dial: ["4x3"] },
   cover: { tile: ["2x2"], slider: ["4x1", "2x1"], vertical: ["1x2", "2x2"] },
-  media_player: { tile: ["4x2", "2x2"] },
+  media_player: { tile: ["4x2", "2x2"], mini: ["4x1", "2x1"], cover: ["2x2", "4x3", "4x4"], button: ["1x1"] },
+};
+
+/**
+ * Every (style, size) a device type can take, for the resize handle: dragging
+ * the corner picks the closest size and switches style when needed.
+ */
+function tileVariants(type) {
+  const styles = TILE_STYLES[type] || TILE_STYLES.switch;
+  return Object.entries(styles).flatMap(([style, sizes]) =>
+    sizes.map((size) => {
+      const [cols, rows] = size.split("x").map(Number);
+      return { style, size, cols, rows };
+    }));
+}
+
+const DEFAULT_STANDBY = {
+  enabled: false,
+  idleMinutes: 2,
+  mode: "clock",
+  clockStyle: "bold",
+  photoSeconds: 8,
 };
 const DEVICE_TYPES = Object.keys(TILE_STYLES);
 const DEFAULT_DEVICE_ICON = {
@@ -90,7 +113,7 @@ const PANEL_I18N = {
     tabStyles: "Styly",
     previewTitle: "Live preview",
     previewMeta: `iPhone 15 Pro · 6,1″ · ${IPHONE_15_PRO.pxH} × ${IPHONE_15_PRO.pxW} · ${IPHONE_15_PRO.ppi} ppi`,
-    previewEmpty: "Nastav URL hostovské PWA v záložce Obecné a ulož.",
+    previewEmpty: "Nastav v záložce Obecné, kde dashboard běží, a ulož.",
     rotateLandscape: "Na šířku",
     rotatePortrait: "Na výšku",
     dashboardUrl: "URL tvého web dashboardu",
@@ -111,7 +134,6 @@ const PANEL_I18N = {
     wifiSecurity: "Zabezpečení",
     dashTheme: "Dashboard theme",
     accent: "Accent",
-    pagesFull: (max) => `Maximum je ${max} pages.`,
     addPage: "+ Page",
     clearPages: "Smazat všechny Pages",
     pagesEmpty: "Zatím žádné Pages — přidej první tlačítkem + Page.",
@@ -146,6 +168,36 @@ const PANEL_I18N = {
     style_button: "Tlačítko",
     style_row: "Řádek",
     style_dial: "Kolečko",
+    style_mini: "Mini",
+    style_cover: "Obal alba",
+    resizeTile: "Táhni pro změnu velikosti a stylu",
+    tabStandby: "Standby",
+    hosting: "Kde dashboard běží",
+    hostingHosted: "Zdarma na dash.matyas.online",
+    hostingSelf: "Vlastní hosting",
+    hostedUrl: "Tvůj odkaz",
+    hostedWarn: "Hosted dash potřebuje Home Assistant dostupný přes HTTPS z internetu (např. Nabu Casa nebo vlastní doména). Teď je HA otevřený přes:",
+    openDashboard: "Otevřít",
+    copyLink: "Kopírovat",
+    copied: "Zkopírováno",
+    uiPreview: "Live preview",
+    standbyEnabled: "Zapnout standby",
+    standbyIdle: "Spustit po nečinnosti",
+    minutes: (n) => `${n} min`,
+    standbyMode: "Zobrazení",
+    modeClock: "Hodiny",
+    modePhotos: "Fotorámeček",
+    clockStyle: "Styl hodin",
+    clockBold: "Barevné",
+    clockMinimal: "Minimal",
+    photoSeconds: "Fotka každých",
+    seconds: (n) => `${n} s`,
+    photos: "Fotky",
+    addPhotos: "+ Přidat fotky",
+    uploading: (n) => `Nahrávám ${n}…`,
+    photosEmpty: "Zatím žádné fotky.",
+    standbyPreview: "Ukázat v náhledu",
+    standbyHide: "Skrýt",
     devicesCount: (n) => `${n} zařízení`,
     langAuto: "Auto (HA)",
     langCs: "Čeština",
@@ -169,7 +221,7 @@ const PANEL_I18N = {
     tabStyles: "Styles",
     previewTitle: "Live preview",
     previewMeta: `iPhone 15 Pro · 6.1″ · ${IPHONE_15_PRO.pxH} × ${IPHONE_15_PRO.pxW} · ${IPHONE_15_PRO.ppi} ppi`,
-    previewEmpty: "Set the guest PWA URL in General and save.",
+    previewEmpty: "Choose where the dashboard runs in General and save.",
     rotateLandscape: "Landscape",
     rotatePortrait: "Portrait",
     dashboardUrl: "Your web dashboard URL",
@@ -190,7 +242,6 @@ const PANEL_I18N = {
     wifiSecurity: "Security",
     dashTheme: "Dashboard theme",
     accent: "Accent",
-    pagesFull: (max) => `Maximum is ${max} pages.`,
     addPage: "+ Page",
     clearPages: "Clear all Pages",
     pagesEmpty: "No Pages yet — add one with + Page.",
@@ -225,6 +276,36 @@ const PANEL_I18N = {
     style_button: "Button",
     style_row: "Row",
     style_dial: "Dial",
+    style_mini: "Mini",
+    style_cover: "Album art",
+    resizeTile: "Drag to change size and style",
+    tabStandby: "Standby",
+    hosting: "Where the dashboard runs",
+    hostingHosted: "Free on dash.matyas.online",
+    hostingSelf: "Self-hosted",
+    hostedUrl: "Your link",
+    hostedWarn: "Hosted dash needs Home Assistant reachable over HTTPS from the internet (e.g. Nabu Casa or your own domain). Right now HA is open via:",
+    openDashboard: "Open",
+    copyLink: "Copy",
+    copied: "Copied",
+    uiPreview: "Live preview",
+    standbyEnabled: "Enable standby",
+    standbyIdle: "Start after idle",
+    minutes: (n) => `${n} min`,
+    standbyMode: "Display",
+    modeClock: "Clock",
+    modePhotos: "Photo frame",
+    clockStyle: "Clock style",
+    clockBold: "Colourful",
+    clockMinimal: "Minimal",
+    photoSeconds: "Photo every",
+    seconds: (n) => `${n} s`,
+    photos: "Photos",
+    addPhotos: "+ Add photos",
+    uploading: (n) => `Uploading ${n}…`,
+    photosEmpty: "No photos yet.",
+    standbyPreview: "Show in preview",
+    standbyHide: "Hide",
     devicesCount: (n) => `${n} devices`,
     langAuto: "Auto (HA)",
     langCs: "Čeština",
@@ -245,8 +326,10 @@ const emptyConfig = () => ({
     wifiSecurity: "WPA",
   },
   general: { ...DEFAULT_GENERAL },
+  standby: { ...DEFAULT_STANDBY },
   pages: [],
   dock: [],
+  hosting: "hosted",
   dashboardUrl: "",
   appearance: { mode: "light", accent: "#ff6b00" },
 });
@@ -258,7 +341,7 @@ function normalizeConfig(cfg = {}) {
   else if (Array.isArray(cfg.rooms) && cfg.rooms.length) pages = cfg.rooms;
   else if (Array.isArray(cfg.pages)) pages = cfg.pages;
   // Pages are free-form cards — drop legacy area linkage
-  pages = pages.slice(0, PAGES_MAX).map((pg) => {
+  pages = pages.map((pg) => {
     if (!pg || typeof pg !== "object") return pg;
     const { haAreaId, temperatureEntity, humidityEntity, ...rest } = pg;
     return { ...rest, devices: Array.isArray(rest.devices) ? rest.devices : [] };
@@ -283,6 +366,8 @@ function normalizeConfig(cfg = {}) {
       wifiSecurity: g.wifiSecurity || "WPA",
     },
     general: { ...DEFAULT_GENERAL, ...(cfg.general || {}) },
+    standby: { ...DEFAULT_STANDBY, ...(cfg.standby || {}) },
+    hosting: cfg.hosting === "self" || cfg.hosting === "hosted" ? cfg.hosting : (cfg.dashboardUrl ? "self" : "hosted"),
     pages,
     dock,
     appearance: { ...base.appearance, ...(cfg.appearance || {}) },
@@ -309,6 +394,11 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._dragIdx = -1;
     this._iconOpen = null;
     this._iconPickers = new Map();
+    this._previewOn = localStorage.getItem(PREVIEW_KEY) !== "off";
+    /** Standby photos: ids from HA + thumbnail object URLs */
+    this._photos = null;
+    this._thumbs = new Map();
+    this._uploading = 0;
     this._orient = localStorage.getItem(ORIENT_KEY) === "landscape" ? "landscape" : "portrait";
     this._rotating = false;
     /** Theme of the saved config — the phone screen chrome follows the live page, not the draft */
@@ -394,8 +484,35 @@ class GuestHaDashboardPanel extends HTMLElement {
     return this._config.dock;
   }
 
-  /** Exact guest PWA URL — nothing special, just the live page. */
+  /** HA address the browser uses right now (what the dashboard must reach too). */
+  _haUrl() {
+    const external = this._hass?.config?.external_url;
+    return (external || this._hass?.auth?.data?.hassUrl || window.location.origin).replace(/\/$/, "");
+  }
+
+  /** Hosted dash puts the HA host in the path: https://dash.matyas.online/<ha-host> */
+  _hostedUrl() {
+    try {
+      return `${HOSTED_BASE}/${new URL(this._haUrl()).host}`;
+    } catch {
+      return "";
+    }
+  }
+
+  /** Public HTTPS is required for the hosted page to reach this HA. */
+  _haReachableFromHosted() {
+    try {
+      const u = new URL(this._haUrl());
+      const privateHost = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)|\.local$/.test(u.hostname);
+      return u.protocol === "https:" && !privateHost;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Exact dashboard URL — nothing special, just the live page. */
   _buildPreviewSrc(config) {
+    if (config?.hosting !== "self") return this._hostedUrl();
     const base = (config?.dashboardUrl || "").trim().replace(/\/$/, "");
     if (!base) return "";
     try {
@@ -461,7 +578,6 @@ class GuestHaDashboardPanel extends HTMLElement {
     return this._hass?.states?.[id]?.attributes?.friendly_name || id;
   }
   _addEmptyPage() {
-    if (this._config.pages.length >= PAGES_MAX) return;
     this._config.pages.push({
       id: `page_${Date.now()}`,
       label: "Nova page",
@@ -680,14 +796,14 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       @media (max-width: 640px) { .row { grid-template-columns: 1fr; gap: 4px; } }
       label { font-size: 0.85rem; color: var(--muted); }
-      input:not([type="checkbox"]), select, textarea {
+      input:not([type="checkbox"], [type="file"]), select, textarea {
         width: 100%; font: inherit; padding: 10px 12px; border-radius: 12px;
         border: 1px solid var(--border);
         background-color: #fff !important; color: #111 !important;
         -webkit-text-fill-color: #111 !important; caret-color: #111 !important;
         opacity: 1 !important; color-scheme: light;
       }
-      :host([dark]) input:not([type="checkbox"]), :host([dark]) select, :host([dark]) textarea {
+      :host([dark]) input:not([type="checkbox"], [type="file"]), :host([dark]) select, :host([dark]) textarea {
         background-color: #1c1e24 !important; color: #f5f5f5 !important;
         -webkit-text-fill-color: #f5f5f5 !important; caret-color: #f5f5f5 !important;
         color-scheme: dark;
@@ -707,6 +823,51 @@ class GuestHaDashboardPanel extends HTMLElement {
       .msg { margin: 10px 0; padding: 10px 12px; border-radius: 12px; font-size: 0.9rem; }
       .msg.err { background: var(--danger-bg); color: var(--danger-text); }
       .msg.ok { background: var(--ok-bg); color: var(--ok-text); }
+      .shell.no-preview { grid-template-columns: minmax(0, 1fr); }
+      .shell.no-preview .preview { display: none; }
+      .link-box { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+      .link-box code {
+        flex: 1 1 220px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        padding: 9px 12px; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border);
+        font-size: 0.85rem;
+      }
+      .link-box a.btn { text-decoration: none; }
+      .msg.warn {
+        margin: 0 0 12px; padding: 10px 12px; border-radius: 14px; font-size: 0.85rem; line-height: 1.45;
+        background: color-mix(in srgb, #f59e0b 16%, transparent); color: var(--text);
+      }
+      .standby-body { transition: opacity 0.25s ease; margin-top: 8px; }
+      .standby-body.is-off { opacity: 0.45; }
+      .clock-sample {
+        display: flex; align-items: center; justify-content: center; gap: 2px;
+        margin: 6px 0 14px; padding: 18px; border-radius: 24px; background: #000; max-width: 360px;
+        font: 900 64px/0.9 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; letter-spacing: -0.04em;
+        animation: pop-in 0.3s ease;
+      }
+      .clock-sample i { width: 10px; height: 26px; margin: 0 6px;
+        background: radial-gradient(circle, #8a8a8e 4.5px, transparent 5px) 0 0 / 10px 13px repeat-y; }
+      .clock-sample.bold .c0 { color: #c777b8; } .clock-sample.bold .c1 { color: #b47fd4; }
+      .clock-sample.bold .c2 { color: #a497f2; } .clock-sample.bold .c3 { color: #8e44a8; }
+      .clock-sample.minimal { color: #fff; font-weight: 200; font-family: -apple-system, system-ui, sans-serif; }
+      .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; max-width: 720px; }
+      .photo-thumb, .photo-add {
+        position: relative; margin: 0; aspect-ratio: 1; border-radius: 18px; overflow: hidden;
+        background: color-mix(in srgb, var(--text) 8%, transparent) center / cover no-repeat;
+        animation: pop-in 0.3s ease;
+      }
+      .photo-del {
+        position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; padding: 0;
+        display: grid; place-items: center; font-size: 16px; line-height: 1;
+        background: rgba(0,0,0,0.55); color: #fff; opacity: 0; transition: opacity 0.2s ease;
+      }
+      .photo-thumb:hover .photo-del, .photo-del:focus-visible { opacity: 1; }
+      .photo-add {
+        display: grid; place-items: center; cursor: pointer; text-align: center; padding: 8px;
+        border: 2px dashed color-mix(in srgb, var(--text) 22%, transparent); background: transparent;
+        color: var(--muted); font-size: 0.85rem;
+      }
+      .photo-add:hover { border-color: var(--accent); color: var(--accent); }
+      .photo-add input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
       .icon-picker { position: relative; min-width: 0; }
       .row:has(> .icon-picker), .row:has(> .seg.wrap) { align-items: start; }
       .row:has(> .icon-picker) > label, .row:has(> .seg.wrap) > label { padding-top: 10px; }
@@ -731,7 +892,8 @@ class GuestHaDashboardPanel extends HTMLElement {
       @keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
 
       /* Pages editor — mimics the iOS Control Center edit grid */
-      .cc-wrap { container-type: inline-size; max-width: 400px; margin: 4px 0 14px; }
+      .cc-wrap { container-type: inline-size; max-width: 400px; margin: 4px auto 14px; padding: 0 14px; box-sizing: content-box; }
+      .cc-actions { justify-content: center; }
       .cc-grid {
         --gap: 10px;
         display: grid; gap: var(--gap); grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -745,9 +907,10 @@ class GuestHaDashboardPanel extends HTMLElement {
         display: flex; flex-direction: column; justify-content: space-between; gap: 4px;
         padding: 10px 12px; border-radius: 22px; color: var(--text);
         background: var(--card); border: 1px solid var(--border);
-        transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s ease, opacity 0.2s ease;
+        touch-action: pan-y; -webkit-touch-callout: none;
+        transition: scale 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s ease, opacity 0.2s ease;
       }
-      .cc-tile:hover { transform: scale(1.02); }
+      .cc-tile:hover { scale: 1.02; }
       .cc-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .cc-tile.sel { box-shadow: 0 0 0 2.5px var(--accent); }
       .cc-tile.h1 { flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; }
@@ -775,16 +938,36 @@ class GuestHaDashboardPanel extends HTMLElement {
       .cc-tile .deco-media {
         right: 12px; bottom: 10px; display: flex; gap: 10px; font-size: 0.8rem; color: var(--muted);
       }
+      .cc-tile .deco-cover {
+        inset: 0; background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%);
+      }
+      .cc-tile .cc-resize {
+        position: absolute; left: 0; bottom: 0; z-index: 3; width: 26px; height: 26px; cursor: nesw-resize;
+        touch-action: none; opacity: 0; transition: opacity 0.2s ease;
+      }
+      .cc-tile .cc-resize::before {
+        content: ""; position: absolute; left: 6px; bottom: 6px; width: 11px; height: 11px;
+        border-left: 3px solid var(--accent); border-bottom: 3px solid var(--accent);
+        border-bottom-left-radius: 9px;
+      }
+      .cc-tile.s1 .cc-resize::before { left: 3px; bottom: 3px; }
+      .cc-tile:hover .cc-resize, .cc-tile.sel .cc-resize, .cc-tile.resizing .cc-resize { opacity: 1; }
+      @media (hover: none) { .cc-tile .cc-resize { opacity: 0.8; } }
+      .cc-tile.resizing { box-shadow: 0 0 0 2.5px var(--accent), 0 10px 30px rgba(0,0,0,0.18); }
+      .cc-grid.is-resizing, .cc-grid.is-resizing .cc-tile { cursor: nesw-resize; }
       .cc-grid.is-dragging .cc-tile:not(.dragging) { animation: cc-wiggle 0.28s ease-in-out infinite alternate; }
       .cc-grid.is-dragging .cc-tile:nth-child(2n) { animation-delay: -0.14s; }
-      .cc-tile.dragging { opacity: 0.35; }
-      .cc-tile.drop-target { box-shadow: 0 0 0 2.5px var(--accent); transform: scale(0.96); }
+      .cc-tile.dragging {
+        z-index: 5; cursor: grabbing; pointer-events: none;
+        transform: translate(var(--tx, 0), var(--ty, 0)) scale(1.06);
+        box-shadow: 0 18px 40px rgba(0,0,0,0.25); opacity: 0.94;
+      }
       @keyframes cc-wiggle { from { rotate: -1.2deg; } to { rotate: 1.2deg; } }
       @media (prefers-reduced-motion: reduce) {
         .cc-grid.is-dragging .cc-tile { animation: none !important; }
       }
       .inspector {
-        display: grid; gap: 2px; padding: 14px 16px 6px; border-radius: 22px; max-width: 560px;
+        display: grid; gap: 2px; padding: 14px 16px 6px; border-radius: 22px; max-width: 560px; margin: 0 auto;
         background: color-mix(in srgb, var(--input-bg) 70%, transparent); border: 1px solid var(--border);
         animation: pop-in 0.22s ease;
       }
@@ -946,7 +1129,9 @@ class GuestHaDashboardPanel extends HTMLElement {
     const frame = this.shadowRoot.querySelector("#iphone iframe");
     frame.addEventListener("load", () => this._postSafeArea());
     this._onFrameMessage = (e) => {
-      if (e.source === frame.contentWindow && e.data?.type === "guest-ha:ready") this._postSafeArea();
+      if (e.source !== frame.contentWindow) return;
+      if (e.data?.type === "guest-ha:ready") this._postSafeArea();
+      if (e.data?.type === "guest-ha:auth-request") this._postAuth(e.origin);
     };
     this._attachShellObservers();
     this._tickStatusClock();
@@ -963,6 +1148,34 @@ class GuestHaDashboardPanel extends HTMLElement {
       });
       this._resizeObs.observe(stage);
     }
+  }
+
+  /**
+   * The preview signs in with this panel's session: a short-lived access token,
+   * sent only to the origin of the configured dashboard URL (never the refresh token).
+   */
+  async _postAuth(origin) {
+    const frame = this.shadowRoot?.querySelector("#iphone iframe");
+    const auth = this._hass?.auth;
+    if (!frame?.contentWindow || !auth?.data) return;
+    let expected = "";
+    try {
+      expected = new URL(this._livePreviewSrc).origin;
+    } catch {
+      return;
+    }
+    if (origin !== expected) return;
+    try {
+      if (auth.expired) await auth.refreshAccessToken();
+    } catch {
+      return;
+    }
+    frame.contentWindow.postMessage({
+      type: "guest-ha:auth",
+      hassUrl: auth.data.hassUrl || window.location.origin,
+      access_token: auth.data.access_token,
+      expires: auth.data.expires,
+    }, expected);
   }
 
   /** env(safe-area-inset-*) is 0 inside an iframe, so hand the page the simulated insets. */
@@ -1090,12 +1303,16 @@ class GuestHaDashboardPanel extends HTMLElement {
           <button type="button" data-ui-lang="en" class="${this._uiLangPref === "en" ? "active" : ""}">${this._t("langEn")}</button>
         </div>
       </div>
+      <div class="toggle-list" style="max-width:520px">
+        ${this._toggle('id="uiPreview"', this._previewOn, this._t("uiPreview"))}
+      </div>
     `;
   }
 
   _render() {
     this._syncTheme();
     this._ensureShell();
+    this.shadowRoot.querySelector(".shell").classList.toggle("no-preview", !this._previewOn);
     const c = this._config;
     if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00" };
     this._ensureDock();
@@ -1118,6 +1335,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       ["pages", "tabPages"],
       ["dock", "tabDock"],
       ["guest", "tabGuest"],
+      ["standby", "tabStandby"],
       ["styles", "tabStyles"],
     ];
     const tabChanged = this._lastTab !== this._tab;
@@ -1144,6 +1362,7 @@ class GuestHaDashboardPanel extends HTMLElement {
               ${this._tab === "pages" ? this._renderPages(c, page) : ""}
               ${this._tab === "dock" ? this._renderDock(c) : ""}
               ${this._tab === "styles" ? this._renderStyles(c) : ""}
+              ${this._tab === "standby" ? this._renderStandby(c) : ""}
             </div>
             `}
           </div>
@@ -1198,7 +1417,14 @@ class GuestHaDashboardPanel extends HTMLElement {
     if (this._tab === "pages") this._bindPages();
     if (this._tab === "dock") this._bindDock();
     if (this._tab === "styles") this._bindStyles();
+    if (this._tab === "standby") this._bindStandby();
     this._bindIconPickers();
+    this.shadowRoot.getElementById("uiPreview")?.addEventListener("change", (e) => {
+      this._previewOn = e.currentTarget.checked;
+      localStorage.setItem(PREVIEW_KEY, this._previewOn ? "on" : "off");
+      this._render();
+      requestAnimationFrame(() => this._fitPreview());
+    });
   }
 
   _toggle(attrs, checked, label) {
@@ -1223,8 +1449,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     ];
     const weathers = this._entities("weather");
     return `
-      <div class="row"><label>${this._t("dashboardUrl")}</label>
-        <input id="dashboardUrl" value="${this._escape(c.dashboardUrl || "")}" placeholder="https://guest.example.com" /></div>
+      ${this._renderHosting(c)}
       <h3>${this._t("headerSection")}</h3>
       <div class="toggle-list">
         ${this._toggle('data-gen="showTopBar"', gen.showTopBar, this._t("genShowTopBar"))}
@@ -1246,6 +1471,18 @@ class GuestHaDashboardPanel extends HTMLElement {
     const general = () => (this._config.general ||= { ...DEFAULT_GENERAL });
     const url = this.shadowRoot.getElementById("dashboardUrl");
     url?.addEventListener("input", () => { this._config.dashboardUrl = url.value; });
+    this._on("[data-hosting]", "click", (e) => {
+      this._config.hosting = e.currentTarget.dataset.hosting;
+      this._render();
+    });
+    this.shadowRoot.getElementById("copyHosted")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      try {
+        await navigator.clipboard.writeText(this._hostedUrl());
+        btn.textContent = this._t("copied");
+        setTimeout(() => { btn.textContent = this._t("copyLink"); }, 1600);
+      } catch { /* clipboard blocked */ }
+    });
     this._on("[data-gen]", "change", (e) => {
       const key = e.currentTarget.dataset.gen;
       general()[key] = e.currentTarget.checked;
@@ -1253,6 +1490,161 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
     const weather = this.shadowRoot.getElementById("weatherEntity");
     weather?.addEventListener("change", () => { general().weatherEntity = weather.value; });
+  }
+
+  _renderHosting(c) {
+    const hosted = c.hosting !== "self";
+    const link = this._hostedUrl();
+    return `
+      <div class="row"><label>${this._t("hosting")}</label>
+        <div class="seg wrap">
+          <button type="button" data-hosting="hosted" class="${hosted ? "active" : ""}">${this._t("hostingHosted")}</button>
+          <button type="button" data-hosting="self" class="${hosted ? "" : "active"}">${this._t("hostingSelf")}</button>
+        </div></div>
+      ${hosted ? `
+        <div class="row"><label>${this._t("hostedUrl")}</label>
+          <div class="link-box">
+            <code>${this._escape(link)}</code>
+            <button type="button" class="btn" id="copyHosted">${this._t("copyLink")}</button>
+            <a class="btn" href="${this._escape(link)}" target="_blank" rel="noopener">${this._t("openDashboard")}</a>
+          </div></div>
+        ${this._haReachableFromHosted() ? "" : `<p class="msg warn">${this._t("hostedWarn")} <code>${this._escape(this._haUrl())}</code></p>`}
+      ` : `
+        <div class="row"><label>${this._t("dashboardUrl")}</label>
+          <input id="dashboardUrl" value="${this._escape(c.dashboardUrl || "")}" placeholder="https://dash.example.com" /></div>
+      `}`;
+  }
+
+  _renderStandby(c) {
+    const sb = { ...DEFAULT_STANDBY, ...(c.standby || {}) };
+    const chips = (key, values, fmt) => `
+      <div class="seg wrap">${values.map((v) => `
+        <button type="button" data-sb-set="${key}" data-value="${v}" class="${String(sb[key]) === String(v) ? "active" : ""}">${fmt(v)}</button>`).join("")}
+      </div>`;
+    if (this._photos === null) this._loadPhotos();
+    const photos = this._photos || [];
+    return `
+      <div class="toggle-list" style="max-width:560px">
+        ${this._toggle('data-sb="enabled"', sb.enabled, this._t("standbyEnabled"))}
+      </div>
+      <div class="standby-body ${sb.enabled ? "" : "is-off"}">
+        <div class="row"><label>${this._t("standbyIdle")}</label>
+          ${chips("idleMinutes", [1, 2, 5, 10, 15, 30], (n) => this._t("minutes", n))}</div>
+        <div class="row"><label>${this._t("standbyMode")}</label>
+          ${chips("mode", ["clock", "photos"], (m) => this._t(m === "clock" ? "modeClock" : "modePhotos"))}</div>
+        ${sb.mode === "clock" ? `
+          <div class="row"><label>${this._t("clockStyle")}</label>
+            ${chips("clockStyle", ["bold", "minimal"], (m) => this._t(m === "bold" ? "clockBold" : "clockMinimal"))}</div>
+          <div class="clock-sample ${sb.clockStyle}" aria-hidden="true">
+            <span class="c0">0</span><span class="c1">9</span><i></i><span class="c2">4</span><span class="c3">1</span>
+          </div>
+        ` : `
+          <div class="row"><label>${this._t("photoSeconds")}</label>
+            ${chips("photoSeconds", [5, 8, 15, 30, 60], (n) => this._t("seconds", n))}</div>
+          <h3>${this._t("photos")} <span class="count">${photos.length}</span></h3>
+          <div class="photo-grid">
+            ${photos.map((id) => `
+              <figure class="photo-thumb" style="${this._thumbs.get(id) ? `background-image:url('${this._thumbs.get(id)}')` : ""}">
+                <button type="button" class="photo-del" data-photo-del="${id}" aria-label="${this._t("delete")}">×</button>
+              </figure>`).join("")}
+            <label class="photo-add">
+              <input type="file" id="photoInput" accept="image/*" multiple />
+              <span>${this._uploading ? this._t("uploading", this._uploading) : this._t("addPhotos")}</span>
+            </label>
+          </div>
+          ${photos.length ? "" : `<p class="hint">${this._t("photosEmpty")}</p>`}
+        `}
+        <div class="actions">
+          <button type="button" class="btn" id="standbyShow">${this._t("standbyPreview")}</button>
+          <button type="button" class="btn ghost" id="standbyHide">${this._t("standbyHide")}</button>
+        </div>
+      </div>`;
+  }
+
+  _bindStandby() {
+    const sb = () => (this._config.standby ||= { ...DEFAULT_STANDBY });
+    this._on('[data-sb="enabled"]', "change", (e) => {
+      sb().enabled = e.currentTarget.checked;
+      this._render();
+    });
+    this._on("[data-sb-set]", "click", (e) => {
+      const { sbSet, value } = e.currentTarget.dataset;
+      sb()[sbSet] = /^\d+$/.test(value) ? Number(value) : value;
+      this._render();
+    });
+    const post = (on) => this.shadowRoot.querySelector("#iphone iframe")?.contentWindow
+      ?.postMessage({ type: "guest-ha:standby", on }, "*");
+    this.shadowRoot.getElementById("standbyShow")?.addEventListener("click", () => post(true));
+    this.shadowRoot.getElementById("standbyHide")?.addEventListener("click", () => post(false));
+    this.shadowRoot.getElementById("photoInput")?.addEventListener("change", (e) => {
+      this._uploadPhotos([...e.currentTarget.files]);
+      e.currentTarget.value = "";
+    });
+    this._on("[data-photo-del]", "click", (e) => this._deletePhoto(e.currentTarget.dataset.photoDel));
+  }
+
+  async _loadPhotos() {
+    this._photos = [];
+    try {
+      const res = await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/photo_list" });
+      this._photos = res?.photos || [];
+    } catch {
+      this._photos = [];
+    }
+    this._render();
+    for (const id of this._photos) {
+      if (this._thumbs.has(id)) continue;
+      try {
+        const res = await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/photo_get", id, thumb: true });
+        this._thumbs.set(id, `data:${res.mime};base64,${res.data}`);
+        if (this._tab === "standby") this._render();
+      } catch { /* missing file */ }
+    }
+  }
+
+  /** Resized in the browser so only a compact JPEG ever reaches HA. */
+  async _encodeImage(file, max, quality) {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close?.();
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    return dataUrl.slice(dataUrl.indexOf(",") + 1);
+  }
+
+  async _uploadPhotos(files) {
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    this._uploading += images.length;
+    this._render();
+    for (const file of images) {
+      try {
+        const data = await this._encodeImage(file, 1920, 0.85);
+        const thumb = await this._encodeImage(file, 360, 0.75);
+        const res = await this._hass.connection.sendMessagePromise({
+          type: "guest_ha_dashboard/photo_upload", data, thumb,
+        });
+        this._photos = [...(this._photos || []), res.id];
+        this._thumbs.set(res.id, `data:image/jpeg;base64,${thumb}`);
+      } catch (err) {
+        this._error = err?.message || String(err);
+      }
+      this._uploading -= 1;
+      this._render();
+    }
+  }
+
+  async _deletePhoto(id) {
+    try {
+      await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/photo_delete", id });
+      this._photos = (this._photos || []).filter((p) => p !== id);
+      this._thumbs.delete(id);
+    } catch (err) {
+      this._error = err?.message || String(err);
+    }
+    this._render();
   }
 
   _renderGuest(c) {
@@ -1390,12 +1782,10 @@ class GuestHaDashboardPanel extends HTMLElement {
   }
 
   _renderPages(c, page) {
-    const pagesFull = c.pages.length >= PAGES_MAX;
     return `
       <div class="actions" style="margin-top:0;align-items:center">
-        <button class="btn primary" id="addPage" ${pagesFull ? "disabled" : ""}>${this._t("addPage")}</button>
+        <button class="btn primary" id="addPage">${this._t("addPage")}</button>
         <button class="btn ghost" id="clearPages" ${c.pages.length ? "" : "disabled"}>${this._t("clearPages")}</button>
-        <span class="count">${c.pages.length} / ${PAGES_MAX}${pagesFull ? ` · ${this._t("pagesFull", PAGES_MAX)}` : ""}</span>
       </div>
       ${!c.pages.length ? `<p class="hint" style="margin-top:14px">${this._t("pagesEmpty")}</p>` : `
         <div class="page-pills" style="margin-top:14px">
@@ -1415,8 +1805,15 @@ class GuestHaDashboardPanel extends HTMLElement {
     `;
   }
 
-  _renderGrid(page) {
-    const tiles = page.devices.map((d, di) => {
+  /** Stable per-device key across re-renders (FLIP animations, drag identity). */
+  _devKey(d) {
+    if (!this._devKeys) { this._devKeys = new WeakMap(); this._devSeq = 0; }
+    if (!this._devKeys.has(d)) this._devKeys.set(d, `d${++this._devSeq}`);
+    return this._devKeys.get(d);
+  }
+
+  _gridTiles(page) {
+    return page.devices.map((d, di) => {
       const { style, size, cols, rows } = resolveTile(d);
       const single = cols === 1 && rows === 1;
       const icon = d.icon || DEFAULT_DEVICE_ICON[d.type] || "Sparkles";
@@ -1426,10 +1823,12 @@ class GuestHaDashboardPanel extends HTMLElement {
         vertical: '<span class="deco deco-fill-y"></span>',
         row: '<span class="deco deco-switch"></span>',
         dial: `<svg class="deco deco-dial" viewBox="0 0 100 52" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"><path d="M6 48a44 44 0 0 1 88 0" opacity="0.2"/><path d="M6 48a44 44 0 0 1 62-40"/></svg>`,
+        cover: '<span class="deco deco-cover"></span>',
+        mini: '<span class="deco deco-media">▶ ⏭</span>',
       }[style] || (d.type === "media_player" ? '<span class="deco deco-media">⏮ ▶ ⏭</span>' : "");
       return `
-        <div class="cc-tile ${rows === 1 ? "h1" : ""} ${single ? "s1" : ""} ${di === this._devIdx ? "sel" : ""}"
-          draggable="true" tabindex="0" data-ti="${di}" title="${this._escape(label)}"
+        <div class="cc-tile st-${style} ${rows === 1 ? "h1" : ""} ${single ? "s1" : ""} ${di === this._devIdx ? "sel" : ""}"
+          tabindex="0" data-ti="${di}" data-key="${this._devKey(d)}" title="${this._escape(label)}"
           style="grid-column: span ${cols}; grid-row: span ${rows}">
           ${deco}
           <span class="cc-ic">${iconSvg(icon, 18)}</span>
@@ -1438,13 +1837,201 @@ class GuestHaDashboardPanel extends HTMLElement {
               <span class="cc-lbl">${this._escape(label)}</span>
               <span class="cc-meta">${this._t(`style_${style}`)} · ${size.replace("x", "×")}</span>
             </span>`}
+          <span class="cc-resize" data-resize title="${this._t("resizeTile")}" aria-hidden="true"></span>
         </div>`;
     }).join("");
+  }
+
+  _renderGrid(page) {
     return `
       <div class="cc-wrap">
-        ${page.devices.length ? `<div class="cc-grid" id="ccGrid">${tiles}</div>` : `<p class="hint">${this._t("gridEmpty")}</p>`}
-        <div class="actions"><button type="button" class="btn primary" id="addDevice">${this._t("addDevice")}</button></div>
+        ${page.devices.length ? `<div class="cc-grid" id="ccGrid">${this._gridTiles(page)}</div>` : `<p class="hint">${this._t("gridEmpty")}</p>`}
+        <div class="actions cc-actions"><button type="button" class="btn primary" id="addDevice">${this._t("addDevice")}</button></div>
       </div>`;
+  }
+
+  /**
+   * Re-render only the tiles and animate every tile from its old box to the new
+   * one (FLIP), so neighbours visibly make room while dragging or resizing.
+   */
+  _refreshGrid(page, skipKey = null) {
+    const grid = this.shadowRoot.getElementById("ccGrid");
+    if (!grid) return;
+    const before = new Map([...grid.children].map((el) => [el.dataset.key, el.getBoundingClientRect()]));
+    grid.innerHTML = this._gridTiles(page);
+    for (const el of grid.children) {
+      const old = before.get(el.dataset.key);
+      if (!old || el.dataset.key === skipKey) continue;
+      const now = el.getBoundingClientRect();
+      const dx = old.left - now.left;
+      const dy = old.top - now.top;
+      const sx = old.width / now.width;
+      const sy = old.height / now.height;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue;
+      el.animate(
+        [
+          { transformOrigin: "0 0", transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
+          { transformOrigin: "0 0", transform: "none" },
+        ],
+        { duration: 340, easing: "cubic-bezier(0.32, 0.72, 0, 1)" },
+      );
+    }
+  }
+
+  /** Grid geometry: one cell + gap in px, read from the live layout. */
+  _gridMetrics(grid) {
+    const cs = getComputedStyle(grid);
+    const gap = parseFloat(cs.columnGap) || 10;
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const cell = (grid.clientWidth - padX - gap * 3) / 4;
+    return { gap, cell };
+  }
+
+  /** Closest (style, size) for the requested span; keeps the current style on ties. */
+  _closestVariant(device, cols, rows) {
+    const current = resolveTile(device).style;
+    let best = null;
+    let bestScore = Infinity;
+    for (const v of tileVariants(device.type)) {
+      const score = (v.cols - cols) ** 2 + (v.rows - rows) ** 2 + (v.style === current ? 0 : 0.35);
+      if (score < bestScore) { best = v; bestScore = score; }
+    }
+    return best;
+  }
+
+  _bindGrid(page) {
+    const grid = this.shadowRoot.getElementById("ccGrid");
+    if (!grid) return;
+    let g = null;
+    const tileAt = (x, y, exceptKey) => [...grid.children].find((el) => {
+      if (el.dataset.key === exceptKey) return false;
+      const r = el.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    });
+    const placeDragged = () => {
+      const el = grid.querySelector(`[data-key="${g.key}"]`);
+      if (!el) return;
+      el.classList.add("dragging");
+      const r = el.getBoundingClientRect();
+      const tx = g.x - g.grabX - r.left + (parseFloat(el.style.getPropertyValue("--tx")) || 0);
+      const ty = g.y - g.grabY - r.top + (parseFloat(el.style.getPropertyValue("--ty")) || 0);
+      el.style.setProperty("--tx", `${tx}px`);
+      el.style.setProperty("--ty", `${ty}px`);
+    };
+
+    grid.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      const tile = e.target.closest(".cc-tile");
+      if (!tile) return;
+      const r = tile.getBoundingClientRect();
+      const di = Number(tile.dataset.ti);
+      g = {
+        mode: e.target.closest("[data-resize]") ? "resize" : "press",
+        key: tile.dataset.key,
+        device: page.devices[di],
+        startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY,
+        grabX: e.clientX - r.left, grabY: e.clientY - r.top,
+        right: r.right, top: r.top,
+        touch: e.pointerType === "touch",
+        t: performance.now(),
+        lockUntil: 0,
+      };
+      try { grid.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+      if (g.mode === "resize") {
+        e.preventDefault();
+        grid.classList.add("is-resizing");
+        tile.classList.add("resizing");
+      }
+    });
+
+    grid.addEventListener("pointermove", (e) => {
+      if (!g) return;
+      g.x = e.clientX;
+      g.y = e.clientY;
+      if (g.mode === "press") {
+        const moved = Math.hypot(g.x - g.startX, g.y - g.startY);
+        // touch needs a short hold first so the page can still scroll
+        if (moved < 6 || (g.touch && performance.now() - g.t < 280)) {
+          if (g.touch && moved > 10) g = null;
+          return;
+        }
+        g.mode = "drag";
+        grid.classList.add("is-dragging");
+      }
+      if (g.mode === "drag") {
+        placeDragged();
+        const over = tileAt(g.x, g.y, g.key);
+        if (over && performance.now() > g.lockUntil) {
+          const from = page.devices.indexOf(g.device);
+          const to = Number(over.dataset.ti);
+          if (from !== to) {
+            page.devices.splice(from, 1);
+            page.devices.splice(to, 0, g.device);
+            this._devIdx = to;
+            this._refreshGrid(page, g.key);
+            placeDragged();
+            g.lockUntil = performance.now() + 220;
+          }
+        }
+        return;
+      }
+      if (g.mode === "resize") {
+        const { gap, cell } = this._gridMetrics(grid);
+        const step = cell + gap;
+        // handle sits bottom-left: the tile grows to the left and downwards
+        const cols = Math.max(1, Math.min(4, Math.round((g.right - g.x + gap) / step)));
+        const rows = Math.max(1, Math.min(4, Math.round((g.y - g.top + gap) / step)));
+        const v = this._closestVariant(g.device, cols, rows);
+        const cur = resolveTile(g.device);
+        if (v && (v.style !== cur.style || v.size !== cur.size)) {
+          g.device.style = v.style;
+          g.device.size = v.size;
+          this._refreshGrid(page);
+          grid.querySelector(`[data-key="${g.key}"]`)?.classList.add("resizing");
+        }
+      }
+    });
+
+    const end = (e) => {
+      if (!g) return;
+      const state = g;
+      g = null;
+      grid.classList.remove("is-dragging", "is-resizing");
+      if (state.mode === "press") {
+        const di = page.devices.indexOf(state.device);
+        this._devIdx = this._devIdx === di ? -1 : di;
+        this._iconOpen = null;
+        this._render();
+        return;
+      }
+      if (state.mode === "drag") {
+        const el = grid.querySelector(`[data-key="${state.key}"]`);
+        if (el) {
+          const tx = parseFloat(el.style.getPropertyValue("--tx")) || 0;
+          const ty = parseFloat(el.style.getPropertyValue("--ty")) || 0;
+          el.animate(
+            [{ transform: `translate(${tx}px, ${ty}px) scale(1.06)` }, { transform: "none" }],
+            { duration: 320, easing: "cubic-bezier(0.32, 0.72, 0, 1)" },
+          ).onfinish = () => this._render();
+          el.classList.remove("dragging");
+          el.style.removeProperty("--tx");
+          el.style.removeProperty("--ty");
+          return;
+        }
+      }
+      if (e.type !== "pointercancel" || state.mode === "resize") this._render();
+    };
+    grid.addEventListener("pointerup", end);
+    grid.addEventListener("pointercancel", end);
+    grid.addEventListener("touchmove", (e) => { if (g && g.mode !== "press") e.preventDefault(); }, { passive: false });
+    grid.addEventListener("keydown", (e) => {
+      const tile = e.target.closest(".cc-tile");
+      if (!tile || (e.key !== "Enter" && e.key !== " ")) return;
+      e.preventDefault();
+      const di = Number(tile.dataset.ti);
+      this._devIdx = this._devIdx === di ? -1 : di;
+      this._render();
+    });
   }
 
   _renderInspector(page) {
@@ -1516,48 +2103,8 @@ class GuestHaDashboardPanel extends HTMLElement {
     pageLabel?.addEventListener("change", () => this._render());
     this.shadowRoot.getElementById("addDevice")?.addEventListener("click", () => this._addDevice(page));
 
-    const grid = this.shadowRoot.getElementById("ccGrid");
-    const clearDrop = () => grid?.querySelectorAll(".drop-target").forEach((t) => t.classList.remove("drop-target"));
-    grid?.querySelectorAll(".cc-tile").forEach((tile) => {
-      const di = Number(tile.dataset.ti);
-      const select = () => {
-        this._devIdx = this._devIdx === di ? -1 : di;
-        this._iconOpen = null;
-        this._render();
-      };
-      tile.addEventListener("click", select);
-      tile.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); }
-      });
-      tile.addEventListener("dragstart", (e) => {
-        this._dragIdx = di;
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", String(di));
-        tile.classList.add("dragging");
-        requestAnimationFrame(() => grid.classList.add("is-dragging"));
-      });
-      tile.addEventListener("dragend", () => {
-        this._dragIdx = -1;
-        tile.classList.remove("dragging");
-        grid.classList.remove("is-dragging");
-        clearDrop();
-      });
-      tile.addEventListener("dragover", (e) => {
-        if (this._dragIdx < 0) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        if (this._dragIdx !== di && !tile.classList.contains("drop-target")) {
-          clearDrop();
-          tile.classList.add("drop-target");
-        }
-      });
-      tile.addEventListener("drop", (e) => {
-        e.preventDefault();
-        const from = this._dragIdx;
-        this._dragIdx = -1;
-        this._moveDevice(page, from, di);
-      });
-    });
+    this._bindGrid(page);
+
     const device = page.devices[this._devIdx];
     if (!device) return;
     this._on("[data-move]", "click", (e) => {

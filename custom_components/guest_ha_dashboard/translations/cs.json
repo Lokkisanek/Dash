@@ -2,12 +2,12 @@
   "config": {
     "step": {
       "user": {
-        "title": "Guest HA Dashboard",
+        "title": "dash",
         "description": "Přidá panel v postranní liště, kde nastavíš Pages, dock, styly a Wi‑Fi pro hostovskou PWA."
       }
     },
     "abort": {
-      "already_configured": "Guest HA Dashboard je už nastavený."
+      "already_configured": "dash je už nastavený."
     }
   }
 }
