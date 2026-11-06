@@ -7,3 +7,5 @@ dist
 custom_components
 *.local
 .DS_Store
+.agents
+skills-lock.json
