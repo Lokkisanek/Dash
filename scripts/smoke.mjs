@@ -65,6 +65,47 @@ try {
   await standby.goto(`${BASE_URL}/?standby=1`, { waitUntil: 'networkidle' })
   await standby.locator('.standby').waitFor({ state: 'visible', timeout: 15_000 })
   console.log('standby: StandBy screen rendered')
+
+  // Guest pass (mock): restricted profile, refused value snaps back
+  const guest = await context.newPage()
+  watch(guest, 'guest')
+  await guest.goto(`${BASE_URL}/?guest=1`, { waitUntil: 'networkidle' })
+  const dock = guest.locator('nav.liquid-dock__nav button')
+  await dock.first().waitFor({ state: 'visible', timeout: 15_000 })
+  const labels = await dock.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))
+  // Ložnice has nothing in the profile; Chodba keeps only the coffee machine
+  if (labels.join('|') !== 'Obývák|Koupelna|Chodba') problems.push(`[guest] dock shows ${labels.join(', ')}`)
+  if (await guest.getByText('TV', { exact: true }).count()) problems.push('[guest] TV tile is outside the profile but rendered')
+  const dial = guest.locator('svg.dial-svg').first()
+  await dial.scrollIntoViewIfNeeded()
+  const before = await dial.getAttribute('aria-valuenow')
+  const box = await dial.boundingBox()
+  await guest.mouse.click(box.x + box.width - 4, box.y + box.height - 4) // far end = 30 °C, limit is 25
+  await guest.locator('[data-testid="guest-toast"]').waitFor({ state: 'visible', timeout: 5_000 })
+  await guest.waitForFunction(
+    ([sel, value]) => document.querySelector(sel)?.getAttribute('aria-valuenow') === value,
+    ['svg.dial-svg', before],
+    { timeout: 5_000 },
+  )
+  console.log(`guest: dock ${labels.join(', ')}; 30 °C refused, dial back at ${before}`)
+
+  // Pairing screen from a QR link: code read from the fragment, then removed
+  const pair = await context.newPage()
+  watch(pair, 'pairing')
+  await pair.goto(`${BASE_URL}/#pair=ABCD-EFGH-JKMN`, { waitUntil: 'networkidle' })
+  const shown = await pair.locator('[data-testid="pair-code"]').textContent({ timeout: 15_000 })
+  if (shown?.trim() !== 'ABCD-EFGH-JKMN') problems.push(`[pairing] code shown as ${shown}`)
+  if (pair.url().includes('pair=')) problems.push('[pairing] code left in the address bar')
+  await pair.getByRole('button', { name: /prohlížeči|browser/i }).click()
+  await pair.locator('nav.liquid-dock__nav button').first().waitFor({ state: 'visible', timeout: 15_000 })
+  console.log('pairing: code taken from fragment, removed from URL, demo pass opened')
+
+  // Ended pass
+  const ended = await context.newPage()
+  watch(ended, 'ended')
+  await ended.goto(`${BASE_URL}/?guest=ended`, { waitUntil: 'networkidle' })
+  await ended.locator('[data-testid="guest-status-text"]').waitFor({ state: 'visible', timeout: 15_000 })
+  console.log('ended: pass-ended message rendered')
 } catch (err) {
   problems.push(`assertion failed: ${err.message}`)
 } finally {

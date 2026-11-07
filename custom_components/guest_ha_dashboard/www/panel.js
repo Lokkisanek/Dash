@@ -6,6 +6,7 @@
  * picks up saved config through its own HA subscription.
  */
 import { ICONS } from "./icons.js?v=2.0.0";
+import { GuestsTab } from "./guests.js?v=2.0.0";
 
 const PANEL_VERSION = "2.0.0";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
@@ -109,6 +110,7 @@ const PANEL_I18N = {
     tabGeneral: "Obecné",
     tabPages: "Pages",
     tabDock: "Dock",
+    tabGuests: "Hosté",
     tabGuest: "Wi-Fi",
     tabStyles: "Styly",
     previewTitle: "Live preview",
@@ -217,6 +219,7 @@ const PANEL_I18N = {
     tabGeneral: "General",
     tabPages: "Pages",
     tabDock: "Dock",
+    tabGuests: "Guests",
     tabGuest: "Wi-Fi",
     tabStyles: "Styles",
     previewTitle: "Live preview",
@@ -408,6 +411,8 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._uiLangPref = storedLang === "en" || storedLang === "cs" ? storedLang : "auto";
     /** Live iframe src — updates only on load + Save, never while drafting */
     this._livePreviewSrc = "";
+    /** "Hosté" tab: guest passes, profiles, audit (www/guests.js) */
+    this._guests = new GuestsTab(this);
     this.attachShadow({ mode: "open" });
   }
 
@@ -1320,6 +1325,8 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._iconPickers.clear();
     const locale = this._uiLang() === "en" ? "en-US" : "cs-CZ";
     const onSettings = this._tab === "ui";
+    // Guest passes save every change at once; the dashboard Save does not apply there
+    const noFooter = onSettings || this._tab === "guests";
 
     const scrollEl = this.shadowRoot.querySelector(".editor-scroll");
     const scrollTop = scrollEl?.scrollTop || 0;
@@ -1335,6 +1342,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       ["pages", "tabPages"],
       ["dock", "tabDock"],
       ["guest", "tabGuest"],
+      ["guests", "tabGuests"],
       ["standby", "tabStandby"],
       ["styles", "tabStyles"],
     ];
@@ -1363,10 +1371,11 @@ class GuestHaDashboardPanel extends HTMLElement {
               ${this._tab === "dock" ? this._renderDock(c) : ""}
               ${this._tab === "styles" ? this._renderStyles(c) : ""}
               ${this._tab === "standby" ? this._renderStandby(c) : ""}
+              ${this._tab === "guests" ? this._guests.render() : ""}
             </div>
             `}
           </div>
-          ${onSettings ? "" : `
+          ${noFooter ? "" : `
           <div class="editor-footer">
             <div class="footer-status">${status}</div>
             <button class="btn save-xl" id="save" ${this._saving ? "disabled" : ""}>${this._saving ? this._t("saving") : this._t("save")}</button>
@@ -1418,6 +1427,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     if (this._tab === "dock") this._bindDock();
     if (this._tab === "styles") this._bindStyles();
     if (this._tab === "standby") this._bindStandby();
+    if (this._tab === "guests") this._guests.bind(this.shadowRoot);
     this._bindIconPickers();
     this.shadowRoot.getElementById("uiPreview")?.addEventListener("change", (e) => {
       this._previewOn = e.currentTarget.checked;

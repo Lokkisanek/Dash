@@ -14,6 +14,8 @@
  * - standby-photos: the mock config uses the clock; switching StandBy to
  *   photos needs the HA config panel.
  * - the HA config panel itself (needs a running Home Assistant).
+ *
+ * Guest pass shots use the mock guest profile (src/lib/mockGuest.js).
  */
 import { mkdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -117,6 +119,21 @@ try {
     p.on('pageerror', (e) => errors.push(e.message))
     await p.goto(`${BASE}/?lang=en&standby=1`, { waitUntil: 'networkidle' })
     await p.locator('.standby').waitFor()
+    await settle(p, 800)
+    await shot(p, name)
+    await c.close()
+  }
+
+  // Guest passes (mock): pairing from a QR link, restricted dashboard, ended pass
+  for (const [name, path] of [
+    ['guest-pairing', '/#pair=K7MP-3QXH-9WAD'],
+    ['guest-dashboard', '/?lang=cs&guest=1'],
+    ['guest-ended', '/?lang=cs&guest=ended'],
+  ]) {
+    const c = await browser.newContext({ viewport: PORTRAIT, deviceScaleFactor: 2, locale: 'cs-CZ' })
+    const p = await c.newPage()
+    p.on('pageerror', (e) => errors.push(e.message))
+    await p.goto(`${BASE}${path}`, { waitUntil: 'networkidle' })
     await settle(p, 800)
     await shot(p, name)
     await c.close()

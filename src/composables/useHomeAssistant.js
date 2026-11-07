@@ -25,12 +25,32 @@ import {
   requestParentAuth,
   createParentAuth,
 } from '@/lib/hassTarget'
+import {
+  takePairCodeFromUrl,
+  isStandalone,
+  loadGuest,
+  findAnyGuest,
+  saveGuest,
+  pairWithCode,
+  normalizeCode,
+  PairError,
+} from '@/lib/guestPass'
+import { GuestPassTransport, GuestError } from '@/lib/guestTransport'
+import {
+  MOCK_GUEST_PASS,
+  MOCK_GUEST_PROFILE,
+  filterConfigForProfile,
+  mockDenyReason,
+} from '@/lib/mockGuest'
 
 function tt(key) {
   return translate(detectUiLang(), key)
 }
 
-/** @typedef {'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'mock' | 'need_url' | 'login'} HaStatus */
+/**
+ * @typedef {'idle' | 'connecting' | 'connected' | 'disconnected' | 'error' | 'mock' | 'need_url' | 'login'
+ *   | 'pairing' | 'guest_ended' | 'guest_pending'} HaStatus
+ */
 
 const LEGACY_TOKENS_KEY = 'guest_ha_tokens'
 const TOKENS_KEY = 'dash_tokens'
@@ -57,6 +77,19 @@ const state = reactive({
   userName: '',
   /** HA core config subset: home location for weather */
   haConfig: null,
+  /** owner = HA login (unrestricted), guest = guest pass (restricted by the integration) */
+  mode: 'owner',
+  /** Guest pass shown to the guest: { id, label, kind, valid_from, valid_until } */
+  guestPass: null,
+  guestProfileName: '',
+  /** Pairing screen: code from the QR fragment, last error, request running */
+  pairCode: '',
+  pairError: null,
+  pairBusy: false,
+  /** Why the guest pass stopped: expired | revoked | invalid_auth */
+  endedReason: '',
+  /** Short message after a refused guest action: { id, text } */
+  toast: null,
 })
 
 let connection = null
@@ -283,11 +316,43 @@ function applyMockScene(action) {
 function startMockMode() {
   state.isMock = true
   state.status = 'mock'
+  state.mode = 'owner'
   useFallbackGuestConfig('mock')
   state.entities = buildMockEntities()
   state.lastError = null
   state.userName = 'Host'
   state.haConfig = { latitude: 50.08, longitude: 14.42, location_name: 'Home' }
+
+  // Guest experience in the demo: #pair=CODE, ?guest=1, ?guest=ended
+  const code = takePairCodeFromUrl()
+  const guest = new URLSearchParams(window.location.search).get('guest')
+  if (code) {
+    state.pairCode = code
+    state.status = 'pairing'
+  } else if (guest === 'ended') {
+    state.endedReason = 'expired'
+    state.status = 'guest_ended'
+  } else if (guest === '1') {
+    startMockGuest()
+  }
+}
+
+/** Demo guest pass: restricted profile, denied calls snap back (src/lib/mockGuest.js). */
+function startMockGuest() {
+  state.isMock = true
+  state.mode = 'guest'
+  state.status = 'mock'
+  state.guestPass = MOCK_GUEST_PASS
+  state.guestProfileName = MOCK_GUEST_PROFILE.name
+  state.userName = ''
+  state.haConfig = null
+  state.pairCode = ''
+  useFallbackGuestConfig('mock')
+  applyGuestConfig(filterConfigForProfile(getGuestConfig(), MOCK_GUEST_PROFILE), 'mock')
+  const allowed = new Set(Object.keys(MOCK_GUEST_PROFILE.entities))
+  state.entities = Object.fromEntries(
+    Object.entries(buildMockEntities()).filter(([id]) => allowed.has(id)),
+  )
 }
 
 async function loadSessionInfo(conn) {
@@ -334,6 +399,119 @@ async function loadRemoteConfig(conn) {
     )
   } catch (err) {
     console.warn('[HA] Config subscribe failed:', err)
+  }
+}
+
+/* ─── Guest pass (restricted, enforced by the integration) ── */
+
+let guestTransport = null
+/** Last state the server confirmed, so refused optimistic changes can snap back */
+let serverStates = {}
+
+function clone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value))
+}
+
+function startGuest(hassUrl, saved) {
+  state.mode = 'guest'
+  state.isMock = false
+  state.hassUrl = hassUrl
+  state.guestPass = saved.pass || null
+  state.userName = ''
+  state.haConfig = null
+  state.lastError = null
+  if (!state.everConnected) state.status = 'connecting'
+  guestTransport?.close()
+  guestTransport = new GuestPassTransport({ hassUrl, token: saved.token, onEvent: onGuestEvent })
+  guestTransport.connect()
+}
+
+function onGuestEvent(ev) {
+  switch (ev.type) {
+    case 'auth_ok':
+      state.guestPass = ev.pass
+      state.guestProfileName = ev.profile?.name || ''
+      saveGuest(state.hassUrl, { ...(loadGuest(state.hassUrl) || {}), pass: ev.pass })
+      break
+    case 'config':
+      applyGuestConfig(ev.config || {}, 'guest')
+      break
+    case 'states':
+      serverStates = clone(ev.states)
+      state.entities = clone(ev.states)
+      state.status = 'connected'
+      state.everConnected = true
+      markSetupDone()
+      break
+    case 'state':
+      if (ev.state) {
+        serverStates[ev.entityId] = clone(ev.state)
+        state.entities[ev.entityId] = clone(ev.state)
+      } else {
+        delete serverStates[ev.entityId]
+        delete state.entities[ev.entityId]
+      }
+      break
+    case 'ended':
+      endGuest(ev.reason)
+      break
+    case 'pending':
+      state.status = 'guest_pending'
+      break
+    case 'disconnected':
+      if (state.everConnected) state.status = 'disconnected'
+      state.lastError = ev.reason === 'unreachable' ? tt('pairUnreachable') : null
+      break
+    default:
+      break
+  }
+}
+
+/** Pass expired or revoked: forget the token, show the calm "ended" screen. */
+function endGuest(reason) {
+  guestTransport?.close()
+  guestTransport = null
+  saveGuest(state.hassUrl, null)
+  serverStates = {}
+  state.entities = {}
+  state.endedReason = reason || 'expired'
+  state.status = 'guest_ended'
+}
+
+/** Show the pairing screen (code from the QR, or typed by hand). */
+export function openPairing(code = '') {
+  state.pairCode = code
+  state.pairError = null
+  state.status = 'pairing'
+}
+
+/** Back from the pairing screen to the normal sign-in. */
+export function closePairing() {
+  state.pairError = null
+  state.status = state.isMock ? 'mock' : 'need_url'
+}
+
+/** Exchange a pairing code for a guest token and connect. */
+export async function pairNow(hassUrl, code) {
+  state.pairBusy = true
+  state.pairError = null
+  try {
+    if (state.isMock) {
+      if (!normalizeCode(code)) throw new PairError('invalid_code')
+      startMockGuest()
+      return
+    }
+    const url = String(hassUrl || '').trim().replace(/\/$/, '')
+    const res = await pairWithCode(url, code)
+    saveGuest(url, { token: res.token, pass: res.pass })
+    localStorage.setItem(HASS_URL_KEY, url)
+    syncPathWithHassUrl(url)
+    state.pairCode = ''
+    startGuest(url, { token: res.token, pass: res.pass })
+  } catch (err) {
+    state.pairError = { code: err?.code || 'unreachable', retryAfter: err?.retryAfter || 0 }
+  } finally {
+    state.pairBusy = false
   }
 }
 
@@ -482,25 +660,85 @@ export function getEntityState(entityId) {
   return state.entities[entityId] || null
 }
 
-export async function callService(domain, service, serviceData = {}) {
-  playTick('tap')
+/* ─── Transports ───────────────────────────────────────────
+ * One small interface for the three ways the dashboard talks to a home:
+ *   callService(domain, service, data), photoList(), photoGet(id)
+ * owner = home-assistant-js-websocket + OAuth (unchanged), guest = guest pass
+ * socket, mock = demo data (optionally with the demo guest profile).
+ */
 
-  if (state.isMock) {
-    handleMockService(domain, service, serviceData)
-    return
+const ownerTransport = {
+  async callService(domain, service, data) {
+    if (!connection) {
+      console.warn('[HA] No connection, service ignored')
+      return
+    }
+    await haCallService(connection, domain, service, data)
+  },
+  async photoList() {
+    if (!connection) return []
+    const res = await connection.sendMessagePromise({ type: 'guest_ha_dashboard/photo_list' })
+    return Array.isArray(res?.photos) ? res.photos : []
+  },
+  async photoGet(id) {
+    const res = await connection.sendMessagePromise({ type: 'guest_ha_dashboard/photo_get', id })
+    const bin = atob(res.data)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return URL.createObjectURL(new Blob([bytes], { type: res.mime || 'image/jpeg' }))
+  },
+}
+
+const mockTransport = {
+  async callService(domain, service, data) {
+    if (state.mode === 'guest') {
+      const reason = mockDenyReason(MOCK_GUEST_PROFILE, domain, service, data)
+      if (reason) throw new GuestError(reason)
+    }
+    handleMockService(domain, service, data)
+  },
+  async photoList() {
+    return []
+  },
+  async photoGet() {
+    return null
+  },
+}
+
+function transport() {
+  if (state.isMock) return mockTransport
+  if (state.mode === 'guest' && guestTransport) return guestTransport
+  return ownerTransport
+}
+
+/** Refused by the guest pass: say why, put the control back to the real state. */
+function onGuestRefused(code, entityId) {
+  const text = translate(detectUiLang(), `guestDeny_${code}`)
+  state.toast = {
+    id: Date.now(),
+    text: text === `guestDeny_${code}` ? tt('guestDeny_default') : text,
   }
+  if (!entityId) return
+  const real = state.isMock ? state.entities[entityId] : serverStates[entityId]
+  if (real) state.entities[entityId] = clone(real)
+}
 
-  if (!connection) {
-    console.warn('[HA] No connection, service ignored')
-    return
-  }
-
+async function sendService(domain, service, serviceData) {
   try {
-    await haCallService(connection, domain, service, serviceData)
+    await transport().callService(domain, service, serviceData)
   } catch (err) {
+    if (err instanceof GuestError) {
+      onGuestRefused(err.code, serviceData?.entity_id)
+      return
+    }
     console.error('[HA] callService failed:', err)
     state.lastError = err?.message || String(err)
   }
+}
+
+export async function callService(domain, service, serviceData = {}) {
+  playTick('tap')
+  await sendService(domain, service, serviceData)
 }
 
 function handleMockService(domain, service, data) {
@@ -616,21 +854,10 @@ export async function setLightBrightness(entityId, brightnessPct) {
     entityId,
     setTimeout(async () => {
       brightnessTimers.delete(entityId)
-      if (state.isMock) {
-        handleMockService('light', 'turn_on', {
-          entity_id: entityId,
-          brightness_pct: pct,
-        })
-      } else if (connection) {
-        try {
-          await haCallService(connection, 'light', 'turn_on', {
-            entity_id: entityId,
-            brightness_pct: pct,
-          })
-        } catch (err) {
-          console.error('[HA] setLightBrightness failed:', err)
-        }
-      }
+      await sendService('light', 'turn_on', {
+        entity_id: entityId,
+        brightness_pct: pct,
+      })
       playTick('snap')
     }, 80),
   )
@@ -690,12 +917,34 @@ export function haAssetUrl(path) {
   return `${(state.hassUrl || '').replace(/\/$/, '')}${path}`
 }
 
+/**
+ * Album art of a media player. Owner mode uses HA's picture URL; guest mode
+ * never sees that URL (it carries an HA token) and asks the guest socket.
+ */
+const artwork = reactive({})
+export function mediaArtwork(entityId, attrs = {}) {
+  if (state.mode !== 'guest') return haAssetUrl(attrs.entity_picture_local || attrs.entity_picture)
+  if (!attrs.dash_artwork || state.isMock || !guestTransport) return ''
+  const key = `${attrs.media_content_id || ''}|${attrs.media_title || ''}|${attrs.media_artist || ''}`
+  const entry = artwork[entityId]
+  if (!entry || entry.key !== key) {
+    artwork[entityId] = { key, url: entry?.url || '' }
+    guestTransport.mediaImage(entityId).then((url) => {
+      if (artwork[entityId]?.key !== key) {
+        if (url) URL.revokeObjectURL(url)
+        return
+      }
+      if (artwork[entityId].url) URL.revokeObjectURL(artwork[entityId].url)
+      artwork[entityId] = { key, url: url || '' }
+    })
+  }
+  return artwork[entityId].url
+}
+
 /** Ids of the standby photos stored by the HA integration. */
 export async function listPhotos() {
-  if (!connection) return []
   try {
-    const res = await connection.sendMessagePromise({ type: 'guest_ha_dashboard/photo_list' })
-    return Array.isArray(res?.photos) ? res.photos : []
+    return await transport().photoList()
   } catch (err) {
     console.warn('[HA] photo_list failed:', err)
     return []
@@ -704,13 +953,9 @@ export async function listPhotos() {
 
 /** Standby photo from the HA integration as an object URL (null if unavailable). */
 export async function fetchPhoto(id) {
-  if (!connection || !id) return null
+  if (!id) return null
   try {
-    const res = await connection.sendMessagePromise({ type: 'guest_ha_dashboard/photo_get', id })
-    const bin = atob(res.data)
-    const bytes = new Uint8Array(bin.length)
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-    return URL.createObjectURL(new Blob([bytes], { type: res.mime || 'image/jpeg' }))
+    return await transport().photoGet(id)
   } catch (err) {
     console.warn('[HA] photo_get failed:', err)
     return null
@@ -727,6 +972,29 @@ export function initHomeAssistant() {
   }
 
   const savedUrl = pathHassUrl || localStorage.getItem(HASS_URL_KEY) || import.meta.env.VITE_HA_URL
+
+  // Guest passes. The HA panel's live preview always signs in as the owner.
+  if (!state.isPreview) {
+    const pairCode = takePairCodeFromUrl()
+    if (pairCode) {
+      state.pairCode = pairCode
+      state.status = 'pairing'
+      // Installed app: pair right away. Browser tab: the pairing screen
+      // explains Add to Home Screen first (iOS keeps app storage separate).
+      if (isStandalone() && savedUrl && savedUrl !== 'mock') pairNow(savedUrl, pairCode)
+      return
+    }
+    const stored =
+      savedUrl && savedUrl !== 'mock'
+        ? (loadGuest(savedUrl) && { hassUrl: savedUrl, data: loadGuest(savedUrl) })
+        : findAnyGuest()
+    if (stored && !loadTokens()) {
+      if (!pathHassUrl) syncPathWithHassUrl(stored.hassUrl)
+      startGuest(stored.hassUrl, stored.data)
+      return
+    }
+  }
+
   if (!pathHassUrl && savedUrl && savedUrl !== 'mock') syncPathWithHassUrl(savedUrl)
   const canResume =
     state.isPreview ||
@@ -756,6 +1024,18 @@ export function useHomeAssistant() {
     setupDone: computed(() => state.setupDone),
     userName: computed(() => state.userName),
     haConfig: computed(() => state.haConfig),
+    mode: computed(() => state.mode),
+    guestPass: computed(() => state.guestPass),
+    guestProfileName: computed(() => state.guestProfileName),
+    pairCode: computed(() => state.pairCode),
+    pairError: computed(() => state.pairError),
+    pairBusy: computed(() => state.pairBusy),
+    endedReason: computed(() => state.endedReason),
+    toast: computed(() => state.toast),
+    openPairing,
+    closePairing,
+    pairNow,
+    mediaArtwork,
     getEntity,
     getEntityState,
     callService,

@@ -61,6 +61,17 @@ It builds the same Dockerfile with `VITE_MODE=mock`. The demo build:
 - uses the fake Wi-Fi password `demo-password`;
 - adds `<meta name="robots" content="noindex,nofollow">` and a `robots.txt` with `Disallow: /`, so search engines skip it.
 
+## Guest passes behind a proxy
+
+Guest devices talk to two endpoints on your **Home Assistant** host (not the dash host):
+
+- `POST /api/guest_ha_dashboard/pair`
+- `GET /api/guest_ha_dashboard/ws` (WebSocket)
+
+A proxy in front of Home Assistant must pass WebSocket upgrades for `/api/guest_ha_dashboard/ws` as it does for `/api/websocket` (nginx: `proxy_http_version 1.1` plus the `Upgrade` and `Connection` headers), must not strip CORS headers, and should keep idle timeouts above 60 s (the app pings every 50 s).
+
+No `http: cors_allowed_origins` entry is needed for guest passes. For correct per-client rate limiting behind a proxy, set `http: use_x_forwarded_for: true` and `trusted_proxies` in Home Assistant; otherwise all guests share the proxy's IP and its failed-attempt limit.
+
 ## Home Assistant requirements
 
 - The phone must reach Home Assistant at the address in the URL path.

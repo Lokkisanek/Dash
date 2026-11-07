@@ -21,16 +21,41 @@ The server never receives access tokens, refresh tokens, entity states, Wi-Fi pa
 
 If you don't want to trust a third-party server at all, [self-host](SELF_HOSTING.md). The build is identical.
 
-## Guest accounts are not sandboxed
+## Owner mode and guest passes
 
-Home Assistant has no per-entity permissions for non-admin users. A non-admin user can still see and control **all** entities, and can open the full Home Assistant UI with the same login.
+dash has two ways to sign in. Home Assistant itself has no per-entity permissions for non-admin users, so the difference matters ([discussion](https://github.com/orgs/home-assistant/discussions/1171)).
 
-dash only hides tiles in its own UI. It does **not** enforce any access limits.
+| | Owner mode | Guest pass |
+|---|---|---|
+| Sign-in | Home Assistant login (OAuth) | One-time pairing code / QR |
+| Token on the device | HA access + refresh token | dash guest token (not an HA token) |
+| What it can do | **Everything** the HA user can do, including opening the full HA UI. dash only hides tiles; it enforces nothing | Only the entities and services of the pass's profile, within value limits, between `valid_from` and `valid_until` |
+| Use for | You and your household | Guests, rental units, wall tablets |
 
-- Do not expose locks, alarms, garage doors or cameras to a guest account unless access is restricted another way (separate network, a permissions add-on, kiosk lockdown of the device).
-- When the guest leaves, revoke the guest user's refresh token under *Profile → Security*.
+**Guest passes are enforced by the integration**, on the server. The guest device never receives an HA token: it pairs with `POST /api/guest_ha_dashboard/pair` and then talks only to `/api/guest_ha_dashboard/ws`, where every state, config and service call is filtered against the profile. Design and threat model: [GUEST_PASSES.md](GUEST_PASSES.md).
 
-Background: <https://github.com/orgs/home-assistant/discussions/1171>
+What a guest pass protects:
+
+- Entities outside the profile: never sent, never controllable (no area, device, list or `all` targets).
+- Locks, alarm panels, cameras, sirens, scripts, automations, buttons, people, trackers, updates and `homeassistant.*`: always refused, even if a profile in storage were edited by hand. Covers with device class door, garage or gate likewise.
+- Value limits, e.g. heating 18–25 °C. `climate.set_temperature` always has one (16–26 °C by default).
+- Time: the pass stops working at `valid_until`; revoking it disconnects the device at once.
+- HA internals: no registries, users, HA config (including the home location), history, logbook or templates. Artwork is proxied, so HA's media-player access tokens never reach the guest.
+- Pairing codes: single use, 15 minutes, stored hashed, brute force rate-limited per IP and globally. Tokens are stored hashed.
+
+What it does not protect (residual risks):
+
+- A pass works until it expires or is revoked. Whoever holds the token (for example a copied one) can use it within the 3-device limit.
+- The guest device must reach Home Assistant directly over HTTPS (or the local network); dash does not hide where HA is.
+- Shared Wi-Fi: guests on your network can reach HA and other devices unless the networks are separated.
+- A compromised HA host, admin account or add-on bypasses everything.
+- A wall tablet can still leave the browser; use a kiosk app (Fully Kiosk, WallPanel, Guided Access) for that.
+
+**Pairing QR codes** contain `https://<dash>/<ha-host>#pair=<CODE>`. The code is in the URL fragment, which browsers never send to a server, so the hosted dash server and any proxy in front of it never see it. The app removes it from the address bar right after reading it.
+
+**CORS:** the guest endpoints allow any origin (`cors_allowed` in HA's `HomeAssistantView`) because they use no cookies or HA credentials. No `http: cors_allowed_origins` setting is needed. If a reverse proxy blocks or strips the cross-origin request, the app says so ("Home Assistant nepovolil spojení z tohoto webu") instead of failing silently.
+
+Owner mode is unchanged. Do not use it on a guest's device; if you did in the past, revoke that HA user's refresh token under *Profile → Security*.
 
 ## Data stored in Home Assistant
 
@@ -38,6 +63,7 @@ Background: <https://github.com/orgs/home-assistant/discussions/1171>
 |---|---|
 | Dashboard config (pages, dock, Wi-Fi, StandBy, styles) | `.storage/guest_ha_dashboard` |
 | StandBy photos | `/config/dash_photos/*.img` |
+| Guest profiles, passes, hashed tokens and codes, audit log (200 entries, no states) | `.storage/guest_ha_dashboard.guests` (file mode 0600) |
 
 The Wi-Fi password is stored in Home Assistant and returned by `guest_ha_dashboard/get_config` to **any signed-in Home Assistant user**, admin or not. That is intended: guests need it to join the network. Saving the config requires an admin.
 
@@ -86,6 +112,6 @@ TODO(owner): confirm Coolify/Traefik and Cloudflare logging for dash.matyas.onli
 
 ## Recommendations
 
-- Create a **separate non-admin user** for guest phones, and read [Guest accounts are not sandboxed](#guest-accounts-are-not-sandboxed).
+- Give guests a **guest pass**, not a Home Assistant account. Keep passes short and revoke them at check-out.
 - Expose Home Assistant only over HTTPS.
 - Report vulnerabilities privately via GitHub Security Advisories on the repository.

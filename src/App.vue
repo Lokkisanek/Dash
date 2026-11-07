@@ -9,6 +9,9 @@ import { useWakeLock } from '@/composables/useWakeLock'
 import { unlockAudio } from '@/composables/useSound'
 
 import HaLogin from '@/components/HaLogin.vue'
+import PairingScreen from '@/components/PairingScreen.vue'
+import GuestPassStatus from '@/components/GuestPassStatus.vue'
+import GuestToast from '@/components/GuestToast.vue'
 import TopStatusBar from '@/components/TopStatusBar.vue'
 import WelcomeHeader from '@/components/WelcomeHeader.vue'
 import DeviceTile from '@/components/DeviceTile.vue'
@@ -215,6 +218,10 @@ onMounted(() => {
 <template>
   <HaLogin v-if="showLogin" />
 
+  <PairingScreen v-else-if="status === 'pairing'" />
+
+  <GuestPassStatus v-else-if="status === 'guest_ended' || status === 'guest_pending'" />
+
   <div
     v-else-if="showBootSplash"
     class="dashboard-shell grid place-items-center h-full text-base-content/50 text-sm"
@@ -267,6 +274,8 @@ onMounted(() => {
       :dark="themeMode === 'dark'"
       @update:model-value="selectPage"
     />
+
+    <GuestToast />
 
     <Transition name="standby">
       <StandbyScreen v-if="idle" :settings="standby" :use24h="general.use24h" @wake="wake" />
