@@ -4,6 +4,9 @@ DOMAIN = "guest_ha_dashboard"
 VERSION = "2.1.0-beta.1"
 STORAGE_KEY = f"{DOMAIN}.config"
 STORAGE_VERSION = 1
+# Version of the dashboard config inside the store (see config_schema.py).
+# 1 = everything stored before 2.1, 2 = configVersion + tile registry validation.
+CONFIG_VERSION = 2
 
 PANEL_ICON = "mdi:tablet-dashboard"
 PANEL_TITLE = "dash"
@@ -39,6 +42,7 @@ DEFAULT_STANDBY: dict = {
 }
 
 DEFAULT_CONFIG: dict = {
+    "configVersion": CONFIG_VERSION,
     "guestInfo": {
         "wifiSsid": "Guest-Home",
         "wifiPassword": "",

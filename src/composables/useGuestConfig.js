@@ -74,6 +74,8 @@ export function useGuestConfig() {
 export function applyGuestConfig(config, source = 'ha') {
   if (!config || typeof config !== 'object') return
   state.config = {
+    // 1 = config stored before 2.1 (no field), see config_schema.py in the integration
+    configVersion: Number(config.configVersion) || 1,
     guestInfo: {
       ...fallbackConfig.guestInfo,
       ...(config.guestInfo || {}),

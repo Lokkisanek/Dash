@@ -275,7 +275,7 @@ async def test_get_config_filters_tiles_and_wifi(
     await ws.send_json({"id": 1, "type": "get_config"})
     config = (await recv(ws))["result"]
     assert [p["id"] for p in config["pages"]] == ["a"]
-    assert config["pages"][0]["devices"] == [{"id": "light.room"}]
+    assert [d["id"] for d in config["pages"][0]["devices"]] == ["light.room"]
     assert [d["pageId"] for d in config["dock"]] == ["a"]
     assert config["guestInfo"]["wifiPassword"] == "hunter2"
     assert "dashboardUrl" not in config and "hosting" not in config
@@ -309,7 +309,7 @@ async def test_config_push_is_filtered(
     )
     pushed = await recv(ws)
     assert pushed["type"] == "config"
-    assert pushed["config"]["pages"][0]["devices"] == [{"id": "light.room"}]
+    assert [d["id"] for d in pushed["config"]["pages"][0]["devices"]] == ["light.room"]
     await ws.close()
 
 

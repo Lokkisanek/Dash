@@ -47,9 +47,12 @@ export function filterConfigForProfile(config, profile) {
   const pages = (config.pages || [])
     .map((page) => ({
       ...stripForeign(page, allowed),
-      devices: (page.devices || []).filter((d) => allowed.has(d?.id)).map((d) => stripForeign(d, allowed)),
+      devices: (page.devices || [])
+        .filter((d) => allowed.has(d?.id) || d?.type === 'divider')
+        .map((d) => stripForeign(d, allowed)),
     }))
-    .filter((page) => page.devices.length)
+    // same rule as guest_policy.filter_config: a page needs one usable tile
+    .filter((page) => page.devices.some((d) => d.type !== 'divider'))
   const pageIds = new Set(pages.map((p) => p.id))
   const general = { ...(config.general || {}) }
   if (!allowed.has(general.weatherEntity)) general.weatherEntity = ''

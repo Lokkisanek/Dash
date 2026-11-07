@@ -60,6 +60,15 @@ try {
   if (dockButtons < 1) problems.push('[home] dock has no buttons')
   console.log(`home: dock rendered with ${dockButtons} button(s)`)
 
+  // Section divider on the first demo page: a heading followed by its own grid
+  const divider = page.locator('.section-divider[role="heading"]').first()
+  await divider.waitFor({ state: 'visible', timeout: 5_000 })
+  const dividerText = (await divider.textContent())?.trim()
+  if (dividerText !== 'Hudba a teplo') problems.push(`[home] divider text "${dividerText}"`)
+  const after = await divider.evaluate((el) => el.nextElementSibling?.classList.contains('tile-grid'))
+  if (!after) problems.push('[home] divider is not followed by a tile grid')
+  console.log(`home: divider "${dividerText}" starts a section`)
+
   const standby = await context.newPage()
   watch(standby, 'standby')
   await standby.goto(`${BASE_URL}/?standby=1`, { waitUntil: 'networkidle' })

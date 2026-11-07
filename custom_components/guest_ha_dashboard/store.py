@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from .config_schema import config_version, migrate_config, normalize_devices
 from .const import (
+    CONFIG_VERSION,
     DEFAULT_CONFIG,
     DEFAULT_GENERAL,
     DEFAULT_STANDBY,
@@ -16,6 +19,8 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 GUEST_INFO_KEYS = ("wifiSsid", "wifiPassword", "wifiSecurity")
 STANDBY_MODES = ("clock", "photos")
@@ -77,12 +82,39 @@ def _normalize_pages(data: dict[str, Any]) -> list:
         else:
             raw = []
     cleaned = []
+    used_ids: set[str] = set()
     for item in raw:
         if not isinstance(item, dict):
             continue
         page = {k: v for k, v in item.items() if k != "haAreaId"}
+        devices, dropped = normalize_devices(page.get("devices"), used_ids)
+        if dropped:
+            _LOGGER.warning(
+                "dash: dropped %d tile(s) of unknown type %s from page %s",
+                len(dropped),
+                sorted({str(t) for t in dropped}),
+                page.get("id"),
+            )
+        page["devices"] = devices
         cleaned.append(page)
     return cleaned
+
+
+def _migrate_config(data: dict[str, Any]) -> dict[str, Any]:
+    """Stored config -> current CONFIG_VERSION; applied on load and on save."""
+    version = config_version(data)
+    if version > CONFIG_VERSION:
+        _LOGGER.warning(
+            "dash: config version %s is newer than this integration (%s); "
+            "unknown tiles are dropped when it is saved",
+            version,
+            CONFIG_VERSION,
+        )
+    elif version < CONFIG_VERSION:
+        _LOGGER.info(
+            "dash: migrating config from version %s to %s", version, CONFIG_VERSION
+        )
+    return migrate_config(data)
 
 
 def _normalize_dock(raw_dock: list) -> list:
@@ -125,7 +157,7 @@ class GuestDashboardStore:
         """Load from disk (or defaults)."""
         stored = await self._store.async_load()
         if stored:
-            merged = {**deepcopy(DEFAULT_CONFIG), **stored}
+            merged = {**deepcopy(DEFAULT_CONFIG), **_migrate_config(stored)}
             merged["pages"] = _normalize_pages(merged)
             merged.pop("rooms", None)
             merged.pop("scenes", None)
@@ -150,7 +182,7 @@ class GuestDashboardStore:
 
     async def async_save(self, data: dict[str, Any]) -> dict[str, Any]:
         """Validate lightly, persist, notify listeners."""
-        merged = {**deepcopy(DEFAULT_CONFIG), **data}
+        merged = {**deepcopy(DEFAULT_CONFIG), **_migrate_config(data)}
         appearance = (
             merged.get("appearance")
             if isinstance(merged.get("appearance"), dict)
@@ -161,6 +193,7 @@ class GuestDashboardStore:
             merged.get("dock") if isinstance(merged.get("dock"), list) else []
         )
         cleaned = {
+            "configVersion": merged["configVersion"],
             "guestInfo": _normalize_guest_info(merged.get("guestInfo")),
             "general": _normalize_general(merged.get("general")),
             "standby": _normalize_standby(merged.get("standby")),

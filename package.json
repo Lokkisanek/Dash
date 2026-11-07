@@ -9,9 +9,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "icons": "node scripts/gen-icons.mjs",
+    "gen:icons": "node scripts/gen-icons.mjs",
+    "gen:tiles": "node scripts/gen-tiles.mjs",
+    "check:generated": "node scripts/check-generated.mjs",
     "check:versions": "node scripts/check-versions.mjs",
     "brand": "node scripts/gen-brand.mjs",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@fontsource/sacramento": "^5.3.0",
@@ -28,6 +32,7 @@
     "daisyui": "^5.7.50",
     "playwright": "^1.65.0",
     "tailwindcss": "^4.3.4",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vitest": "^3.2.7"
   }
 }

@@ -10,6 +10,7 @@ import ButtonTile from './tiles/ButtonTile.vue'
 import SwitchRowTile from './tiles/SwitchRowTile.vue'
 import ClimateDialTile from './tiles/ClimateDialTile.vue'
 import MediaTile from './tiles/MediaTile.vue'
+import DividerTile from './tiles/DividerTile.vue'
 
 const props = defineProps({
   device: { type: Object, required: true },
@@ -22,6 +23,8 @@ const view = computed(() => {
   const { style, cols, rows } = tile.value
   const base = { entityId: d.id, label: d.label || d.id }
   switch (`${d.type}:${style}`) {
+    case 'divider:line':
+      return [DividerTile, { label: d.label || '' }]
     case 'light:slider':
       return [SliderTile, { ...base, kind: 'light', icon: d.icon }]
     case 'light:vertical':

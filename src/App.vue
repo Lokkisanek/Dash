@@ -12,9 +12,10 @@ import HaLogin from '@/components/HaLogin.vue'
 import PairingScreen from '@/components/PairingScreen.vue'
 import GuestPassStatus from '@/components/GuestPassStatus.vue'
 import GuestToast from '@/components/GuestToast.vue'
-import TopStatusBar from '@/components/TopStatusBar.vue'
-import WelcomeHeader from '@/components/WelcomeHeader.vue'
+import HeaderCard from '@/components/HeaderCard.vue'
+import StatusBarStrip from '@/components/StatusBarStrip.vue'
 import DeviceTile from '@/components/DeviceTile.vue'
+import DividerTile from '@/components/tiles/DividerTile.vue'
 import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
 import BackgroundOrbs from '@/components/BackgroundOrbs.vue'
 
@@ -196,6 +197,19 @@ const activePage = computed(
   () => pages.value.find((r) => r.id === activePageId.value) || pages.value[0],
 )
 
+/**
+ * Dividers split a page into sections. Each section gets its own grid, so the
+ * dense packing never moves a tile above the heading it belongs under.
+ */
+const sections = computed(() => {
+  const out = [{ key: 'top', divider: null, devices: [] }]
+  ;(activePage.value?.devices || []).forEach((device, i) => {
+    if (device?.type === 'divider') out.push({ key: device.id || `divider-${i}`, divider: device, devices: [] })
+    else out[out.length - 1].devices.push({ device, key: `${i}:${device?.id || device?.label}` })
+  })
+  return out.filter((s) => s.divider || s.devices.length)
+})
+
 const showLogin = computed(() => {
   if (status.value === 'login') return true
   if (status.value === 'need_url') return true
@@ -240,11 +254,11 @@ onMounted(() => {
     @click.capture="onClickCapture"
   >
     <BackgroundOrbs :dark="themeMode === 'dark'" />
+    <StatusBarStrip :dark="themeMode === 'dark'" />
     <div class="top-fade" aria-hidden="true" />
 
     <div class="relative z-10 flex flex-col h-full px-4 pt-4 max-w-lg mx-auto">
-      <TopStatusBar v-if="general.showTopBar" class="mb-4" />
-      <WelcomeHeader v-if="general.showWelcome" class="mb-4" />
+      <HeaderCard class="mb-4" />
 
       <div class="pages-viewport -mx-4" :style="{ '--release': `${releaseX}px` }">
         <Transition :name="pageTransition">
@@ -255,12 +269,13 @@ onMounted(() => {
             :class="{ 'is-dragging': dragging }"
             :style="{ '--drag': `${dragX}px` }"
           >
-            <div class="tile-grid pb-[120px]">
-              <DeviceTile
-                v-for="(device, i) in activePage?.devices || []"
-                :key="`${i}:${device.id || device.label}`"
-                :device="device"
-              />
+            <div class="pb-[120px]">
+              <template v-for="section in sections" :key="section.key">
+                <DividerTile v-if="section.divider" class="section-divider" :label="section.divider.label || ''" />
+                <div v-if="section.devices.length" class="tile-grid">
+                  <DeviceTile v-for="item in section.devices" :key="item.key" :device="item.device" />
+                </div>
+              </template>
             </div>
           </div>
         </Transition>
@@ -329,6 +344,15 @@ onMounted(() => {
  */
 .page {
   container-type: inline-size;
+}
+
+.section-divider {
+  height: auto;
+  padding-top: 22px;
+}
+
+.tile-grid + .tile-grid {
+  margin-top: 12px;
 }
 
 .tile-grid {

@@ -29,6 +29,12 @@ jobs:
       - name: Check versions
         run: npm run check:versions
 
+      - name: Check generated files
+        run: npm run check:generated
+
+      - name: Unit tests
+        run: npm test
+
       - run: npm run build
 
       - name: dist size
@@ -69,6 +75,11 @@ jobs:
 
       - name: Run smoke test
         run: node scripts/smoke.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run StandBy photo test
+        run: node scripts/standby-photos.mjs
         env:
           BASE_URL: http://localhost:4173
 

@@ -5,8 +5,9 @@
  * The preview iframe is created once and never re-mounted; the dashboard
  * picks up saved config through its own HA subscription.
  */
-import { ICONS } from "./icons.js?v=2.0.0";
+import { ICONS } from "./icons.js?v=2.1.0-beta.1";
 import { GuestsTab } from "./guests.js?v=2.1.0-beta.1";
+import { TILE_TYPES } from "./tiles.js?v=2.1.0-beta.1";
 
 const PANEL_VERSION = "2.1.0-beta.1";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
@@ -14,20 +15,16 @@ const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto
 const ORIENT_KEY = "guest_ha_panel_preview_orient";
 const PREVIEW_KEY = "guest_ha_panel_preview"; // on | off
 const DOCK_MAX = 6;
+/** base64 characters per photo upload (photo + thumbnail); HA's limit is 4 MiB per message. */
+const PHOTO_UPLOAD_BUDGET = 3_500_000;
 /** Free hosted dash: https://dash.matyas.online/<ha-host> */
 const HOSTED_BASE = "https://dash.matyas.online";
 
 /**
  * Control-Center-like grid (4 square columns). First entry = default.
- * Keep in sync with src/lib/tileStyles.js in the guest PWA.
+ * Generated from shared/tiles.json (www/tiles.js), same as the guest PWA.
  */
-const TILE_STYLES = {
-  light: { tile: ["2x2", "4x2"], slider: ["4x1", "2x1"], vertical: ["1x2", "2x2"], button: ["1x1", "2x1"] },
-  switch: { tile: ["2x2", "4x2"], row: ["4x1"], button: ["1x1", "2x1"] },
-  climate: { tile: ["2x2"], dial: ["4x3"] },
-  cover: { tile: ["2x2"], slider: ["4x1", "2x1"], vertical: ["1x2", "2x2"] },
-  media_player: { tile: ["4x2", "2x2"], mini: ["4x1", "2x1"], cover: ["2x2", "4x3", "4x4"], button: ["1x1"] },
-};
+const TILE_STYLES = Object.fromEntries(Object.entries(TILE_TYPES).map(([type, t]) => [type, t.styles]));
 
 /**
  * Every (style, size) a device type can take, for the resize handle: dragging
@@ -50,9 +47,10 @@ const DEFAULT_STANDBY = {
   photoSeconds: 8,
 };
 const DEVICE_TYPES = Object.keys(TILE_STYLES);
-const DEFAULT_DEVICE_ICON = {
-  light: "Lightbulb", switch: "Power", climate: "Thermometer", cover: "Blinds", media_player: "Music",
-};
+/** Types offered in the entity tile's type select (dividers are added separately). */
+const ENTITY_TYPES = DEVICE_TYPES.filter((t) => TILE_TYPES[t].needsEntity);
+const DIVIDER_LABEL_MAX = TILE_TYPES.divider?.fields?.label?.max || 60;
+const DEFAULT_DEVICE_ICON = Object.fromEntries(Object.entries(TILE_TYPES).map(([type, t]) => [type, t.icon]));
 
 function resolveTile(device) {
   const styles = TILE_STYLES[device?.type] || TILE_STYLES.switch;
@@ -63,9 +61,56 @@ function resolveTile(device) {
   return { style, size, cols, rows };
 }
 
+/**
+ * Full icon catalog (~340 icons with categories and cs/en keywords). Loaded on
+ * demand: when the picker opens, or when the config uses an icon outside the
+ * base set in icons.js, so the panel starts as fast as before.
+ */
+const ICON_CATALOG_URL = "./icon-catalog.js?v=2.1.0-beta.1";
+const RECENT_ICONS_KEY = "guest_ha_panel_recent_icons";
+let ICON_CATALOG = null;
+let iconCatalogLoading = null;
+function loadIconCatalog() {
+  iconCatalogLoading ||= import(ICON_CATALOG_URL)
+    .then((mod) => {
+      const fold = (s) => String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const catLabel = Object.fromEntries(mod.CATEGORIES.map((c) => [c.id, `${c.cs} ${c.en}`]));
+      ICON_CATALOG = {
+        ...mod,
+        fold,
+        hay: new Map(mod.ICON_LIST.map((i) => [i.n, fold([
+          i.n, i.n.replace(/([a-z])([A-Z0-9])/g, "$1 $2"), ...i.cs, ...i.en, catLabel[i.c],
+        ].join(" "))])),
+      };
+      return ICON_CATALOG;
+    })
+    .catch((err) => {
+      iconCatalogLoading = null;
+      throw err;
+    });
+  return iconCatalogLoading;
+}
+function knownIcon(name) {
+  return Boolean(ICONS[name] || ICON_CATALOG?.SVG[name]);
+}
+function readRecentIcons() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_ICONS_KEY) || "[]");
+    return Array.isArray(list) ? list.filter((n) => typeof n === "string").slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+function pushRecentIcon(name) {
+  try {
+    const list = [name, ...readRecentIcons().filter((n) => n !== name)].slice(0, 12);
+    localStorage.setItem(RECENT_ICONS_KEY, JSON.stringify(list));
+  } catch { /* storage blocked: recent icons are a convenience only */ }
+}
+
 /** Inline lucide SVG (same set the PWA renders). */
 function iconSvg(name, size = 20) {
-  const inner = ICONS[name] || ICONS.Sparkles || "";
+  const inner = ICONS[name] || ICON_CATALOG?.SVG[name] || ICONS.Sparkles || "";
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 }
 
@@ -119,18 +164,19 @@ const PANEL_I18N = {
     rotateLandscape: "Na šířku",
     rotatePortrait: "Na výšku",
     dashboardUrl: "URL tvého web dashboardu",
-    headerSection: "Horní lišta",
-    genShowTopBar: "Zobrazit horní lištu",
-    welcomeSection: "Uvítání a počasí",
-    genShowWelcome: "Uvítací zpráva (jméno uživatele HA)",
+    headerSection: "Hlavička",
+    headerHint: "Jedna plocha nahoře: řádek s časem, datem a tlačítkem Wi-Fi, pod ním pozdrav a venkovní počasí. Vypnuté části nezabírají místo.",
+    genShowTopBar: "Řádek s časem, datem a Wi-Fi",
+    welcomeSection: "Pozdrav a počasí",
+    genShowWelcome: "Pozdrav (jméno uživatele HA) a počasí",
     weatherSource: "Počasí",
     weatherAuto: "Auto — poloha domova v HA",
     genShowTime: "Čas",
     genUse24h: "24hodinový formát",
     genShowDate: "Datum",
     genShowWifi: "Tlačítko Wi-Fi",
-    genShowTemperature: "Teplota",
-    genShowHumidity: "Vlhkost",
+    genShowTemperature: "Teplota venku (velké číslo)",
+    genShowHumidity: "Vlhkost venku",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi heslo",
     wifiSecurity: "Zabezpečení",
@@ -144,7 +190,14 @@ const PANEL_I18N = {
     devices: "Zařízení",
     addDevice: "+ Zařízení",
     delete: "Smazat",
-    deletePage: "Smazat page",
+    deletePage: "Smazat stránku",
+    confirmDelete: "Opravdu smazat?",
+    confirmYes: "Ano",
+    confirmNo: "Zrušit",
+    confirmClearPages: (n) => (n === 1 ? "Opravdu smazat jedinou stránku?"
+      : n < 5 ? `Opravdu smazat všechny ${n} stránky?` : `Opravdu smazat všech ${n} stránek?`),
+    pagesReorderHint: "Pořadí změníte přetažením (na dotyk podržte), z klávesnice Alt + ← / →. Pořadí odpovídá swipování v aplikaci.",
+    pageMoved: (label, pos, total) => `${label}: pozice ${pos} z ${total}`,
     dockAdd: "+ Page do docku",
     dockPage: "Page",
     dockLabel: "Název (volitelný override)",
@@ -159,6 +212,17 @@ const PANEL_I18N = {
     moveLeft: "← Posunout",
     moveRight: "Posunout →",
     pickIcon: "Vybrat ikonu",
+    iconSearch: "Hledat ikonu (např. lampa, koupelna, vrata)",
+    iconAll: "Vše",
+    iconRecent: "Naposledy použité",
+    iconNone: "Žádná ikona neodpovídá hledání.",
+    iconLoading: "Načítám ikony…",
+    iconLoadFailed: "Ikony se nepodařilo načíst.",
+    iconCount: (n) => `${n} ikon`,
+    type_divider: "Oddělovač",
+    addDivider: "+ Oddělovač",
+    dividerPlaceholder: "Název sekce (nepovinný)",
+    dividerHint: "Oddělovač je přes celý řádek: text vlevo, za ním linka. Prázdný = jen linka.",
     type_light: "Světlo",
     type_switch: "Vypínač",
     type_climate: "Klima",
@@ -198,6 +262,7 @@ const PANEL_I18N = {
     addPhotos: "+ Přidat fotky",
     uploading: (n) => `Nahrávám ${n}…`,
     photosEmpty: "Zatím žádné fotky.",
+    photoTooLarge: "Fotka je i po zmenšení příliš velká.",
     standbyPreview: "Ukázat v náhledu",
     standbyHide: "Skrýt",
     devicesCount: (n) => `${n} zařízení`,
@@ -228,18 +293,19 @@ const PANEL_I18N = {
     rotateLandscape: "Landscape",
     rotatePortrait: "Portrait",
     dashboardUrl: "Your web dashboard URL",
-    headerSection: "Top bar",
-    genShowTopBar: "Show top bar",
-    welcomeSection: "Welcome & weather",
-    genShowWelcome: "Welcome message (HA user name)",
+    headerSection: "Header",
+    headerHint: "One surface at the top: a row with time, date and the Wi-Fi button, below it the greeting and the outside weather. Parts that are off take no space.",
+    genShowTopBar: "Row with time, date and Wi-Fi",
+    welcomeSection: "Greeting & weather",
+    genShowWelcome: "Greeting (HA user name) and weather",
     weatherSource: "Weather",
     weatherAuto: "Auto — HA home location",
     genShowTime: "Time",
     genUse24h: "24-hour clock",
     genShowDate: "Date",
     genShowWifi: "Wi-Fi button",
-    genShowTemperature: "Temperature",
-    genShowHumidity: "Humidity",
+    genShowTemperature: "Outside temperature (large)",
+    genShowHumidity: "Outside humidity",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi password",
     wifiSecurity: "Security",
@@ -254,6 +320,12 @@ const PANEL_I18N = {
     addDevice: "+ Device",
     delete: "Delete",
     deletePage: "Delete page",
+    confirmDelete: "Really delete?",
+    confirmYes: "Yes",
+    confirmNo: "Cancel",
+    confirmClearPages: (n) => (n === 1 ? "Really delete the only page?" : `Really delete all ${n} pages?`),
+    pagesReorderHint: "Drag to reorder (on touch, press and hold), or Alt + ← / → from the keyboard. The order is the swipe order in the app.",
+    pageMoved: (label, pos, total) => `${label}: position ${pos} of ${total}`,
     dockAdd: "+ Page to dock",
     dockPage: "Page",
     dockLabel: "Name (optional override)",
@@ -268,6 +340,17 @@ const PANEL_I18N = {
     moveLeft: "← Move",
     moveRight: "Move →",
     pickIcon: "Pick icon",
+    iconSearch: "Search icons (e.g. lamp, bathroom, gate)",
+    iconAll: "All",
+    iconRecent: "Recently used",
+    iconNone: "No icon matches the search.",
+    iconLoading: "Loading icons…",
+    iconLoadFailed: "Icons could not be loaded.",
+    iconCount: (n) => `${n} icons`,
+    type_divider: "Divider",
+    addDivider: "+ Divider",
+    dividerPlaceholder: "Section name (optional)",
+    dividerHint: "A divider spans the whole row: text on the left, a line after it. Empty = just the line.",
     type_light: "Light",
     type_switch: "Switch",
     type_climate: "Climate",
@@ -307,6 +390,7 @@ const PANEL_I18N = {
     addPhotos: "+ Add photos",
     uploading: (n) => `Uploading ${n}…`,
     photosEmpty: "No photos yet.",
+    photoTooLarge: "The photo is too large even after resizing.",
     standbyPreview: "Show in preview",
     standbyHide: "Hide",
     devicesCount: (n) => `${n} devices`,
@@ -323,6 +407,7 @@ const PANEL_I18N = {
 };
 
 const emptyConfig = () => ({
+  configVersion: 2,
   guestInfo: {
     wifiSsid: "",
     wifiPassword: "",
@@ -541,6 +626,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       });
       this._config = normalizeConfig(cfg);
       this._ensureDock();
+      this._ensureConfigIcons();
       this._error = null;
       if (this._pageIdx >= (this._config.pages?.length || 0)) this._pageIdx = 0;
       this._syncLivePreviewSrc(this._config);
@@ -603,6 +689,161 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._pageIdx = Math.max(0, Math.min(this._pageIdx, this._config.pages.length - 1));
     this._render();
   }
+
+  /**
+   * Move a page to another position (= swipe order in the app). The selected
+   * page stays selected; the dock refers to pages by id, so it is unaffected.
+   */
+  _movePage(from, to, { focus = false } = {}) {
+    const pages = this._config.pages;
+    if (from === to || from < 0 || to < 0 || from >= pages.length || to >= pages.length) return;
+    const wrap = this.shadowRoot.getElementById("pagePills");
+    const before = new Map(
+      [...(wrap?.querySelectorAll(".pill[data-page-id]") || [])].map((el) => [el.dataset.pageId, el.getBoundingClientRect()]),
+    );
+    const selected = pages[this._pageIdx];
+    const [moved] = pages.splice(from, 1);
+    pages.splice(to, 0, moved);
+    this._pageIdx = Math.max(0, pages.indexOf(selected));
+    this._render();
+
+    const pills = this.shadowRoot.getElementById("pagePills");
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    for (const el of pills?.querySelectorAll(".pill[data-page-id]") || []) {
+      const old = before.get(el.dataset.pageId);
+      if (!old || reduce) continue;
+      const now = el.getBoundingClientRect();
+      const dx = old.left - now.left;
+      const dy = old.top - now.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+      el.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
+        { duration: 300, easing: "cubic-bezier(0.32, 0.72, 0, 1)" },
+      );
+    }
+    const id = moved.id || `#${to}`;
+    if (focus) pills?.querySelector(`.pill[data-page-id="${CSS.escape(id)}"]`)?.focus();
+    const live = this.shadowRoot.getElementById("pagesLive");
+    // set after the render so screen readers announce the change
+    if (live) setTimeout(() => { live.textContent = this._t("pageMoved", moved.label || moved.id, to + 1, pages.length); }, 60);
+  }
+
+  /** Page pills: drag to reorder (mouse at once, touch after a ~280 ms hold), Alt+←/→ from the keyboard. */
+  _bindPagePills() {
+    const wrap = this.shadowRoot.getElementById("pagePills");
+    if (!wrap) return;
+    const drop = wrap.querySelector(".pill-drop");
+    const pills = () => [...wrap.querySelectorAll(".pill[data-page]")];
+    let d = null;
+
+    const target = (x, y) => {
+      let best = null;
+      let bestScore = Infinity;
+      for (const el of pills()) {
+        if (Number(el.dataset.page) === d.from) continue;
+        const r = el.getBoundingClientRect();
+        const score = Math.abs(x - (r.left + r.width / 2)) + Math.abs(y - (r.top + r.height / 2)) * 3;
+        if (score < bestScore) { bestScore = score; best = { el, r }; }
+      }
+      if (!best) return null;
+      const idx = Number(best.el.dataset.page);
+      const before = x < best.r.left + best.r.width / 2;
+      const pos = before ? idx : idx + 1;
+      return { to: pos > d.from ? pos - 1 : pos, r: best.r, before };
+    };
+    const showDrop = (t) => {
+      if (!drop) return;
+      if (!t || t.to === d.from) { drop.classList.remove("on"); return; }
+      const w = wrap.getBoundingClientRect();
+      drop.style.left = `${(t.before ? t.r.left - 4.5 : t.r.right + 1.5) - w.left}px`;
+      drop.style.top = `${t.r.top - w.top}px`;
+      drop.style.height = `${t.r.height}px`;
+      drop.classList.add("on");
+    };
+    const end = () => {
+      clearTimeout(d?.hold);
+      d?.el.classList.remove("lifting", "dragging");
+      d?.el.style.removeProperty("--tx");
+      d?.el.style.removeProperty("--ty");
+      wrap.classList.remove("is-dragging");
+      drop?.classList.remove("on");
+      d = null;
+    };
+
+    wrap.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || this._config.pages.length < 2) return;
+      const el = e.target.closest(".pill[data-page]");
+      if (!el) return;
+      d = {
+        el, from: Number(el.dataset.page), x0: e.clientX, y0: e.clientY,
+        touch: e.pointerType !== "mouse", armed: e.pointerType === "mouse", started: false, to: null, id: e.pointerId,
+      };
+      if (d.touch) {
+        d.hold = setTimeout(() => {
+          if (!d) return;
+          d.armed = true;
+          el.classList.add("lifting");
+          try { wrap.setPointerCapture(d.id); } catch { /* synthetic pointer */ }
+        }, 280);
+      }
+    });
+    wrap.addEventListener("pointermove", (e) => {
+      if (!d) return;
+      const dx = e.clientX - d.x0;
+      const dy = e.clientY - d.y0;
+      if (!d.armed) {
+        // touch moved before the hold finished: it is a scroll, not a drag
+        if (Math.hypot(dx, dy) > 8) end();
+        return;
+      }
+      if (!d.started) {
+        if (Math.hypot(dx, dy) < 5) return;
+        d.started = true;
+        try { wrap.setPointerCapture(d.id); } catch { /* synthetic pointer */ }
+        d.el.classList.remove("lifting");
+        d.el.classList.add("dragging");
+        wrap.classList.add("is-dragging");
+      }
+      e.preventDefault();
+      d.el.style.setProperty("--tx", `${dx}px`);
+      d.el.style.setProperty("--ty", `${dy}px`);
+      const t = target(e.clientX, e.clientY);
+      d.to = t ? t.to : null;
+      showDrop(t);
+    });
+    const finish = () => {
+      if (!d) return;
+      const { started, from, to } = d;
+      end();
+      if (!started) return;
+      // the click that follows pointerup must not select the page
+      this._pillDragged = true;
+      setTimeout(() => { this._pillDragged = false; }, 0);
+      if (to !== null && to !== from) this._movePage(from, to);
+    };
+    wrap.addEventListener("pointerup", finish);
+    wrap.addEventListener("pointercancel", end);
+    wrap.addEventListener("lostpointercapture", () => { if (d?.started) finish(); });
+
+    wrap.addEventListener("keydown", (e) => {
+      if (!e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+      const el = e.target.closest(".pill[data-page]");
+      if (!el) return;
+      e.preventDefault();
+      const from = Number(el.dataset.page);
+      this._movePage(from, from + (e.key === "ArrowLeft" ? -1 : 1), { focus: true });
+    });
+  }
+
+  _addDivider(page) {
+    const hex = Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const divider = { id: `divider-${hex}`, type: "divider", label: "", style: "line", size: "4x1" };
+    page.devices.push(divider);
+    this._devIdx = -1;
+    this._render();
+    this.shadowRoot.querySelector(`[data-div-label="${page.devices.length - 1}"]`)?.focus();
+  }
+
   _addDevice(page) {
     page.devices.push({
       id: "", type: "light", label: this._t("type_light"), supportsBrightness: true,
@@ -619,30 +860,162 @@ class GuestHaDashboardPanel extends HTMLElement {
   _iconPicker(key, current, onPick) {
     this._iconPickers.set(key, onPick);
     const open = this._iconOpen === key;
-    const name = ICONS[current] ? current : "Sparkles";
+    // unknown names (catalog not loaded yet, or a removed icon) show as Sparkles, like the app
+    const name = knownIcon(current) ? current : "Sparkles";
     return `
-      <div class="icon-picker">
-        <button type="button" class="icon-btn ${open ? "open" : ""}" data-icon-open="${key}" title="${this._t("pickIcon")}">
-          ${iconSvg(name, 20)}<span>${this._escape(name)}</span>
+      <div class="icon-picker" data-picker="${key}">
+        <button type="button" class="icon-btn ${open ? "open" : ""}" data-icon-open="${key}" title="${this._t("pickIcon")}"
+          aria-expanded="${open}">
+          ${iconSvg(name, 20)}<span>${this._escape(this._iconName(name))}</span>
         </button>
-        ${open ? `<div class="icon-grid" role="listbox">${Object.keys(ICONS).map((ic) => `
-          <button type="button" class="icon-opt ${ic === name ? "on" : ""}" data-icon-pick="${key}" data-icon="${ic}" title="${ic}" aria-label="${ic}">
-            ${iconSvg(ic, 20)}
-          </button>`).join("")}</div>` : ""}
+        ${open ? this._iconPanel(key, name) : ""}
       </div>`;
   }
+
+  /** Human name for aria-labels: first keyword in the panel language, then the lucide name. */
+  _iconName(name) {
+    const item = ICON_CATALOG?.ICON_LIST.find((i) => i.n === name);
+    const word = item?.[this._uiLang() === "en" ? "en" : "cs"]?.[0];
+    return word ? `${word} (${name})` : name;
+  }
+
+  _iconPanel(key, current) {
+    if (!ICON_CATALOG) {
+      return `<div class="icon-panel"><p class="hint" role="status">${this._t(this._iconLoadError ? "iconLoadFailed" : "iconLoading")}</p></div>`;
+    }
+    const lang = this._uiLang() === "en" ? "en" : "cs";
+    const cat = this._iconCat || "all";
+    this._iconCurrent = current;
+    return `
+      <div class="icon-panel" data-icon-panel="${key}">
+        <input type="search" class="icon-search" data-icon-search="${key}" value="${this._escape(this._iconQuery || "")}"
+          placeholder="${this._escape(this._t("iconSearch"))}" aria-label="${this._escape(this._t("pickIcon"))}" autocomplete="off" />
+        <div class="icon-cats" role="group" aria-label="${this._escape(this._t("pickIcon"))}">
+          <button type="button" class="icon-cat ${cat === "all" ? "on" : ""}" data-icon-cat="all" aria-pressed="${cat === "all"}">${this._t("iconAll")}</button>
+          ${ICON_CATALOG.CATEGORIES.map((c) => `
+          <button type="button" class="icon-cat ${cat === c.id ? "on" : ""}" data-icon-cat="${c.id}" aria-pressed="${cat === c.id}">${this._escape(c[lang])}</button>`).join("")}
+        </div>
+        <div class="icon-results" data-icon-results="${key}">${this._iconResults(key, current)}</div>
+      </div>`;
+  }
+
+  _iconResults(key, current) {
+    const { fold, hay, ICON_LIST } = ICON_CATALOG;
+    const words = fold(this._iconQuery || "").split(/\s+/).filter(Boolean);
+    const cat = this._iconCat || "all";
+    const match = (i) => (cat === "all" || i.c === cat) && words.every((w) => hay.get(i.n).includes(w));
+    const list = ICON_LIST.filter(match);
+    const opt = (i) => `
+      <button type="button" role="option" class="icon-opt ${i.n === current ? "on" : ""}" aria-selected="${i.n === current}"
+        data-icon-pick="${key}" data-icon="${i.n}" title="${this._escape(this._iconName(i.n))}" aria-label="${this._escape(this._iconName(i.n))}">
+        ${iconSvg(i.n, 20)}
+      </button>`;
+    const recent = !words.length && cat === "all"
+      ? readRecentIcons().map((n) => ICON_LIST.find((i) => i.n === n)).filter(Boolean)
+      : [];
+    if (!list.length) return `<p class="hint icon-empty" role="status">${this._t("iconNone")}</p>`;
+    return `
+      ${recent.length ? `
+        <p class="icon-sub">${this._t("iconRecent")}</p>
+        <div class="icon-grid" role="listbox" aria-label="${this._escape(this._t("iconRecent"))}">${recent.map(opt).join("")}</div>
+        <p class="icon-sub">${this._t("iconAll")} · ${this._t("iconCount", list.length)}</p>` : ""}
+      <div class="icon-grid" role="listbox" aria-label="${this._escape(this._t("pickIcon"))}">${list.map(opt).join("")}</div>`;
+  }
+
   _bindIconPickers() {
     this._on("[data-icon-open]", "click", (e) => {
       const key = e.currentTarget.dataset.iconOpen;
       this._iconOpen = this._iconOpen === key ? null : key;
+      this._iconQuery = "";
+      this._iconCat = "all";
       this._render();
+      if (this._iconOpen) this._focusIconSearch();
     });
-    this._on("[data-icon-pick]", "click", (e) => {
-      const { iconPick, icon } = e.currentTarget.dataset;
-      this._iconPickers.get(iconPick)?.(icon);
+    if (this._iconOpen && !ICON_CATALOG) {
+      loadIconCatalog()
+        .then(() => { this._iconLoadError = false; this._render(); this._focusIconSearch(); })
+        .catch((err) => {
+          console.warn("[dash] icon catalog failed to load", err);
+          this._iconLoadError = true;
+          this._render();
+        });
+    }
+    const panel = this.shadowRoot.querySelector("[data-icon-panel]");
+    if (!panel) return;
+    const key = panel.dataset.iconPanel;
+    const results = panel.querySelector("[data-icon-results]");
+    const refresh = () => { results.innerHTML = this._iconResults(key, this._iconCurrent); };
+    const close = () => {
       this._iconOpen = null;
       this._render();
+      this.shadowRoot.querySelector(`[data-icon-open="${CSS.escape(key)}"]`)?.focus();
+    };
+
+    const search = panel.querySelector("[data-icon-search]");
+    search?.addEventListener("input", () => {
+      this._iconQuery = search.value;
+      refresh();
     });
+    search?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        e.preventDefault();
+        results.querySelector(".icon-opt")?.focus();
+      }
+    });
+    panel.querySelectorAll("[data-icon-cat]").forEach((chip) => chip.addEventListener("click", () => {
+      this._iconCat = chip.dataset.iconCat;
+      panel.querySelectorAll("[data-icon-cat]").forEach((c) => {
+        const on = c === chip;
+        c.classList.toggle("on", on);
+        c.setAttribute("aria-pressed", String(on));
+      });
+      refresh();
+    }));
+    // picks and keyboard navigation are delegated: the results are re-rendered while typing
+    results.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-icon-pick]");
+      if (!btn) return;
+      this._iconPickers.get(key)?.(btn.dataset.icon);
+      pushRecentIcon(btn.dataset.icon);
+      close();
+    });
+    panel.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+        return;
+      }
+      const btn = e.target.closest(".icon-opt");
+      if (!btn || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      const all = [...results.querySelectorAll(".icon-opt")];
+      const i = all.indexOf(btn);
+      const grid = btn.parentElement;
+      const cols = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").length);
+      const next = {
+        ArrowLeft: i - 1, ArrowRight: i + 1, ArrowUp: i - cols, ArrowDown: i + cols, Home: 0, End: all.length - 1,
+      }[e.key];
+      if (e.key === "ArrowUp" && next < 0) { search?.focus(); return; }
+      all[Math.max(0, Math.min(all.length - 1, next))]?.focus();
+    });
+  }
+
+  _focusIconSearch() {
+    const input = this.shadowRoot.querySelector("[data-icon-search]");
+    if (input) {
+      try { input.focus({ preventScroll: true }); } catch { input.focus(); }
+    }
+  }
+
+  /** Icons used in the config that are not in the base set: load the catalog so they render. */
+  _ensureConfigIcons() {
+    const c = this._config || {};
+    const names = [
+      ...(c.pages || []).flatMap((p) => [p?.icon, ...(p?.devices || []).map((d) => d?.icon)]),
+      ...(c.dock || []).map((d) => d?.icon),
+    ].filter(Boolean);
+    if (ICON_CATALOG || names.every((n) => ICONS[n])) return;
+    loadIconCatalog().then(() => this._render()).catch((err) => console.warn("[dash] icon catalog failed to load", err));
   }
   _entities(domain) {
     return Object.keys(this._hass?.states || {})
@@ -882,12 +1255,27 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       .icon-btn.open { border-color: var(--accent); }
       .icon-btn svg { color: var(--accent); }
-      .icon-grid {
-        margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
-        gap: 6px; padding: 10px; border-radius: 18px; max-height: 236px; overflow: auto;
+      .icon-panel {
+        margin-top: 8px; padding: 10px; border-radius: 18px;
         background: var(--input-bg); border: 1px solid var(--border);
         animation: pop-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.1);
       }
+      .icon-panel .icon-search { padding: 8px 12px; border-radius: 10px; }
+      .icon-panel .icon-search::placeholder { -webkit-text-fill-color: var(--muted) !important; color: var(--muted) !important; opacity: 1; }
+      .icon-cats { display: flex; gap: 4px; overflow-x: auto; padding: 8px 0 4px; scrollbar-width: none; }
+      .icon-cats::-webkit-scrollbar { display: none; }
+      .icon-cat {
+        flex: 0 0 auto; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+        background: transparent; color: var(--muted); font: inherit; font-size: 0.78rem; cursor: pointer; white-space: nowrap;
+      }
+      .icon-cat.on { background: var(--accent); border-color: transparent; color: #fff; }
+      .icon-results { max-height: 260px; overflow: auto; padding-top: 4px; }
+      .icon-sub { margin: 6px 2px 4px; font-size: 0.74rem; color: var(--muted); }
+      .icon-empty { margin: 10px 2px; }
+      .icon-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px;
+      }
+      .icon-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
       .icon-opt {
         aspect-ratio: 1; display: grid; place-items: center; padding: 0; border-radius: 12px;
         background: transparent; color: var(--text);
@@ -916,6 +1304,28 @@ class GuestHaDashboardPanel extends HTMLElement {
         transition: scale 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s ease, opacity 0.2s ease;
       }
       .cc-tile:hover { scale: 1.02; }
+      .cc-tile.cc-divider {
+        flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px;
+        padding: 0 6px; background: transparent; border: 1px dashed transparent; border-radius: 14px;
+      }
+      .cc-tile.cc-divider:hover, .cc-tile.cc-divider.sel { border-color: var(--border); scale: 1; }
+      .cc-tile .cc-div-input, :host([dark]) .cc-tile .cc-div-input {
+        flex: 0 1 auto; width: auto; min-width: 4ch; max-width: 70%; field-sizing: content;
+        border: 0; padding: 4px 2px; border-radius: 6px;
+        font-family: inherit; font-size: 0.78rem; font-weight: 600; line-height: 1.2;
+        letter-spacing: 0.06em; text-transform: uppercase;
+        background-color: transparent !important; color: var(--muted) !important;
+        -webkit-text-fill-color: var(--muted) !important;
+      }
+      .cc-tile .cc-div-input::placeholder {
+        -webkit-text-fill-color: var(--muted) !important; opacity: 0.55;
+        text-transform: none; letter-spacing: 0; font-weight: 400;
+      }
+      .cc-tile .cc-div-input:focus, :host([dark]) .cc-tile .cc-div-input:focus {
+        outline: 2px solid var(--accent); outline-offset: 1px;
+        color: var(--text) !important; -webkit-text-fill-color: var(--text) !important;
+      }
+      .cc-div-line { flex: 1; height: 1px; background: var(--border); }
       .cc-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .cc-tile.sel { box-shadow: 0 0 0 2.5px var(--accent); }
       .cc-tile.h1 { flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; }
@@ -982,12 +1392,39 @@ class GuestHaDashboardPanel extends HTMLElement {
       .seg.wrap { flex-wrap: wrap; border-radius: 18px; }
       .pill svg { vertical-align: -3px; margin-right: 4px; }
       .hint { font-size: 0.85rem; color: var(--muted); margin: 0 0 12px; line-height: 1.4; }
-      .page-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+      .page-pills { position: relative; display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
       .pill {
         padding: 6px 12px; border-radius: 999px; background: var(--btn);
         border: 1px solid var(--border); color: var(--text); font: inherit; cursor: pointer;
       }
       .pill.active { background: var(--accent); color: #fff; border-color: transparent; }
+      .page-pills .pill { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+      .page-pills .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .page-pills .pill.lifting { transform: scale(1.06); box-shadow: 0 6px 18px rgba(0,0,0,0.16); transition: transform 0.15s ease; }
+      .page-pills .pill.dragging {
+        position: relative; z-index: 3; pointer-events: none; opacity: 0.92;
+        transform: translate(var(--tx, 0px), var(--ty, 0px)) scale(1.06);
+        box-shadow: 0 10px 26px rgba(0,0,0,0.2);
+      }
+      .page-pills.is-dragging { cursor: grabbing; }
+      .pill-drop {
+        position: absolute; z-index: 4; width: 3px; border-radius: 2px; background: var(--accent);
+        pointer-events: none; display: none;
+      }
+      .page-pills.is-dragging .pill-drop.on { display: block; }
+      .pills-hint { font-size: 0.78rem; color: var(--muted); margin: 0 0 12px; }
+      .sr-only {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+      }
+      .danger-zone { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); display: grid; gap: 14px; justify-items: start; }
+      .confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .confirm-q { font-weight: 600; }
+      .btn.quiet { background: transparent; border: 0; padding: 4px 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-size: 0.85rem; }
+      .btn.quiet:hover { color: var(--danger-text); }
+      @media (prefers-reduced-motion: reduce) {
+        .page-pills .pill.lifting, .page-pills .pill.dragging { transition: none; }
+      }
       h3 { margin: 18px 0 8px; font-size: 1rem; }
       .count { color: var(--muted); font-size: 0.8rem; }
       .preview-head {
@@ -1397,6 +1834,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._tab = e.currentTarget.dataset.tab;
       this._info = null;
       this._iconOpen = null;
+      this._confirm = null;
       this._render();
     });
     this.shadowRoot.getElementById("save")?.addEventListener("click", () => this._save());
@@ -1449,31 +1887,38 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _renderGeneral(c) {
     const gen = { ...DEFAULT_GENERAL, ...(c.general || {}) };
-    const items = [
+    // One header in the app (HeaderCard.vue): the clock row, then greeting + weather
+    const clockItems = [
       ["showTime", "genShowTime"],
       ["use24h", "genUse24h"],
       ["showDate", "genShowDate"],
       ["showWifi", "genShowWifi"],
+    ];
+    const weatherItems = [
       ["showTemperature", "genShowTemperature"],
       ["showHumidity", "genShowHumidity"],
     ];
+    const toggles = (items) => items.map(([key, label]) => this._toggle(`data-gen="${key}"`, gen[key], this._t(label))).join("");
     const weathers = this._entities("weather");
     return `
       ${this._renderHosting(c)}
       <h3>${this._t("headerSection")}</h3>
+      <p class="hint">${this._t("headerHint")}</p>
       <div class="toggle-list">
         ${this._toggle('data-gen="showTopBar"', gen.showTopBar, this._t("genShowTopBar"))}
-        ${gen.showTopBar ? items.map(([key, label]) => this._toggle(`data-gen="${key}"`, gen[key], this._t(label))).join("") : ""}
+        ${gen.showTopBar ? toggles(clockItems) : ""}
       </div>
       <h3>${this._t("welcomeSection")}</h3>
       <div class="toggle-list">
         ${this._toggle('data-gen="showWelcome"', gen.showWelcome, this._t("genShowWelcome"))}
+        ${gen.showWelcome ? toggles(weatherItems) : ""}
       </div>
+      ${gen.showWelcome ? `
       <div class="row" style="margin-top:12px"><label>${this._t("weatherSource")}</label>
         <select id="weatherEntity">
           <option value="">${this._t("weatherAuto")}</option>
           ${weathers.map((w) => `<option value="${w}" ${gen.weatherEntity === w ? "selected" : ""}>${this._escape(this._friendly(w))}</option>`).join("")}
-        </select></div>
+        </select></div>` : ""}
     `;
   }
 
@@ -1496,7 +1941,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._on("[data-gen]", "change", (e) => {
       const key = e.currentTarget.dataset.gen;
       general()[key] = e.currentTarget.checked;
-      if (key === "showTopBar") this._render();
+      if (key === "showTopBar" || key === "showWelcome") this._render();
     });
     const weather = this.shadowRoot.getElementById("weatherEntity");
     weather?.addEventListener("change", () => { general().weatherEntity = weather.value; });
@@ -1605,10 +2050,12 @@ class GuestHaDashboardPanel extends HTMLElement {
     for (const id of this._photos) {
       if (this._thumbs.has(id)) continue;
       try {
-        const res = await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/photo_get", id, thumb: true });
+        const res = await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/photo_get", photo_id: id, thumb: true });
         this._thumbs.set(id, `data:${res.mime};base64,${res.data}`);
         if (this._tab === "standby") this._render();
-      } catch { /* missing file */ }
+      } catch (err) {
+        console.warn("[dash] photo thumbnail failed", id, err);
+      }
     }
   }
 
@@ -1631,8 +2078,15 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._render();
     for (const file of images) {
       try {
-        const data = await this._encodeImage(file, 1920, 0.85);
+        // Home Assistant drops websocket messages over 4 MiB (aiohttp default) and
+        // the whole connection with them: keep photo + thumbnail well below that.
         const thumb = await this._encodeImage(file, 360, 0.75);
+        let data = "";
+        for (const [max, quality] of [[1920, 0.85], [1920, 0.72], [1600, 0.7], [1280, 0.7]]) {
+          data = await this._encodeImage(file, max, quality);
+          if (data.length + thumb.length < PHOTO_UPLOAD_BUDGET) break;
+        }
+        if (data.length + thumb.length >= PHOTO_UPLOAD_BUDGET) throw new Error(this._t("photoTooLarge"));
         const res = await this._hass.connection.sendMessagePromise({
           type: "guest_ha_dashboard/photo_upload", data, thumb,
         });
@@ -1648,7 +2102,7 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   async _deletePhoto(id) {
     try {
-      await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/photo_delete", id });
+      await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/photo_delete", photo_id: id });
       this._photos = (this._photos || []).filter((p) => p !== id);
       this._thumbs.delete(id);
     } catch (err) {
@@ -1795,22 +2249,38 @@ class GuestHaDashboardPanel extends HTMLElement {
     return `
       <div class="actions" style="margin-top:0;align-items:center">
         <button class="btn primary" id="addPage">${this._t("addPage")}</button>
-        <button class="btn ghost" id="clearPages" ${c.pages.length ? "" : "disabled"}>${this._t("clearPages")}</button>
       </div>
+      <p class="sr-only" aria-live="polite" id="pagesLive"></p>
       ${!c.pages.length ? `<p class="hint" style="margin-top:14px">${this._t("pagesEmpty")}</p>` : `
-        <div class="page-pills" style="margin-top:14px">
-          ${c.pages.map((r, i) => `<button class="pill ${i === this._pageIdx ? "active" : ""}" data-page="${i}">${iconSvg(r.icon, 16)}${this._escape(r.label || r.id)} <span class="count">(${(r.devices || []).length})</span></button>`).join("")}
+        <div class="page-pills" id="pagePills" style="margin-top:14px">
+          ${c.pages.map((r, i) => `<button type="button" class="pill ${i === this._pageIdx ? "active" : ""}" data-page="${i}" data-page-id="${this._escape(r.id || `#${i}`)}"
+              aria-pressed="${i === this._pageIdx}" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight">${iconSvg(r.icon, 16)}${this._escape(r.label || r.id)} <span class="count">(${(r.devices || []).length})</span></button>`).join("")}
+          <span class="pill-drop" aria-hidden="true"></span>
         </div>
+        ${c.pages.length > 1 ? `<p class="pills-hint">${this._t("pagesReorderHint")}</p>` : ""}
         ${!page ? "" : `
           <div class="row"><label>${this._t("pageName")}</label><input id="pageLabel" value="${this._escape(page.label || "")}" /></div>
           <div class="row"><label>${this._t("pageIcon")}</label>
             ${this._iconPicker("page", page.icon || "Home", (ic) => { page.icon = ic; })}</div>
           <h3>${this._t("devices")} <span class="count">${this._t("devicesCount", page.devices.length)}</span></h3>
           ${this._renderGrid(page)}
-          ${this._renderInspector(page)}
-          <div class="actions">
-            <button class="btn danger" id="deletePage">${this._t("deletePage")}</button>
-          </div>`}
+          ${this._renderInspector(page)}`}
+        <div class="danger-zone">
+          ${!page ? "" : this._confirm === "page" ? `
+            <div class="confirm" role="group" aria-label="${this._t("deletePage")}">
+              <span class="confirm-q">${this._t("confirmDelete")}</span>
+              <button type="button" class="btn danger" id="deletePageYes">${this._t("confirmYes")}</button>
+              <button type="button" class="btn ghost" data-confirm-cancel>${this._t("confirmNo")}</button>
+            </div>` : `
+            <button type="button" class="btn danger" id="deletePage">${this._t("deletePage")}</button>`}
+          ${this._confirm === "all" ? `
+            <div class="confirm" role="group" aria-label="${this._t("clearPages")}">
+              <span class="confirm-q">${this._t("confirmClearPages", c.pages.length)}</span>
+              <button type="button" class="btn danger" id="clearPagesYes">${this._t("confirmYes")}</button>
+              <button type="button" class="btn ghost" data-confirm-cancel>${this._t("confirmNo")}</button>
+            </div>` : `
+            <button type="button" class="btn quiet" id="clearPages">${this._t("clearPages")}</button>`}
+        </div>
       `}
     `;
   }
@@ -1825,6 +2295,15 @@ class GuestHaDashboardPanel extends HTMLElement {
   _gridTiles(page) {
     return page.devices.map((d, di) => {
       const { style, size, cols, rows } = resolveTile(d);
+      if (d.type === "divider") {
+        return `
+        <div class="cc-tile cc-divider ${di === this._devIdx ? "sel" : ""}" tabindex="0" data-ti="${di}" data-key="${this._devKey(d)}"
+          style="grid-column: span ${cols}; grid-row: span ${rows}">
+          <input class="cc-div-input" data-div-label="${di}" value="${this._escape(d.label || "")}" maxlength="${DIVIDER_LABEL_MAX}"
+            placeholder="${this._escape(this._t("dividerPlaceholder"))}" aria-label="${this._escape(this._t("type_divider"))}" />
+          <span class="cc-div-line" aria-hidden="true"></span>
+        </div>`;
+      }
       const single = cols === 1 && rows === 1;
       const icon = d.icon || DEFAULT_DEVICE_ICON[d.type] || "Sparkles";
       const label = d.label || (d.id ? this._friendly(d.id) : this._t(`type_${d.type}`));
@@ -1847,7 +2326,7 @@ class GuestHaDashboardPanel extends HTMLElement {
               <span class="cc-lbl">${this._escape(label)}</span>
               <span class="cc-meta">${this._t(`style_${style}`)} · ${size.replace("x", "×")}</span>
             </span>`}
-          <span class="cc-resize" data-resize title="${this._t("resizeTile")}" aria-hidden="true"></span>
+          ${tileVariants(d.type).length > 1 ? `<span class="cc-resize" data-resize title="${this._t("resizeTile")}" aria-hidden="true"></span>` : ""}
         </div>`;
     }).join("");
   }
@@ -1856,7 +2335,10 @@ class GuestHaDashboardPanel extends HTMLElement {
     return `
       <div class="cc-wrap">
         ${page.devices.length ? `<div class="cc-grid" id="ccGrid">${this._gridTiles(page)}</div>` : `<p class="hint">${this._t("gridEmpty")}</p>`}
-        <div class="actions cc-actions"><button type="button" class="btn primary" id="addDevice">${this._t("addDevice")}</button></div>
+        <div class="actions cc-actions">
+          <button type="button" class="btn primary" id="addDevice">${this._t("addDevice")}</button>
+          <button type="button" class="btn ghost" id="addDivider">${this._t("addDivider")}</button>
+        </div>
       </div>`;
   }
 
@@ -1931,6 +2413,7 @@ class GuestHaDashboardPanel extends HTMLElement {
 
     grid.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
+      if (e.target.closest("input")) return; // divider label: edit, don't drag
       const tile = e.target.closest(".cc-tile");
       if (!tile) return;
       const r = tile.getBoundingClientRect();
@@ -2034,7 +2517,15 @@ class GuestHaDashboardPanel extends HTMLElement {
     grid.addEventListener("pointerup", end);
     grid.addEventListener("pointercancel", end);
     grid.addEventListener("touchmove", (e) => { if (g && g.mode !== "press") e.preventDefault(); }, { passive: false });
+    grid.querySelectorAll("[data-div-label]").forEach((input) => {
+      const d = page.devices[Number(input.dataset.divLabel)];
+      input.addEventListener("input", () => { if (d) d.label = input.value.slice(0, DIVIDER_LABEL_MAX); });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); input.blur(); }
+      });
+    });
     grid.addEventListener("keydown", (e) => {
+      if (e.target.closest("input")) return;
       const tile = e.target.closest(".cc-tile");
       if (!tile || (e.key !== "Enter" && e.key !== " ")) return;
       e.preventDefault();
@@ -2048,6 +2539,18 @@ class GuestHaDashboardPanel extends HTMLElement {
     const d = page.devices[this._devIdx];
     if (!d) return "";
     const di = this._devIdx;
+    if (!TILE_TYPES[d.type]?.needsEntity) {
+      return `
+      <div class="inspector" data-di="${di}">
+        <div class="inspector-head">
+          <strong>${this._escape(d.label || this._t(`type_${d.type}`))}</strong>
+          <button type="button" class="btn" data-move="-1" ${di === 0 ? "disabled" : ""}>${this._t("moveLeft")}</button>
+          <button type="button" class="btn" data-move="1" ${di === page.devices.length - 1 ? "disabled" : ""}>${this._t("moveRight")}</button>
+          <button type="button" class="btn danger" id="removeDevice">${this._t("delete")}</button>
+        </div>
+        <p class="hint">${this._t("dividerHint")}</p>
+      </div>`;
+    }
     const { style, size } = resolveTile(d);
     const styles = TILE_STYLES[d.type] || TILE_STYLES.switch;
     const pool = this._entities(d.type);
@@ -2064,7 +2567,7 @@ class GuestHaDashboardPanel extends HTMLElement {
           <button type="button" class="btn danger" id="removeDevice">${this._t("delete")}</button>
         </div>
         <div class="row"><label>${this._t("devType")}</label>
-          <select data-k="type">${DEVICE_TYPES.map((t) => `<option value="${t}" ${d.type === t ? "selected" : ""}>${this._t(`type_${t}`)}</option>`).join("")}</select></div>
+          <select data-k="type">${ENTITY_TYPES.map((t) => `<option value="${t}" ${d.type === t ? "selected" : ""}>${this._t(`type_${t}`)}</option>`).join("")}</select></div>
         <div class="row"><label>${this._t("devEntity")}</label>
           <select data-k="id"><option value="">—</option>${pool.map((e) => `<option value="${e}" ${d.id === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}</select></div>
         <div class="row"><label>${this._t("devLabel")}</label>
@@ -2088,7 +2591,27 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _bindPages() {
     this.shadowRoot.getElementById("addPage")?.addEventListener("click", () => this._addEmptyPage());
-    this.shadowRoot.getElementById("clearPages")?.addEventListener("click", () => {
+    // Deleting is a two-step inline confirmation (no browser dialogs)
+    const ask = (what) => {
+      this._confirm = what;
+      this._render();
+      this.shadowRoot.querySelector(what === "page" ? "#deletePageYes" : "#clearPagesYes")?.focus();
+    };
+    this.shadowRoot.getElementById("deletePage")?.addEventListener("click", () => ask("page"));
+    this.shadowRoot.getElementById("clearPages")?.addEventListener("click", () => ask("all"));
+    this._on("[data-confirm-cancel]", "click", () => {
+      const back = this._confirm === "page" ? "#deletePage" : "#clearPages";
+      this._confirm = null;
+      this._render();
+      this.shadowRoot.querySelector(back)?.focus();
+    });
+    this.shadowRoot.getElementById("deletePageYes")?.addEventListener("click", () => {
+      this._confirm = null;
+      this._devIdx = -1;
+      this._removePage(this._pageIdx);
+    });
+    this.shadowRoot.getElementById("clearPagesYes")?.addEventListener("click", () => {
+      this._confirm = null;
       this._config.pages = [];
       this._config.dock = [];
       this._pageIdx = 0;
@@ -2096,15 +2619,17 @@ class GuestHaDashboardPanel extends HTMLElement {
       this._render();
     });
     this._on(".pill[data-page]", "click", (e) => {
+      if (this._pillDragged) {
+        this._pillDragged = false;
+        return;
+      }
       this._pageIdx = Number(e.currentTarget.dataset.page);
       this._devIdx = -1;
       this._iconOpen = null;
+      this._confirm = null;
       this._render();
     });
-    this.shadowRoot.getElementById("deletePage")?.addEventListener("click", () => {
-      this._devIdx = -1;
-      this._removePage(this._pageIdx);
-    });
+    this._bindPagePills();
 
     const page = this._config.pages[this._pageIdx];
     if (!page) return;
@@ -2112,6 +2637,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     pageLabel?.addEventListener("input", () => { page.label = pageLabel.value; });
     pageLabel?.addEventListener("change", () => this._render());
     this.shadowRoot.getElementById("addDevice")?.addEventListener("click", () => this._addDevice(page));
+    this.shadowRoot.getElementById("addDivider")?.addEventListener("click", () => this._addDivider(page));
 
     this._bindGrid(page);
 
