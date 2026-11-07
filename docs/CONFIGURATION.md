@@ -10,12 +10,14 @@ Everything is configured in the **dash** sidebar panel in Home Assistant and sav
 ## General
 
 - **Dashboard**: hosted (`dash.matyas.online/<your-ha-host>`) or self-hosted URL.
-- **Header** (*Hlavička*): one surface at the top of the dashboard. Parts that are switched off take no space; with everything off there is no header.
-  - **Row with time, date and Wi-Fi** (`showTopBar`) has the sub-options **Time** (`showTime`), **24-hour clock** (`use24h`), **Date** (`showDate`) and **Wi-Fi button** (`showWifi`, an icon on the right that opens the Wi-Fi card). When the connection is not healthy (demo, connecting, offline), a small status badge appears next to it.
-  - **Greeting and weather** (`showWelcome`): "Dobrý večer, Matyáš" with the HA user's first name, then the outside weather. **Outside temperature** (`showTemperature`) is the big number; **Outside humidity** (`showHumidity`) appears next to the condition.
-  - **Weather**: a `weather.*` entity, or Auto (the first `weather.*` entity, else Open-Meteo at your HA home location).
-- Since 2.1 `showTemperature` and `showHumidity` apply only to the weather block. The top bar used to show its own small temperature and humidity; that duplicate is gone. If you had them switched off, switch them on to see the big temperature.
-- iPhone: the app draws under the status bar (`black-translucent`). In the light theme the installed app paints a dark strip behind the status bar, so its white clock stays readable. Dark theme and StandBy need none.
+- **Clock** (*Hodiny*): **24-hour clock** (`use24h`) applies to every clock in the app.
+- The header, clock, greeting, weather and Wi-Fi button are **tiles** since config version 3. Add them on a page under **+ Přidat → Hlavička** (see [Header tiles](#header-tiles)). The General tab only says so.
+- **iPhone**:
+  - The installed app uses `apple-mobile-web-app-status-bar-style=black-translucent`. The wallpaper runs under the status bar and down to the bottom edge, behind the home indicator.
+  - iOS then draws the status bar text (clock, battery) **white**, and a web app cannot change that while it runs. On a very light wallpaper the white clock has little contrast. Pick the dark theme, or a darker wallpaper at the top.
+  - **Tmavý pruh pod stavovým řádkem** (`statusBarStrip`, off by default) instead paints a solid dark strip behind the status bar in the light theme. It only applies in the installed app.
+  - The wallpaper, the bottom edge and the dock position were checked in Chromium with simulated insets (390 × 844 with 59/34 px, 375 × 667 with 20/0 px), not on a real iPhone.
+- A small status badge (Demo, connecting, Offline) appears under the status bar only when the connection is not healthy. It is not a tile, and the pages move down a little while it shows.
 
 ## Pages
 
@@ -26,6 +28,7 @@ Add as many pages as you like. Each page has a name, an icon and a 4-column grid
 - **Select** a tile by clicking it; its settings open below the grid.
 - **Move**: drag a tile. The other tiles make room as you go. On touch screens, hold briefly before dragging.
 - **Resize**: drag the rounded corner at the **bottom-right** of a tile. The tile grows to the right and down, and snaps to the closest supported style. For example, a small round light button pulled wide becomes a slider. Types with a single size (the divider) have no handle.
+- **Add a tile**: **+ Přidat** opens an inline list grouped as *Zařízení* (light, switch, climate, cover, media player, scene, fan, light group), *Informace* (sensor, binary sensor, entity) and *Hlavička* (header, clock, greeting, weather, Wi-Fi). Options of the selected tile (style, size, toggles, the weather source, the text colour) are edited below the grid.
 - **Section divider**: **+ Oddělovač** adds a full-width row: a section name on the left, a thin line after it. Type the name straight into the divider in the grid (Enter or click elsewhere to finish, at most 60 characters). Leave it empty for just a line. In the app, everything after a divider until the next one forms its own section.
 
 ### Icons
@@ -47,8 +50,60 @@ The catalog lives in `scripts/icon-catalog.json`; `npm run gen:icons` regenerate
 | Switch | button 1×1/2×1, row 4×1, card 2×2/4×2 |
 | Cover | slider 4×1/2×1, vertical 1×2/2×2, card 2×2 |
 | Climate | card 2×2, dial 4×3 |
-| Media player | card 4×2/2×2, mini 4×1/2×1, cover 2×2/4×3/4×4, button 1×1 |
+| Media player | card 4×2/2×2, mini 4×1/2×1, cover 2×2/4×3/4×4, button 1×1, nowplaying 4×3/4×4, vinyl 2×2/4×3 |
 | Divider | line 4×1 (full row, no entity) |
+| Header | card, plain, lockscreen, glass 4×2/4×3; compact 4×1 |
+| Clock | card, plain 2×1/4×1/4×2; lockscreen 4×2; compact 4×1/2×1 |
+| Greeting | card, plain 4×1/2×1 |
+| Weather | card, plain, glass 2×2/1×1/2×1/4×2; compact 4×1/2×1 |
+| Wi-Fi | button 1×1 |
+| Scene | button 1×1, row 2×1/4×1 |
+| Fan | toggle 1×1, slider 2×1/4×1 |
+| Light group | as a light |
+| Sensor | value 1×1, row 2×1/4×1 |
+| Binary sensor | status 1×1, row 2×1/4×1 |
+| Entity | row 2×1/4×1, value 1×1/2×1 |
+
+### Header tiles
+
+- **Header**: the clock row (time, date, optional Wi-Fi button), the greeting with the HA user's first name, and the outside weather. Every part has its own switch on the tile.
+- **Clock**, **Greeting** and **Weather** show one of these parts each. **Wi-Fi** is a 1×1 button that opens the Wi-Fi card.
+- **Weather source**: a `weather.*` entity, or Auto (the first `weather.*` entity, else Open-Meteo at your HA home location). A guest only sees a weather entity that is in the profile; otherwise the tile uses the first allowed one, or shows "—".
+- **Styles**:
+  - *Karta* is the normal tile surface.
+  - *Bez pozadí* has no surface. Its text colour (*Podle motivu*, *Bílá*, *Tmavá*) helps on a photo wallpaper.
+  - *Zamčená obrazovka* is a small date above a very large thin time.
+  - *Jeden řádek* reads "21:45 · so 7. 11. · 12° Polojasno".
+  - *Sklo* is the dock's translucent material.
+- All clocks share one ticker, and all weather tiles share one weather source.
+
+### Other tiles
+
+- **Scene**: a tap runs `scene.turn_on`; the icon turns into a check for about a second ("Scéna aktivována"), or a cross if it failed. A scene has no on/off state.
+- **Sensor**: value and unit in your locale, an icon by device class, "—" when unavailable. Text states are shown as text.
+- **Binary sensor**: wording per device class, for example Otevřeno/Zavřeno or Pohyb/Bez pohybu (all 29 classes of the installed Home Assistant, `shared/device-classes.json`). Read only, also the `lock` class.
+- **Fan**: a tap switches it. The slider style adds the speed (SET_SPEED), oscillation (OSCILLATE) and, without a speed slider, preset chips (PRESET_MODE).
+- **Entity**: any other entity, read only: its state in words where known, or one chosen attribute. Locks, alarms, cameras and the other denied domains are not offered.
+- **Light group** (dash): 2–20 lights in one tile, chosen with a checklist.
+  - The tile is on when any light is on. Its brightness is the mean of the lights that are on, and values the lights disagree on show "Různé".
+  - A tap switches all lights off when any is on, else all on. It is one service call with the list of lights.
+  - Home Assistant light groups (`light.*` entities with members) are normal light tiles.
+- **Hold a light tile** (about 0.4 s; right-click; Shift+Enter; or the hidden "…" button for the keyboard) to open the light controls:
+  - It shows brightness, white temperature with presets, colour (12 swatches and a hue slider) and effects, but only what the light supports. A light that only does on/off has no long-press.
+  - Moving the finger cancels the hold, so swiping pages and scrolling keep working.
+
+### Music
+
+- A tap on a media tile (except the 1×1 button) opens the **player sheet**. Its tabs appear only when they make sense:
+  - **Teď hraje** is always there.
+  - **Přehrávače** lists other players with volume, power, *Přehrát zde* and grouping (`media_player.join`/`unjoin`). The players are the tile's own player plus the tile option *Další přehrávače v listu*; empty means every player.
+  - **Procházet** (BROWSE_MEDIA) has breadcrumbs, play now, and *Přehrát jako další* / *Přidat do fronty* when the player supports MEDIA_ENQUEUE.
+  - **Hledat** (SEARCH_MEDIA) groups its results by kind.
+- There is no queue tab. Home Assistant has no standard queue (see [Speakers](SPEAKERS.md)).
+- Every control comes from `supported_features` (`src/lib/mediaCaps.js`). A player that reports no features gets no controls. An unavailable player is greyed out, a player that is off shows only the power button, and while buffering the play button spins.
+- **Styles**:
+  - *Teď hraje* has large artwork, a scrubber (it seeks when SEEK is supported), transport and volume.
+  - *Gramofon* is a record drawn with circles, with the album art as the label. It turns at 33⅓ rpm only while playing, keeps its angle when paused, and stops off-screen and in a hidden tab. With *reduce motion* it does not turn; the tonearm and "Přehrává se" show the state.
 
 All types, styles and sizes come from one file, `shared/tiles.json`. `npm run gen:tiles` turns it into the app's `src/lib/tileRegistry.generated.js`, the panel's `www/tiles.js` and the integration's `tile_registry.py`. CI fails if a generated file is out of date (`npm run check:generated`).
 
@@ -58,8 +113,18 @@ The integration stores the dashboard config with a `configVersion`:
 
 - **1**: everything saved before 2.1 (no field).
 - **2**: the field exists, and tiles are checked against the tile registry on every load and save.
+- **3**: the header switches left `general`; the header is a tile.
 
-Migration from 1 to 2 runs automatically on load and changes no data. Legacy `rooms` still become `pages`, and missing `general`/`standby` sections get their defaults.
+Migrations run automatically on load and on save, and running one twice changes nothing:
+
+- **1 → 2** changes no data. Legacy `rooms` still become `pages`, and missing `general`/`standby` sections get their defaults.
+- **2 → 3** turns the old switches into one `header` tile at the top of page 1 (style card, 4×2). The mapping:
+  - `showTopBar` + `showTime`/`showDate`/`showWifi` become the time, date and Wi-Fi parts.
+  - `showWelcome` becomes greeting + weather.
+  - `showTemperature`/`showHumidity` are kept.
+  - `weatherEntity` becomes the tile's weather source.
+- No tile is added when both blocks were off, or when a page already has a header, clock, greeting or weather tile.
+- The old keys are then removed from `general`. The hosted app applies the same migration to a config from an older integration (`src/lib/configMigrate.js`; both implementations are checked against `tests/fixtures/header-migration.json`).
 
 The checks on load and save:
 
@@ -79,7 +144,7 @@ Any `media_player` entity works. dash recognises the source and shows its brand:
 - **Apple Music / YouTube Music**: through [Music Assistant](https://music-assistant.io), which exposes them as media players.
 - **Chromecast / Google TV**: the Google Cast integration; cast-capable speakers and TVs appear as outputs.
 
-Bluetooth speakers paired to the phone are handled by the phone's OS. Browsers cannot route audio to Bluetooth themselves. Expose the speaker through Home Assistant (e.g. via Music Assistant or an ESPHome / Bluetooth proxy) to control it from dash.
+Bluetooth speakers paired to the phone are handled by the phone's OS; dash never plays audio itself. How to make a speaker a Home Assistant player: [Speakers](SPEAKERS.md).
 
 ## Dock
 
