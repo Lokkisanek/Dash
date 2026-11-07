@@ -540,3 +540,66 @@ def test_filter_config_drops_foreign_entity_references() -> None:
     assert page["humidityEntity"] == "sensor.room_temp"
     assert page["label"] == "Koupelna" and page["icon"] == "Bath"
     assert page["devices"] == [{"id": "light.room", "label": "Strop"}]
+
+
+# ─── section dividers ────────────────────────────────────────────────────────
+
+DIVIDER = {"id": "divider-1a2b3c4d", "type": "divider", "label": "Večer", "size": "4x1"}
+
+
+def test_divider_is_never_filtered_as_an_entity() -> None:
+    """A divider has no entity, so the profile does not have to list it."""
+    config = {
+        "pages": [
+            {
+                "id": "living",
+                "devices": [
+                    DIVIDER,
+                    {"id": "light.room", "type": "light"},
+                    {"id": "lock.front_door", "type": "switch"},
+                ],
+            }
+        ]
+    }
+    out = policy.filter_config(config, make_profile(**{"light.room": None}))
+    assert out["pages"][0]["devices"] == [
+        DIVIDER,
+        {"id": "light.room", "type": "light"},
+    ]
+
+
+def test_profile_without_entities_keeps_dividers_but_shows_no_page() -> None:
+    """Dividers survive the entity filter, but a page with nothing the guest may
+    use is not sent at all, so page names and divider texts of other rooms
+    never reach the guest."""
+    config = {
+        "pages": [
+            {"id": "owner", "label": "Pracovna", "devices": [DIVIDER]},
+            {
+                "id": "living",
+                "devices": [DIVIDER, {"id": "light.room", "type": "light"}],
+            },
+        ],
+        "dock": [{"pageId": "owner"}, {"pageId": "living"}],
+    }
+    out = policy.filter_config(config, make_profile())
+    assert out["pages"] == []
+    assert out["dock"] == []
+    assert "Pracovna" not in repr(out)
+    out = policy.filter_config(config, make_profile(**{"light.room": None}))
+    assert [p["id"] for p in out["pages"]] == ["living"]
+    assert out["pages"][0]["devices"][0] == DIVIDER
+
+
+@pytest.mark.parametrize(
+    "msg",
+    [
+        {"domain": "light", "service": "turn_on", "entity_id": "divider-1a2b3c4d"},
+        {"domain": "divider", "service": "turn_on", "entity_id": "divider.1a2b3c4d"},
+    ],
+)
+def test_divider_cannot_be_called(msg: dict) -> None:
+    profile = make_profile(**{"light.room": None})
+    profile["entities"]["divider-1a2b3c4d"] = {"services": ["light.turn_on"]}
+    decision = policy.validate_call(profile, msg)
+    assert decision.ok is False

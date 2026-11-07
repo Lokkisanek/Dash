@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useHomeAssistant } from '@/composables/useHomeAssistant'
+import { usePhotoCache } from '@/composables/usePhotoCache'
 import { useI18n } from '@/composables/useI18n'
 
 /**
@@ -13,7 +13,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['wake'])
 
-const { fetchPhoto, listPhotos, isMock } = useHomeAssistant()
+const { photoStatus, playlist, open, close } = usePhotoCache()
 const { lang, t } = useI18n()
 
 const now = ref(new Date())
@@ -39,60 +39,102 @@ function nudge() {
   drift.value = { x: Math.round((Math.random() - 0.5) * 16), y: Math.round((Math.random() - 0.5) * 16) }
 }
 
-/* Photo frame */
+/*
+ * Photo frame. Photos come from the page-wide cache (usePhotoCache): the first
+ * one appears as soon as it is decoded, the rest join the slideshow as they
+ * arrive. Two layers cross-fade; the incoming one gets the slow zoom.
+ */
 const photoMode = computed(() => props.settings.mode === 'photos')
-const urls = ref([])
-const slots = ref([null, null])
-const front = ref(0)
+const slots = ref([null, null]) // { id, url } per layer
+const front = ref(-1) // -1 = nothing faded in yet
 let slideTimer = 0
-let slideIdx = 0
+let fadeFrame = 0
 
-async function loadPhotos() {
-  urls.value.forEach((u) => URL.revokeObjectURL(u))
-  urls.value = []
-  if (!photoMode.value) return
-  const ids = await listPhotos()
-  const loaded = []
-  for (const id of ids) {
-    const url = await fetchPhoto(id)
-    if (url) loaded.push(url)
-  }
-  if (!loaded.length && isMock.value) {
-    // demo frames so the mock build shows the cross-fade
-    loaded.push('demo:a', 'demo:b', 'demo:c')
-  }
-  urls.value = loaded
-  slideIdx = 0
-  slots.value = [loaded[0] || null, null]
-  front.value = 0
-  scheduleSlide()
+const slideMs = computed(() => Math.max(3, Number(props.settings.photoSeconds) || 8) * 1000)
+
+function current() {
+  return front.value >= 0 ? slots.value[front.value] : null
+}
+
+/** Next ready photo after the one on screen, in playlist order. */
+function nextPhoto() {
+  const list = playlist.value
+  if (!list.length) return null
+  const cur = current()
+  const at = cur ? list.findIndex((p) => p.id === cur.id) : -1
+  return list[(at + 1) % list.length]
+}
+
+function show(photo) {
+  if (!photo) return
+  const back = front.value === 0 ? 1 : 0
+  slots.value[back] = photo
+  cancelAnimationFrame(fadeFrame)
+  // let the layer paint once with opacity 0, then fade it in
+  fadeFrame = requestAnimationFrame(() => {
+    fadeFrame = requestAnimationFrame(() => (front.value = back))
+  })
 }
 
 function scheduleSlide() {
   clearTimeout(slideTimer)
-  if (urls.value.length < 2) return
   slideTimer = setTimeout(() => {
-    slideIdx = (slideIdx + 1) % urls.value.length
-    const back = front.value ? 0 : 1
-    slots.value[back] = urls.value[slideIdx]
-    front.value = back
+    const next = nextPhoto()
+    if (next && next.id !== current()?.id) show(next)
     scheduleSlide()
-  }, Math.max(3, Number(props.settings.photoSeconds) || 8) * 1000)
+  }, slideMs.value)
 }
 
-const DEMO = {
-  'demo:a': 'linear-gradient(135deg,#ff8ad0,#b08cff)',
-  'demo:b': 'linear-gradient(135deg,#2f8a7e,#3b6fb0)',
-  'demo:c': 'linear-gradient(135deg,#ff9a6a,#8a8a2c)',
-}
-function slotStyle(url) {
-  if (!url) return {}
-  return DEMO[url] ? { backgroundImage: DEMO[url] } : { backgroundImage: `url("${url}")` }
+function resetSlides() {
+  clearTimeout(slideTimer)
+  cancelAnimationFrame(fadeFrame)
+  slots.value = [null, null]
+  front.value = -1
 }
 
-const showPhotos = computed(() => photoMode.value && urls.value.length > 0)
+watch(
+  playlist,
+  (list) => {
+    if (!photoMode.value) return
+    const cur = current()
+    if (!list.length) {
+      if (cur) resetSlides()
+      return
+    }
+    // first photo arrived, or the one on screen was deleted: show one now
+    if (!cur || !list.some((p) => p.id === cur.id)) {
+      show(list[0])
+      scheduleSlide()
+    }
+  },
+  { immediate: false },
+)
 
-watch(() => props.settings.mode, loadPhotos)
+function startPhotos() {
+  resetSlides()
+  open()
+  if (playlist.value.length) {
+    show(playlist.value[0])
+    scheduleSlide()
+  }
+}
+
+function stopPhotos() {
+  resetSlides()
+  close()
+}
+
+watch(photoMode, (on) => (on ? startPhotos() : stopPhotos()))
+watch(slideMs, () => current() && scheduleSlide())
+
+const showPhotos = computed(() => photoMode.value && Boolean(current() || slots.value.some(Boolean)))
+/** Visible reason when the frame falls back to the clock. */
+const photoNote = computed(() => {
+  if (!photoMode.value || showPhotos.value) return ''
+  if (photoStatus.value === 'error') return t('standbyPhotosError')
+  if (photoStatus.value === 'empty') return t('standbyPhotosEmpty')
+  return ''
+})
 
 onMounted(() => {
   tick = setInterval(() => {
@@ -100,12 +142,12 @@ onMounted(() => {
     now.value = new Date()
     if (now.value.getMinutes() !== prev) nudge()
   }, 1000)
-  loadPhotos()
+  if (photoMode.value) startPhotos()
 })
 onUnmounted(() => {
   clearInterval(tick)
-  clearTimeout(slideTimer)
-  urls.value.forEach((u) => URL.revokeObjectURL(u))
+  if (photoMode.value) stopPhotos()
+  else resetSlides()
 })
 </script>
 
@@ -113,6 +155,7 @@ onUnmounted(() => {
   <div
     class="standby"
     :class="[`clock-${settings.clockStyle || 'bold'}`, { 'has-photos': showPhotos }]"
+    :data-photo-status="photoMode ? photoStatus : undefined"
     role="button"
     tabindex="0"
     :aria-label="t('standbyTap')"
@@ -121,11 +164,15 @@ onUnmounted(() => {
   >
     <template v-if="showPhotos">
       <div
-        v-for="(url, i) in slots"
+        v-for="(slot, i) in slots"
         :key="i"
         class="photo"
         :class="{ 'is-front': front === i }"
-        :style="{ ...slotStyle(url), '--dur': `${(Number(settings.photoSeconds) || 8) + 2}s` }"
+        :data-photo-id="slot?.id"
+        :style="{
+          backgroundImage: slot ? `url('${slot.url}')` : 'none',
+          '--dur': `${slideMs / 1000 + 2}s`,
+        }"
       />
       <div class="photo-clock tabular-nums">
         <strong>{{ hours }}:{{ minutes }}</strong>
@@ -148,6 +195,7 @@ onUnmounted(() => {
         </span>
       </div>
       <p class="date">{{ dateLabel }}</p>
+      <p v-if="photoNote" class="photo-note" role="status">{{ photoNote }}</p>
     </div>
   </div>
 </template>
@@ -221,6 +269,12 @@ onUnmounted(() => {
   width: 0.08em;
   height: 0.08em;
   background: #fff;
+}
+
+.photo-note {
+  margin: 0;
+  font: 500 clamp(12px, 2vmin, 15px) / 1.3 -apple-system, system-ui, sans-serif;
+  color: rgba(255, 255, 255, 0.38);
 }
 
 .date {

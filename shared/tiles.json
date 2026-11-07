@@ -1,0 +1,77 @@
+{
+  "$comment": "Single source of truth for dashboard tiles. Run `npm run gen:tiles` after editing; it writes src/lib/tileRegistry.generated.js, custom_components/guest_ha_dashboard/www/tiles.js and custom_components/guest_ha_dashboard/tile_registry.py. Per type: styles map style -> allowed sizes \"<cols>x<rows>\" (first style and first size are the defaults), icon = default lucide icon, needsEntity = the tile controls a Home Assistant entity, domains = entity domains offered in the panel, label = i18n key, fields = extra plain fields kept by the server.",
+  "gridCols": 4,
+  "types": {
+    "light": {
+      "label": "type_light",
+      "icon": "Lightbulb",
+      "needsEntity": true,
+      "domains": ["light"],
+      "styles": {
+        "tile": ["2x2", "4x2"],
+        "slider": ["4x1", "2x1"],
+        "vertical": ["1x2", "2x2"],
+        "button": ["1x1", "2x1"]
+      }
+    },
+    "switch": {
+      "label": "type_switch",
+      "icon": "Power",
+      "needsEntity": true,
+      "domains": ["switch"],
+      "styles": {
+        "tile": ["2x2", "4x2"],
+        "row": ["4x1"],
+        "button": ["1x1", "2x1"]
+      }
+    },
+    "climate": {
+      "label": "type_climate",
+      "icon": "Thermometer",
+      "needsEntity": true,
+      "domains": ["climate"],
+      "styles": {
+        "tile": ["2x2"],
+        "dial": ["4x3"]
+      }
+    },
+    "cover": {
+      "label": "type_cover",
+      "icon": "Blinds",
+      "needsEntity": true,
+      "domains": ["cover"],
+      "styles": {
+        "tile": ["2x2"],
+        "slider": ["4x1", "2x1"],
+        "vertical": ["1x2", "2x2"]
+      }
+    },
+    "media_player": {
+      "label": "type_media_player",
+      "icon": "Music",
+      "needsEntity": true,
+      "domains": ["media_player"],
+      "styles": {
+        "tile": ["4x2", "2x2"],
+        "mini": ["4x1", "2x1"],
+        "cover": ["2x2", "4x3", "4x4"],
+        "button": ["1x1"]
+      }
+    },
+    "divider": {
+      "label": "type_divider",
+      "icon": "Minus",
+      "needsEntity": false,
+      "domains": [],
+      "styles": {
+        "line": ["4x1"]
+      },
+      "fields": {
+        "label": {
+          "type": "string",
+          "max": 60
+        }
+      }
+    }
+  }
+}

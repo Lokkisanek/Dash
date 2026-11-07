@@ -15,6 +15,10 @@ from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN, PHOTO_MAX_BYTES, PHOTOS_DIR, PHOTOS_MAX
 
+# Photo ids are uuid4 hex. The field is called `photo_id`, not `id`: `id` is the
+# websocket message id, which the client library always overwrites.
+PHOTO_ID_SCHEMA = vol.All(str, vol.Match(r"^[a-f0-9]{32}$"))
+
 # Magic bytes → mime. Anything else is rejected.
 IMAGE_SIGNATURES = (
     (b"\xff\xd8\xff", "image/jpeg"),
@@ -178,7 +182,7 @@ async def ws_photo_upload(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/photo_get",
-        vol.Required("id"): vol.All(str, vol.Match(r"^[a-f0-9]{32}$")),
+        vol.Required("photo_id"): PHOTO_ID_SCHEMA,
         vol.Optional("thumb", default=False): bool,
     }
 )
@@ -189,7 +193,7 @@ async def ws_photo_get(
     msg: dict[str, Any],
 ) -> None:
     """Return a photo as base64 to any signed-in user of this HA."""
-    path = _photo_path(hass, msg["id"], msg["thumb"])
+    path = _photo_path(hass, msg["photo_id"], msg["thumb"])
 
     def _read() -> bytes | None:
         return path.read_bytes() if path.is_file() else None
@@ -206,7 +210,7 @@ async def ws_photo_get(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/photo_delete",
-        vol.Required("id"): vol.All(str, vol.Match(r"^[a-f0-9]{32}$")),
+        vol.Required("photo_id"): PHOTO_ID_SCHEMA,
     }
 )
 @websocket_api.require_admin
@@ -220,7 +224,7 @@ async def ws_photo_delete(
 
     def _delete() -> None:
         for thumb in (False, True):
-            _photo_path(hass, msg["id"], thumb).unlink(missing_ok=True)
+            _photo_path(hass, msg["photo_id"], thumb).unlink(missing_ok=True)
 
     await hass.async_add_executor_job(_delete)
     connection.send_result(msg["id"])

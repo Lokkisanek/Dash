@@ -6,11 +6,13 @@
  *
  * Device types: light | switch | cover | climate | media_player
  * Grid: 4 square columns; `style` + `size` ("<cols>x<rows>") per device,
- * see src/lib/tileStyles.js for the allowed combinations.
+ * see shared/tiles.json for the allowed combinations.
  * ─────────────────────────────────────────────────────────────
  */
 
 export const guestDashboard = {
+  configVersion: 2,
+
   guestInfo: {
     wifiSsid: 'Guest-Home',
     wifiPassword: '',
@@ -94,6 +96,13 @@ export const guestDashboard = {
           icon: 'Coffee',
           style: 'button',
           size: '1x1',
+        },
+        {
+          id: 'divider-0b1c2d3e',
+          type: 'divider',
+          label: 'Hudba a teplo',
+          style: 'line',
+          size: '4x1',
         },
         {
           id: 'media_player.obyvak',

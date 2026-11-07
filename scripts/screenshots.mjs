@@ -8,12 +8,10 @@
  * `vite preview`, drives Chromium through the real UI (dock buttons, Wi-Fi
  * button) and stops the server again.
  *
- * Not captured:
- * - home-dark: `?theme=dark` only applies when the config has no
- *   appearance.mode, and the bundled mock config sets mode "light".
- * - standby-photos: the mock config uses the clock; switching StandBy to
- *   photos needs the HA config panel.
- * - the HA config panel itself (needs a running Home Assistant).
+ * Demo-only switches used here: `?theme=dark` (overrides the bundled light
+ * config) and `?mockPhotos=1` (StandBy photo mode with drawn demo photos).
+ *
+ * Not captured: the HA config panel itself (needs a running Home Assistant).
  *
  * Guest pass shots use the mock guest profile (src/lib/mockGuest.js).
  */
@@ -96,6 +94,14 @@ try {
   await settle(page, 800)
   await shot(page, 'home-light')
 
+  // section divider with the tile below it
+  const divider = page.locator('.section-divider').first()
+  await divider.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  await settle(page)
+  const dbox = await divider.boundingBox()
+  await shot(page, 'section-divider', { x: 0, y: Math.max(0, dbox.y - 24), width: PORTRAIT.width, height: dbox.height + 220 })
+  await page.evaluate(() => document.querySelector('[data-dashboard-scroll]')?.scrollTo(0, 0))
+
   await tileShot(page, '.media-tile', 'media-card')
   await tileShot(page, '.dial-tile', 'climate-dial')
 
@@ -110,16 +116,27 @@ try {
   await shot(page, 'wifi-qr')
   await ctx.close()
 
-  for (const [name, viewport] of [
-    ['standby-clock-portrait', PORTRAIT],
-    ['standby-clock-landscape', LANDSCAPE],
+  const dark = await browser.newContext({ viewport: PORTRAIT, deviceScaleFactor: 2, locale: 'en-US', colorScheme: 'dark' })
+  const darkPage = await dark.newPage()
+  darkPage.on('pageerror', (e) => errors.push(e.message))
+  await darkPage.goto(`${BASE}/?lang=en&theme=dark`, { waitUntil: 'networkidle' })
+  await darkPage.locator('nav.liquid-dock__nav button').first().waitFor()
+  await settle(darkPage, 800)
+  await shot(darkPage, 'home-dark')
+  await dark.close()
+
+  for (const [name, viewport, query] of [
+    ['standby-clock-portrait', PORTRAIT, ''],
+    ['standby-clock-landscape', LANDSCAPE, ''],
+    ['standby-photos', PORTRAIT, '&mockPhotos=1'],
   ]) {
     const c = await browser.newContext({ viewport, deviceScaleFactor: 2, locale: 'en-US' })
     const p = await c.newPage()
     p.on('pageerror', (e) => errors.push(e.message))
-    await p.goto(`${BASE}/?lang=en&standby=1`, { waitUntil: 'networkidle' })
+    await p.goto(`${BASE}/?lang=en&standby=1${query}`, { waitUntil: 'networkidle' })
     await p.locator('.standby').waitFor()
-    await settle(p, 800)
+    if (query) await p.locator('.standby .photo.is-front').waitFor()
+    await settle(p, query ? 2_200 : 800)
     await shot(p, name)
     await c.close()
   }

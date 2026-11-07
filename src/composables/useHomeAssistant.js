@@ -36,6 +36,7 @@ import {
   PairError,
 } from '@/lib/guestPass'
 import { GuestPassTransport, GuestError } from '@/lib/guestTransport'
+import { MOCK_PHOTO_IDS, mockPhotoUrl, mockPhotosFlag } from '@/lib/mockPhotos'
 import {
   MOCK_GUEST_PASS,
   MOCK_GUEST_PROFILE,
@@ -318,6 +319,14 @@ function startMockMode() {
   state.status = 'mock'
   state.mode = 'owner'
   useFallbackGuestConfig('mock')
+  const cfg = getGuestConfig()
+  if (mockPhotosFlag()) {
+    // demo/test only: photo mode with a short interval
+    cfg.standby = { ...cfg.standby, mode: 'photos', photoSeconds: 3 }
+  }
+  // demo only: ?theme=dark|light wins over the bundled config (screenshots, previews)
+  const urlTheme = new URLSearchParams(window.location.search).get('theme')
+  if (urlTheme === 'dark' || urlTheme === 'light') cfg.appearance = { ...cfg.appearance, mode: urlTheme }
   state.entities = buildMockEntities()
   state.lastError = null
   state.userName = 'Host'
@@ -681,7 +690,11 @@ const ownerTransport = {
     return Array.isArray(res?.photos) ? res.photos : []
   },
   async photoGet(id) {
-    const res = await connection.sendMessagePromise({ type: 'guest_ha_dashboard/photo_get', id })
+    const res = await connection.sendMessagePromise({
+      type: 'guest_ha_dashboard/photo_get',
+      // not `id`: that is the websocket message id and gets overwritten
+      photo_id: id,
+    })
     const bin = atob(res.data)
     const bytes = new Uint8Array(bin.length)
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
@@ -698,10 +711,12 @@ const mockTransport = {
     handleMockService(domain, service, data)
   },
   async photoList() {
-    return []
+    const flag = mockPhotosFlag()
+    if (flag === 'fail') throw new Error('demo: photo_list refused (?mockPhotos=fail)')
+    return flag === 'empty' ? [] : MOCK_PHOTO_IDS.slice()
   },
-  async photoGet() {
-    return null
+  async photoGet(id) {
+    return mockPhotoUrl(id)
   },
 }
 
@@ -709,6 +724,12 @@ function transport() {
   if (state.isMock) return mockTransport
   if (state.mode === 'guest' && guestTransport) return guestTransport
   return ownerTransport
+}
+
+/** Photo calls that throw on failure (the StandBy photo cache shows the reason). */
+export const photoApi = {
+  list: () => transport().photoList(),
+  get: (id) => transport().photoGet(id),
 }
 
 /** Refused by the guest pass: say why, put the control back to the real state. */

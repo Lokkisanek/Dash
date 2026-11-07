@@ -24,6 +24,12 @@ from .const import (
     PROFILE_MAX_ENTITIES,
     PROFILE_NAME_MAX,
 )
+from .tile_registry import TILE_TYPES
+
+# Tile types without a Home Assistant entity (section dividers).
+LAYOUT_TILE_TYPES = frozenset(
+    name for name, spec in TILE_TYPES.items() if not spec["needsEntity"]
+)
 
 ENTITY_ID_RE = re.compile(r"^(?!.+__)(?!_)[\da-z_]+(?<!_)\.(?!_)[\da-z_]+(?<!_)$")
 
@@ -503,6 +509,11 @@ def _strip_foreign_refs(item: dict, allowed: set[str]) -> dict:
     return out
 
 
+def _is_layout_tile(device: dict) -> bool:
+    """Dividers and other tiles without an entity: never an allowed/denied entity."""
+    return device.get("type") in LAYOUT_TILE_TYPES
+
+
 def filter_config(config: Any, profile: Any) -> dict[str, Any]:
     """The dashboard config with everything outside the profile removed."""
     config = config if isinstance(config, dict) else {}
@@ -517,9 +528,11 @@ def filter_config(config: Any, profile: Any) -> dict[str, Any]:
         devices = [
             _strip_foreign_refs(d, allowed)
             for d in page.get("devices") or []
-            if isinstance(d, dict) and d.get("id") in allowed
+            if isinstance(d, dict) and (d.get("id") in allowed or _is_layout_tile(d))
         ]
-        if devices:
+        # A page is shown only if it still has a tile the guest may use, so the
+        # names of rooms outside the profile never reach the guest via dividers.
+        if any(not _is_layout_tile(d) for d in devices):
             clean_page = _strip_foreign_refs(
                 {k: v for k, v in page.items() if k != "devices"}, allowed
             )
@@ -545,6 +558,7 @@ def filter_config(config: Any, profile: Any) -> dict[str, Any]:
     )
 
     return {
+        "configVersion": config.get("configVersion"),
         "guestInfo": guest_info,
         "general": general,
         "standby": deepcopy(config.get("standby") or {}),

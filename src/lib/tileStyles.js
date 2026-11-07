@@ -1,17 +1,16 @@
 /**
  * Control-Center-like grid: 4 square columns. Each device picks a style and a
  * size "<cols>x<rows>". The first entry of every list is the default.
- * Keep in sync with TILE_STYLES in custom_components/.../www/panel.js.
+ * Types, styles and sizes come from shared/tiles.json (npm run gen:tiles).
  */
-export const GRID_COLS = 4
+import { GRID_COLS, TILE_TYPES } from './tileRegistry.generated.js'
 
-export const TILE_STYLES = {
-  light: { tile: ['2x2', '4x2'], slider: ['4x1', '2x1'], vertical: ['1x2', '2x2'], button: ['1x1', '2x1'] },
-  switch: { tile: ['2x2', '4x2'], row: ['4x1'], button: ['1x1', '2x1'] },
-  climate: { tile: ['2x2'], dial: ['4x3'] },
-  cover: { tile: ['2x2'], slider: ['4x1', '2x1'], vertical: ['1x2', '2x2'] },
-  media_player: { tile: ['4x2', '2x2'], mini: ['4x1', '2x1'], cover: ['2x2', '4x3', '4x4'], button: ['1x1'] },
-}
+export { GRID_COLS, TILE_TYPES }
+
+/** type -> { style: [sizes] } */
+export const TILE_STYLES = Object.fromEntries(
+  Object.entries(TILE_TYPES).map(([type, t]) => [type, t.styles]),
+)
 
 /** Valid { style, cols, rows } for a device, falling back to defaults. */
 export function resolveTile(device) {

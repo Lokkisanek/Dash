@@ -1,10 +1,11 @@
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { Music, Pause, Play, SkipBack, SkipForward, Volume2, Speaker, Check, X } from 'lucide-vue-next'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
 import { useI18n } from '@/composables/useI18n'
 import { unlockAudio } from '@/composables/useSound'
 import { detectMediaBrand, mediaPosition, formatTime } from '@/lib/mediaBrand'
+import { mediaControls } from '@/lib/mediaFeatures'
 
 /**
  * Media player in several Control-Center-like variants:
@@ -33,8 +34,12 @@ const title = computed(() => attrs.value.media_title || (isActive.value ? props.
 const subtitle = computed(() => attrs.value.media_artist || attrs.value.media_album_name || props.label)
 const artwork = computed(() => mediaArtwork(props.entityId, attrs.value))
 const artFailed = ref(false)
+// a broken picture must not hide the artwork of the next track
+watch(artwork, () => (artFailed.value = false))
 const brand = computed(() => detectMediaBrand(props.entityId, attrs.value))
-const outputs = computed(() => (Array.isArray(attrs.value.source_list) ? attrs.value.source_list : []))
+/** Only controls the player reports in supported_features (see mediaFeatures.js). */
+const can = computed(() => mediaControls(entity.value))
+const outputs = computed(() => can.value.sources)
 const showOutputs = ref(false)
 
 const localVolume = ref(null)
@@ -84,6 +89,7 @@ async function pickOutput(source) {
     type="button"
     class="media-btn squircle"
     :class="{ 'is-playing': isPlaying }"
+    :disabled="!can.playPause"
     :aria-label="isPlaying ? t('mediaPause') : t('mediaPlay')"
     @click="cmd('media_play_pause')"
   >
@@ -124,7 +130,7 @@ async function pickOutput(source) {
 
       <div class="controls">
         <button
-          v-if="variant !== 'mini' && !compact"
+          v-if="variant !== 'mini' && !compact && can.previous"
           type="button"
           class="ctl"
           :aria-label="t('mediaPrev')"
@@ -133,6 +139,7 @@ async function pickOutput(source) {
           <SkipBack :size="20" fill="currentColor" />
         </button>
         <button
+          v-if="can.playPause"
           type="button"
           class="ctl ctl-main"
           :aria-label="isPlaying ? t('mediaPause') : t('mediaPlay')"
@@ -141,11 +148,17 @@ async function pickOutput(source) {
           <Pause v-if="isPlaying" :size="22" fill="currentColor" />
           <Play v-else :size="22" fill="currentColor" class="translate-x-[1px]" />
         </button>
-        <button type="button" class="ctl" :aria-label="t('mediaNext')" @click="cmd('media_next_track')">
+        <button
+          v-if="can.next"
+          type="button"
+          class="ctl"
+          :aria-label="t('mediaNext')"
+          @click="cmd('media_next_track')"
+        >
           <SkipForward :size="20" fill="currentColor" />
         </button>
         <button
-          v-if="outputs.length && variant !== 'mini' && !compact"
+          v-if="can.source && variant !== 'mini' && !compact"
           type="button"
           class="ctl ctl-out"
           :aria-label="t('mediaOutput')"
@@ -155,7 +168,7 @@ async function pickOutput(source) {
         </button>
       </div>
 
-      <label v-if="(variant === 'card' && !compact) || (variant === 'cover' && rich)" class="volume">
+      <label v-if="can.volume && ((variant === 'card' && !compact) || (variant === 'cover' && rich))" class="volume">
         <Volume2 :size="15" class="shrink-0 opacity-60" />
         <input
           type="range"
@@ -465,6 +478,11 @@ async function pickOutput(source) {
   background: linear-gradient(140deg, color-mix(in srgb, var(--color-primary) 55%, #ff8ad0), #8f6bff);
   color: #fff;
   transition: transform 160ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.media-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 .media-btn:active {
   transform: scale(0.92);

@@ -30,16 +30,23 @@ export function detectMediaBrand(entityId, attrs = {}) {
 /** Current playback position in seconds, extrapolated while playing. */
 export function mediaPosition(entity, now = Date.now()) {
   const a = entity?.attributes || {}
+  if (a.media_position === null || a.media_position === undefined || a.media_position === '') return null
   const pos = Number(a.media_position)
   if (!Number.isFinite(pos)) return null
   if (entity.state !== 'playing' || !a.media_position_updated_at) return pos
   const since = (now - new Date(a.media_position_updated_at).getTime()) / 1000
+  // unparsable timestamp: show the reported position instead of NaN
+  if (!Number.isFinite(since)) return pos
   const duration = Number(a.media_duration) || Infinity
   return Math.min(duration, pos + Math.max(0, since))
 }
 
+/** 3:07, or 1:02:03 from one hour on. */
 export function formatTime(sec) {
   if (!Number.isFinite(sec)) return '–:––'
   const s = Math.max(0, Math.round(sec))
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = String(s % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
 }
