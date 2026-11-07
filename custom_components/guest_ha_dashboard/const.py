@@ -1,7 +1,7 @@
 """Constants for dash (Guest HA Dashboard integration)."""
 
 DOMAIN = "guest_ha_dashboard"
-VERSION = "2.1.0-beta.2"
+VERSION = "2.1.0-beta.3"
 STORAGE_KEY = f"{DOMAIN}.config"
 STORAGE_VERSION = 1
 # Version of the dashboard config inside the store (see config_schema.py).
