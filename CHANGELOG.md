@@ -3,7 +3,7 @@
 All notable changes to dash are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] – 2.1.0
+## [2.1.0-beta.1] - 07.11.2026
 
 ### Added
 
@@ -19,8 +19,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Owner sign-in is labelled as full, unrestricted access; guests should use passes.
 - `manifest.json` declares the `http` dependency (needed for the guest endpoints).
-
-Before releasing, bump the version in `package.json`, `custom_components/guest_ha_dashboard/manifest.json` and `custom_components/guest_ha_dashboard/const.py`, plus the `?v=` of the module imports in `www/panel.js` and `www/guests.js`.
 
 ## [2.0.0] - 06.11.2026
 
