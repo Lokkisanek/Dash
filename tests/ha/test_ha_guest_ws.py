@@ -17,12 +17,18 @@ from ha_helpers import (
     recv_close,
     seed_states,
 )
+import pytest
 from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
     async_mock_service,
 )
 
 from homeassistant.core import HomeAssistant
+
+# aiohttp re-arms its websocket heartbeat timer when the server closes the
+# connection; Home Assistant's own websocket tests allow that the same way.
+pytestmark = pytest.mark.parametrize("expected_lingering_timers", [True])
+
 
 # ─── auth ────────────────────────────────────────────────────────────────────
 
@@ -137,6 +143,12 @@ async def test_extend_moves_expiry(
     hass_client_no_auth: Any,
     freezer: FrozenDateTimeFactory,
 ) -> None:
+    # The 2 h clock jump below would also fire the 180 s idle timeout; real
+    # clients ping every 50 s, so switch the idle timeout off for this test.
+    idle = patch(
+        "custom_components.guest_ha_dashboard.guest_ws.WS_IDLE_TIMEOUT_SECONDS", None
+    )
+    idle.start()
     token, pass_id, _profile = await make_guest(runtime, hours=1)
     ws = await guest_connect(await hass_client_no_auth(), token)
     assert (await recv(ws))["type"] == "auth_ok"
@@ -149,6 +161,7 @@ async def test_extend_moves_expiry(
     await ws.send_json({"id": 1, "type": "ping"})
     assert await recv(ws) == {"id": 1, "type": "pong"}
     await ws.close()
+    idle.stop()
 
 
 async def test_socket_limit_per_pass(
