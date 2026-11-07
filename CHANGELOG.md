@@ -3,6 +3,39 @@
 All notable changes to dash are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.1.0-beta.2] - 07.11.2026
+
+### Added
+
+- Pages reorder by drag in the panel (mouse at once, touch after a short hold, Alt + ←/→ from the keyboard, announced to screen readers). The order is the swipe order in the app.
+- Section divider tile (`divider`): a section name with a line, edited inline in the grid. In the app each divider starts its own section. Guests see dividers only on pages that still show something they may use.
+- One header (`HeaderCard`) with the clock row (time, date, Wi-Fi icon, status badge only when the connection is not healthy), the greeting and the outside weather. All existing `general` options keep their meaning.
+- Icon picker with about 340 lucide icons: search (case and diacritics insensitive, Czech and English keywords), ten categories, recently used first, keyboard navigation. The panel loads the catalog only when the picker opens, and the app loads icons beyond the base set as a separate chunk.
+- One tile registry, `shared/tiles.json`, generated for the app, the panel and the integration (`npm run gen:tiles`). `npm run check:generated` runs in CI.
+- Config versioning: `configVersion` 2 with automatic migration from 1. Unknown tile types are dropped with a log warning, and unknown styles or sizes fall back to defaults.
+- Unit tests (vitest, `npm test`), a StandBy photo browser test, and HA tests for photos and config migration.
+- `docs/DIAGNOSTICS.md`: the photo frame and music player code paths, the fixes, and a manual checklist.
+
+### Changed
+
+- StandBy photo frame:
+  - Photos are kept in a page-wide cache (only new photos are downloaded).
+  - The first photo appears as soon as it is decoded, and the start photo is random.
+  - Errors show on the clock ("Fotky se nepodařilo načíst" / "Zatím žádné fotky"), with a retry every 30 s and after a reconnect.
+  - The demo draws real photos instead of placeholders.
+- Media tiles show only the controls the player supports (`supported_features`). Unavailable players get no controls.
+- Deleting a page moved to the bottom of the page editor with an inline confirmation; deleting all pages is quieter and confirmed too.
+- `showTemperature` / `showHumidity` now apply to the weather block; the top bar no longer repeats temperature and humidity.
+- In the light theme, the installed iPhone app paints a dark strip behind the status bar (status bar style `black-translucent`).
+- The resize handle is hidden for tile types with a single size.
+
+### Fixed
+
+- Photos never loaded in the app, and panel thumbnails and delete failed. The photo id was sent as `id`, the websocket message id. `photo_get` and `photo_delete` now take `photo_id`, so the integration and the app must be updated together.
+- Large photo uploads could exceed Home Assistant's 4 MiB websocket message limit and drop the panel connection; the panel now re-encodes smaller.
+- Album art stayed hidden for later tracks after one broken image.
+- `mediaPosition` returned `NaN` for an unparsable timestamp, and `formatTime` shows hours.
+
 ## [2.1.0-beta.1] - 07.11.2026
 
 ### Added
@@ -54,4 +87,6 @@ First public release under the name **dash**.
 - The bundled demo Wi-Fi password in the default config. The mock/demo build shows `demo-password` instead.
 - The old React liquid-glass demo page and its unused dependencies.
 
+[2.1.0-beta.2]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.2
+[2.1.0-beta.1]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.1
 [2.0.0]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.0.0
