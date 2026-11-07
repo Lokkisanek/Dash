@@ -62,3 +62,27 @@ Use **Show in preview** to see StandBy in the panel's iPhone preview without wai
 ## Styles
 
 Accent colour, light and dark mode, and glass options.
+
+## Guests (Hosté)
+
+Guest passes give a guest or a wall tablet access to one room only. The integration enforces it; see [SECURITY.md](SECURITY.md#owner-mode-and-guest-passes).
+
+**Room profiles** (*Šablony pokojů*)
+
+- **Z místnosti** suggests a profile from a Home Assistant area: the area's entities with their default services. Nothing is saved until you press **Uložit**.
+- Tick devices, switch services on or off (e.g. allow `set_temperature` but not `turn_off`) and set ranges. Heating always has a range: 16–26 °C unless you set your own.
+- Devices that cannot be given to guests are greyed out with the reason: locks, alarms, cameras, scripts, automations, buttons, garage doors and gates.
+- Sensors and weather are view only.
+- **Wi-Fi hostům** decides whether the guest sees the Wi-Fi card. Rename a profile by editing its name in place.
+- Saving a profile reconnects its guests with the new rules.
+
+**Passes** (*Přístupy*)
+
+- **Vytvořit přístup**: profile, label (e.g. "Pokoj 3 – Novák"), device (guest phone or wall tablet), from and until. Defaults are check-in 14:00 and check-out 11:00 (`PASS_DEFAULT_*` in `const.py`). Phone passes always end; a tablet can run without an end.
+- After creating, the panel shows the QR code, the manual code `XXXX-XXXX-XXXX` and how long the code is still valid (15 minutes, single use). **Tisk A6 / A4** prints a card with both QR codes (pass and Wi-Fi) and short Czech/English instructions.
+- **QR / nový kód** issues a new code (the old one stops working; pairing again logs out the previously paired device). **Prodloužit** moves the end. **Ukončit** revokes the pass and disconnects the device at once. Ended passes can be deleted.
+- Times are entered in the browser's local time.
+
+**Log** (*Záznam*): pairings, failed codes and sign-ins, refused actions with the reason. No device states are logged.
+
+On the guest's phone: scan the QR code. On iPhone, add dash to the Home Screen first (Share → Add to Home Screen) and enter the code in the installed app; iOS keeps the app's storage separate from Safari.

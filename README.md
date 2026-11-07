@@ -13,6 +13,7 @@
 - StandBy: after a period of inactivity the phone shows a big clock (portrait and landscape) or a slowly fading photo frame.
 - Guest Wi-Fi card with a QR code, a weather and greeting header, light and dark mode, Czech and English.
 - A playful `hello.dash` intro on first setup.
+- **Guest passes** (Přístupy pro hosty): give a guest or a wall tablet a QR code that unlocks only the devices of one room, within limits (e.g. heating 18–25 °C) and only until check-out. Enforced by the integration on the server; the guest never gets a Home Assistant account or token.
 
 **Demo:**: [demo URL](https://dash.matyas.online/) best experience on mobile with add to homescreen option
 
@@ -72,13 +73,14 @@ Pick the mode in the panel under **General → Dashboard**. Hosted mode shows yo
 - **Hosted:** open the link from the panel, e.g. `https://dash.matyas.online/home.example.com`. Then sign in with your Home Assistant account and "Add to Home Screen".
 - **Self-hosted:** see [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 
-Use a dedicated, non-admin Home Assistant user for guest phones. Note that this does not sandbox the guest: Home Assistant lets any user control all entities, and dash only hides tiles. See [Guest accounts are not sandboxed](docs/SECURITY.md#guest-accounts-are-not-sandboxed).
+**For guests, use a guest pass**, not a Home Assistant account: in the panel open **Hosté**, create a room profile, then **Vytvořit přístup** and print or show the QR code. Signing in with Home Assistant (owner mode) gives full, unrestricted access, because Home Assistant has no per-entity permissions for users. See [Owner mode and guest passes](docs/SECURITY.md#owner-mode-and-guest-passes).
 
 ## Documentation
 
 - [Configuration](docs/CONFIGURATION.md): pages, tile styles, dock, media, StandBy, photos.
 - [Self-hosting](docs/SELF_HOSTING.md): Docker, Coolify, nginx, reverse proxies.
-- [Security & privacy](docs/SECURITY.md): what is stored where, what the host can and can't see, guest limitations, logging.
+- [Security & privacy](docs/SECURITY.md): what is stored where, what the host can and can't see, owner mode vs. guest passes, logging.
+- [Guest passes](docs/GUEST_PASSES.md): design, threat model and protocol.
 - [Releasing](docs/RELEASING.md): version bump, changelog, tag, GitHub Release.
 - [Changelog](CHANGELOG.md)
 
@@ -97,11 +99,13 @@ Other scripts:
 - `npm run screenshots`: rebuilds `docs/img/*.png` from the demo build (needs `npx playwright install chromium` once).
 - `npm run brand`: renders the integration icon (`custom_components/guest_ha_dashboard/brand/`) from `public/favicon.svg`.
 - `node scripts/smoke.mjs`: smoke test against a running mock preview (see `.github/workflows/ci.yml`).
+- `pytest`: integration tests (`pip install -r requirements_test.txt`; Linux/macOS, Python 3.14). `pytest tests/pure -p no:homeassistant` runs the policy tests anywhere, also on Windows.
 
 Useful URL flags:
 
 - `?standby=1` forces StandBy.
 - `?lang=en` or `?lang=cs` forces the UI language.
+- Demo build only: `?guest=1` shows the restricted guest dashboard, `?guest=ended` the ended-pass screen, `#pair=XXXX-XXXX-XXXX` the pairing screen.
 - `?glass=lens` forces the WebKit liquid-glass path in Chrome.
 
 The integration lives in `custom_components/guest_ha_dashboard/`. The panel is a single web component (`www/panel.js`) with no build step.

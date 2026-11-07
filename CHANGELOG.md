@@ -3,6 +3,25 @@
 All notable changes to dash are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] – 2.1.0
+
+### Added
+
+- **Guest passes** (*Přístupy pro hosty*): server-enforced guest access. A guest or wall tablet pairs with a one-time code / QR and gets a dash guest token, never a Home Assistant token. The integration only allows the entities and services of the pass's room profile, within value limits and between the pass's start and end. Design and threat model: `docs/GUEST_PASSES.md`.
+- Room profiles created from Home Assistant areas, per-entity services and ranges (heating always limited, 16–26 °C by default), Wi-Fi visible or hidden per profile.
+- Always refused for guests, whatever the profile says: locks, alarm panels, cameras, sirens, scripts, automations, buttons, people, trackers, updates, `homeassistant.*`, door/garage/gate covers.
+- `POST /api/guest_ha_dashboard/pair` (single-use 12-character codes valid 15 minutes, stored hashed, rate-limited per IP and globally) and the restricted guest WebSocket `/api/guest_ha_dashboard/ws` (filtered states and config, validated service calls, proxied artwork; revocation and expiry close the connection at once).
+- Panel tab **Hosté**: profiles with inline editing, passes with QR, manual code, countdown, extend and revoke, printable A6/A4 card with pairing and Wi-Fi QR codes, audit log.
+- Guest app: pairing screen (install-first flow for iOS Home Screen apps, manual code entry), calm "access ended" screen, short message and snap-back when the server refuses a value.
+- pytest suite (`tests/`) and a CI job running ruff and pytest; the smoke test covers the guest flows in demo mode.
+
+### Changed
+
+- Owner sign-in is labelled as full, unrestricted access; guests should use passes.
+- `manifest.json` declares the `http` dependency (needed for the guest endpoints).
+
+Before releasing, bump the version in `package.json`, `custom_components/guest_ha_dashboard/manifest.json` and `custom_components/guest_ha_dashboard/const.py`, plus the `?v=` of the module imports in `www/panel.js` and `www/guests.js`.
+
 ## [2.0.0] - 06.11.2026
 
 First public release under the name **dash**.
