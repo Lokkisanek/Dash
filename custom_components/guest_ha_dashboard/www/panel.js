@@ -947,19 +947,19 @@ class GuestHaDashboardPanel extends HTMLElement {
         inset: 0; background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%);
       }
       .cc-tile .cc-resize {
-        position: absolute; left: 0; bottom: 0; z-index: 3; width: 26px; height: 26px; cursor: nesw-resize;
+        position: absolute; right: 0; bottom: 0; z-index: 3; width: 26px; height: 26px; cursor: nwse-resize;
         touch-action: none; opacity: 0; transition: opacity 0.2s ease;
       }
       .cc-tile .cc-resize::before {
-        content: ""; position: absolute; left: 6px; bottom: 6px; width: 11px; height: 11px;
-        border-left: 3px solid var(--accent); border-bottom: 3px solid var(--accent);
-        border-bottom-left-radius: 9px;
+        content: ""; position: absolute; right: 6px; bottom: 6px; width: 11px; height: 11px;
+        border-right: 3px solid var(--accent); border-bottom: 3px solid var(--accent);
+        border-bottom-right-radius: 9px;
       }
-      .cc-tile.s1 .cc-resize::before { left: 3px; bottom: 3px; }
+      .cc-tile.s1 .cc-resize::before { right: 3px; bottom: 3px; }
       .cc-tile:hover .cc-resize, .cc-tile.sel .cc-resize, .cc-tile.resizing .cc-resize { opacity: 1; }
       @media (hover: none) { .cc-tile .cc-resize { opacity: 0.8; } }
       .cc-tile.resizing { box-shadow: 0 0 0 2.5px var(--accent), 0 10px 30px rgba(0,0,0,0.18); }
-      .cc-grid.is-resizing, .cc-grid.is-resizing .cc-tile { cursor: nesw-resize; }
+      .cc-grid.is-resizing, .cc-grid.is-resizing .cc-tile { cursor: nwse-resize; }
       .cc-grid.is-dragging .cc-tile:not(.dragging) { animation: cc-wiggle 0.28s ease-in-out infinite alternate; }
       .cc-grid.is-dragging .cc-tile:nth-child(2n) { animation-delay: -0.14s; }
       .cc-tile.dragging {
@@ -1941,7 +1941,7 @@ class GuestHaDashboardPanel extends HTMLElement {
         device: page.devices[di],
         startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY,
         grabX: e.clientX - r.left, grabY: e.clientY - r.top,
-        right: r.right, top: r.top,
+        left: r.left, top: r.top,
         touch: e.pointerType === "touch",
         t: performance.now(),
         lockUntil: 0,
@@ -1988,8 +1988,8 @@ class GuestHaDashboardPanel extends HTMLElement {
       if (g.mode === "resize") {
         const { gap, cell } = this._gridMetrics(grid);
         const step = cell + gap;
-        // handle sits bottom-left: the tile grows to the left and downwards
-        const cols = Math.max(1, Math.min(4, Math.round((g.right - g.x + gap) / step)));
+        // handle sits bottom-right: the tile grows to the right and downwards
+        const cols = Math.max(1, Math.min(4, Math.round((g.x - g.left + gap) / step)));
         const rows = Math.max(1, Math.min(4, Math.round((g.y - g.top + gap) / step)));
         const v = this._closestVariant(g.device, cols, rows);
         const cur = resolveTile(g.device);
