@@ -1,0 +1,4 @@
+# Test dependencies for the Home Assistant integration (Python 3.14+, Linux/macOS).
+# pytest-homeassistant-custom-component pins the matching homeassistant version.
+pytest-homeassistant-custom-component==0.13.375
+ruff==0.17.4
