@@ -145,6 +145,10 @@ Every message re-checks that the pass exists, is not revoked and is within its v
 
 *Refinements against the spec:* `media_image` is answered over the WebSocket (base64) instead of a separate HTTP view, so no token ever appears in an image URL. `photo_list`/`photo_get` are added so a guest tablet keeps the StandBy photo frame; the photos are the ones the owner uploaded for the dashboard.
 
+**Section dividers (2.1).** A divider tile (`type: "divider"`) has no entity, so it is not part of a profile and never an allowed or denied entity. `filter_config` keeps dividers on the pages it sends, but a page is sent only if it still contains at least one tile the guest may use. Without that rule, a page that consists only of dividers after filtering would reveal its name, icon and section names to guests of other rooms. A divider id (`divider-…`) is not an entity id, so a `call_service` aimed at it fails validation like any other id outside the profile.
+
+**Photos (2.1).** The guest socket already sent the photo id as `photo_id`. The owner API used `id`, which collides with the websocket message id; it now uses `photo_id` too (see [DIAGNOSTICS.md](DIAGNOSTICS.md)). Nothing about what guests receive changed.
+
 ## Rate limits
 
 | What | Limit |
