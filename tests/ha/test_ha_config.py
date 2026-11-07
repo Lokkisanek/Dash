@@ -113,6 +113,7 @@ async def test_save_validates_and_round_trips(
             "type": "media_player",
             "style": "tile",
             "size": "4x2",
+            "outputs": [],  # tile option since 2.1.0-beta.3
         }
     ]
     assert saved["standby"]["mode"] == "photos"

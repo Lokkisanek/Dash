@@ -251,6 +251,7 @@ async def test_get_config_filters_tiles_and_wifi(
 ) -> None:
     await runtime.config_store.async_save(
         {
+            "configVersion": 3,  # no header tile migrated in
             "guestInfo": {
                 "wifiSsid": "Guest",
                 "wifiPassword": "hunter2",
@@ -302,12 +303,13 @@ async def test_config_push_is_filtered(
     await recv(ws)
     await runtime.config_store.async_save(
         {
+            "configVersion": 3,
             "pages": [
                 {
                     "id": "a",
                     "devices": [{"id": "light.room"}, {"id": "lock.front_door"}],
                 }
-            ]
+            ],
         }
     )
     pushed = await recv(ws)
