@@ -109,7 +109,10 @@ try {
   await settle(page, 800)
   await shot(page, 'bedroom-tiles')
 
-  await page.getByRole('button', { name: 'Wi-Fi' }).click()
+  // the Wi-Fi button is part of the header tile on the first page (config v3)
+  await page.locator('nav.liquid-dock__nav button').nth(0).click()
+  await settle(page, 800)
+  await page.getByRole('button', { name: 'Wi-Fi' }).first().click()
   await page.locator('dialog[open]').waitFor()
   await page.locator('dialog[open] img[src^="data:image"]').waitFor()
   await settle(page, 600)

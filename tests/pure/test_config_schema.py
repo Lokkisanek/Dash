@@ -25,9 +25,18 @@ def test_registry_matches_shared_json() -> None:
         assert registry.TILE_TYPES[name]["needsEntity"] == spec["needsEntity"]
 
 
+def test_generic_entity_tile_excludes_every_denied_domain() -> None:
+    """The panel never offers a hard-denied domain for the generic `entity` tile."""
+    spec = registry.TILE_TYPES["entity"]
+    assert spec["domains"] == ["*"]
+    assert set(const.GUEST_DENIED_DOMAINS) <= set(spec["excludeDomains"])
+
+
 def test_config_version_constant() -> None:
-    assert const.CONFIG_VERSION == 2
-    assert const.DEFAULT_CONFIG["configVersion"] == 2
+    assert const.CONFIG_VERSION == 3
+    assert const.DEFAULT_CONFIG["configVersion"] == 3
+    # the header switches left `general` with version 3
+    assert set(const.DEFAULT_GENERAL) == {"use24h", "statusBarStrip"}
 
 
 @pytest.mark.parametrize(
@@ -54,10 +63,14 @@ def test_migrate_v1_adds_version_and_keeps_data() -> None:
         "guestInfo": {"wifiSsid": "Home"},
     }
     out = schema.migrate_config(v1)
-    assert out["configVersion"] == 2
-    assert out["rooms"] == v1["rooms"]
+    assert out["configVersion"] == 3
+    # no `general` at all: the old defaults showed the header, so it becomes a tile
+    devices = out["rooms"][0]["devices"]
+    assert [d["type"] for d in devices] == ["header", "light"]
+    assert devices[1:] == v1["rooms"][0]["devices"]
     assert out["guestInfo"] == {"wifiSsid": "Home"}
     assert "configVersion" not in v1  # input untouched
+    assert len(v1["rooms"][0]["devices"]) == 1
 
 
 def test_migrate_is_idempotent() -> None:
@@ -65,8 +78,109 @@ def test_migrate_is_idempotent() -> None:
     assert schema.migrate_config(once) == once
 
 
+OLD_TOGGLES = (
+    "showTopBar",
+    "showWelcome",
+    "showTime",
+    "showDate",
+    "showWifi",
+    "showTemperature",
+    "showHumidity",
+)
+
+
+def _v2(general: dict, devices: list | None = None) -> dict:
+    return {
+        "configVersion": 2,
+        "general": {"use24h": False, **general},
+        "pages": [
+            {"id": "p1", "devices": devices or [{"id": "light.a", "type": "light"}]},
+            {"id": "p2", "devices": [{"id": "switch.b", "type": "switch"}]},
+        ],
+    }
+
+
+@pytest.mark.parametrize("bits", range(2 ** len(OLD_TOGGLES)))
+@pytest.mark.parametrize("weather", ["", "weather.home"])
+def test_header_switches_become_one_tile(bits: int, weather: str) -> None:
+    old = {name: bool(bits >> i & 1) for i, name in enumerate(OLD_TOGGLES)}
+    out = schema.migrate_config(_v2({**old, "weatherEntity": weather}))
+    assert out["configVersion"] == 3
+    # obsolete keys are gone, the rest of `general` is kept
+    assert out["general"] == {"use24h": False}
+    first = out["pages"][0]["devices"]
+    assert out["pages"][1]["devices"] == [{"id": "switch.b", "type": "switch"}]
+    if not old["showTopBar"] and not old["showWelcome"]:
+        assert first == [{"id": "light.a", "type": "light"}]
+        return
+    header, rest = first[0], first[1:]
+    assert rest == [{"id": "light.a", "type": "light"}]
+    header_id = header.pop("id")
+    assert header_id.startswith("header-")
+    top, welcome = old["showTopBar"], old["showWelcome"]
+    assert header == {
+        "type": "header",
+        "style": "card",
+        "size": "4x2",
+        "showTime": top and old["showTime"],
+        "showDate": top and old["showDate"],
+        "showWifi": top and old["showWifi"],
+        "showGreeting": welcome,
+        "showWeather": welcome,
+        "showTemperature": old["showTemperature"],
+        "showHumidity": old["showHumidity"],
+        "entity": weather,
+        "contrast": "auto",
+    }
+    # the result survives tile validation unchanged
+    assert schema.normalize_device({**header, "id": header_id}) == {
+        **header,
+        "id": header_id,
+    }
+    # idempotent: a second run changes nothing
+    again = schema.migrate_config(out)
+    assert again == out
+
+
+@pytest.mark.parametrize("existing", ["header", "clock", "greeting", "weather"])
+def test_no_second_header_when_a_page_has_one(existing: str) -> None:
+    config = _v2({"showTopBar": True, "showWelcome": True})
+    config["pages"][1]["devices"].append({"type": existing, "id": f"{existing}-1"})
+    out = schema.migrate_config(config)
+    assert [d["type"] for d in out["pages"][0]["devices"]] == ["light"]
+    assert "showTopBar" not in out["general"]
+
+
+def test_v3_config_is_not_migrated_again() -> None:
+    """A v3 config without header tiles stays without one (the owner removed it)."""
+    config = {**_v2({"showTopBar": True}), "configVersion": 3}
+    out = schema.migrate_config(config)
+    assert [d["type"] for d in out["pages"][0]["devices"]] == ["light"]
+    assert out["general"] == {"use24h": False}
+
+
+def test_migration_without_pages_inserts_nothing() -> None:
+    out = schema.migrate_config({"configVersion": 2, "general": {"showTopBar": True}})
+    assert out == {"configVersion": 3, "general": {}}
+
+
+def test_migration_fixture_shared_with_the_app() -> None:
+    """tests/fixtures/header-migration.json is also checked by tests/js (configMigrate.js)."""
+    cases = json.loads(
+        (ROOT / "tests" / "fixtures" / "header-migration.json").read_text("utf-8")
+    )
+    assert cases
+    for case in cases:
+        out = schema.migrate_config(case["input"])
+        for page in out.get("pages", []):
+            for device in page.get("devices", []):
+                if device.get("type") == "header":
+                    device["id"] = "header-*"
+        assert out == case["output"], case["name"]
+
+
 def test_migrate_non_dict() -> None:
-    assert schema.migrate_config(None) == {"configVersion": 2}
+    assert schema.migrate_config(None) == {"configVersion": 3}
 
 
 @pytest.mark.parametrize("dtype", sorted(registry.TILE_TYPES))
@@ -75,8 +189,64 @@ def test_every_style_and_size_survives(dtype: str) -> None:
     for style, sizes in spec["styles"].items():
         for size in sizes:
             device = {"id": f"{dtype}.x", "type": dtype, "style": style, "size": size}
-            device.update(dict.fromkeys(spec.get("fields") or {}, "x"))
+            device.update(
+                {
+                    name: _valid_value(f)
+                    for name, f in (spec.get("fields") or {}).items()
+                }
+            )
             assert schema.normalize_device(device) == device
+
+
+def _valid_value(spec: dict):
+    kind = spec["type"]
+    if kind == "bool":
+        return not spec["default"]
+    if kind == "enum":
+        return spec["values"][-1]
+    if kind == "entity":
+        return f"{spec['domains'][0]}.x"
+    if kind == "entities":
+        return [f"{spec['domains'][0]}.a", f"{spec['domains'][0]}.b"]
+    return "x"
+
+
+@pytest.mark.parametrize(
+    ("spec", "value", "expected"),
+    [
+        ({"type": "bool", "default": True}, False, False),
+        ({"type": "bool", "default": True}, "false", True),
+        ({"type": "bool", "default": False}, None, False),
+        ({"type": "enum", "values": ["a", "b"], "default": "a"}, "b", "b"),
+        ({"type": "enum", "values": ["a", "b"], "default": "a"}, "c", "a"),
+        ({"type": "entity", "domains": ["weather"]}, "weather.home", "weather.home"),
+        ({"type": "entity", "domains": ["weather"]}, "sensor.temp", ""),
+        ({"type": "entity", "domains": ["weather"]}, "weather.Home", ""),
+        ({"type": "entity", "domains": ["weather"]}, ["weather.home"], ""),
+        (
+            {"type": "entities", "domains": ["light"], "min": 2, "max": 3},
+            ["light.a", "light.a", "switch.b", 7, "light.b", "light.c", "light.d"],
+            ["light.a", "light.b", "light.c"],
+        ),
+        ({"type": "entities", "domains": ["light"], "min": 2, "max": 3}, "light.a", []),
+        ({"type": "string", "max": 3}, "abcdef", "abc"),
+        ({"type": "string", "max": 3}, None, ""),
+    ],
+)
+def test_normalize_field(spec, value, expected) -> None:
+    assert schema.normalize_field(spec, value) == expected
+
+
+def test_header_tile_options_are_typed() -> None:
+    d = schema.normalize_device(
+        {"type": "header", "showTime": "yes", "contrast": "neon", "entity": "light.x"}
+    )
+    assert d["id"].startswith("header-")
+    assert (d["style"], d["size"]) == ("card", "4x2")
+    assert d["showTime"] is True  # not a bool -> default
+    assert d["showWifi"] is False  # missing -> default
+    assert d["contrast"] == "auto"
+    assert d["entity"] == ""
 
 
 def test_divider_gets_a_unique_id_and_a_short_label() -> None:

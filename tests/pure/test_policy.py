@@ -52,8 +52,25 @@ def call(entity_id, service, data=None, **extra):
     return msg
 
 
-def decide(msg, profile=ROOM, classes=()):
-    return policy.validate_call(profile, msg, classes)
+CT_LIGHT = {
+    "supported_color_modes": ["color_temp"],
+    "min_color_temp_kelvin": 2000,
+    "max_color_temp_kelvin": 6500,
+}
+
+
+# A speaker that supports everything a guest may use (MediaPlayerEntityFeature bits)
+SPEAKER = {"supported_features": 0x7FFFFF, "source_list": ["Radio", "TV"]}
+
+
+def decide(msg, profile=ROOM, classes=(), attributes=None):
+    if (
+        attributes is None
+        and isinstance(msg, dict)
+        and msg.get("domain") == "media_player"
+    ):
+        attributes = SPEAKER
+    return policy.validate_call(profile, msg, classes, attributes=attributes)
 
 
 # ─── allowed ─────────────────────────────────────────────────────────────────
@@ -62,7 +79,10 @@ def decide(msg, profile=ROOM, classes=()):
 def test_allowed_calls() -> None:
     assert decide(call("light.room", "toggle")).ok
     d = decide(
-        call("light.room", "turn_on", {"brightness_pct": 40, "color_temp_kelvin": 2700})
+        call(
+            "light.room", "turn_on", {"brightness_pct": 40, "color_temp_kelvin": 2700}
+        ),
+        attributes=CT_LIGHT,
     )
     assert d.ok and d.data == {"brightness_pct": 40, "color_temp_kelvin": 2700}
     assert decide(call("climate.room", "set_temperature", {"temperature": 21.5})).ok
@@ -87,7 +107,9 @@ def test_integral_float_accepted_for_int_field() -> None:
         (call("light.room", "set_level"), "service_not_allowed"),
         (call("sensor.room_temp", "turn_on"), "entity_read_only"),
         (call("switch.kettle", "toggle"), "entity_read_only"),
-        (call("light.room", "turn_on", {"brightness": 255}), "field_not_allowed"),
+        (call("light.room", "turn_on", {"brightness": 256}), "out_of_range"),
+        (call("light.room", "turn_on", {"kelvin": 3000}), "field_not_allowed"),
+        (call("light.room", "turn_on", {"xy_color": [0.3, 0.3]}), "field_not_allowed"),
         (call("light.room", "turn_on", {"entity_id": "light.x"}), "field_not_allowed"),
         (call("light.room", "turn_on", {"area_id": "kitchen"}), "field_not_allowed"),
         (call("light.room", "turn_on", {"brightness_pct": 101}), "out_of_range"),
@@ -107,7 +129,7 @@ def test_integral_float_accepted_for_int_field() -> None:
             call("climate.room", "set_temperature", {"target_temp_high": 22}),
             "field_not_allowed",
         ),
-        (call("media_player.speaker", "play_media", {}), "service_not_allowed"),
+        (call("media_player.speaker", "shuffle_set", {}), "service_not_allowed"),
         (
             call("media_player.speaker", "select_source", {"source": "a\nb"}),
             "invalid_value",
@@ -123,7 +145,8 @@ def test_denied(msg, reason) -> None:
 @pytest.mark.parametrize(
     "msg",
     [
-        call(["light.room"], "toggle"),
+        call(["switch.kettle"], "toggle", domain="switch"),
+        call([], "toggle", domain="light"),
         call("all", "toggle", domain="light"),
         call("light.room,light.other", "toggle"),
         call(None, "toggle"),
@@ -400,7 +423,7 @@ CONFIG = {
         "wifiPassword": "hunter2",
         "wifiSecurity": "WPA",
     },
-    "general": {"showWifi": True, "weatherEntity": "weather.home"},
+    "general": {"use24h": True},
     "standby": {"enabled": True},
     "appearance": {"mode": "light"},
     "hosting": "self",
@@ -412,6 +435,15 @@ CONFIG = {
     "dock": [{"pageId": "living"}, {"pageId": "garage"}],
 }
 
+HEADER_TILES = [
+    {"id": "header-1", "type": "header", "showWifi": True, "entity": "weather.home"},
+    {"id": "clock-1", "type": "clock"},
+    {"id": "greeting-1", "type": "greeting"},
+    {"id": "weather-1", "type": "weather", "entity": "weather.home"},
+    {"id": "wifi-1", "type": "wifi"},
+    {"id": "light.room", "type": "light"},
+]
+
 
 def test_filter_config_removes_foreign_tiles_pages_and_dock() -> None:
     out = policy.filter_config(CONFIG, make_profile(**{"light.room": None}))
@@ -419,7 +451,7 @@ def test_filter_config_removes_foreign_tiles_pages_and_dock() -> None:
     assert out["pages"][0]["devices"] == [{"id": "light.room"}]
     assert out["dock"] == [{"pageId": "living"}]
     assert "hosting" not in out and "dashboardUrl" not in out
-    assert out["general"]["weatherEntity"] == ""
+    assert out["general"] == {"use24h": True}
     assert out["guestInfo"]["wifiPassword"] == "hunter2"
 
 
@@ -428,8 +460,42 @@ def test_filter_config_hides_wifi() -> None:
     profile["show_wifi"] = False
     out = policy.filter_config(CONFIG, profile)
     assert "hunter2" not in repr(out)
-    assert out["general"]["showWifi"] is False
-    assert out["general"]["weatherEntity"] == "weather.home"
+
+
+def _header_page(profile: dict) -> list[dict]:
+    config = {**CONFIG, "pages": [{"id": "p", "devices": HEADER_TILES}]}
+    return policy.filter_config(config, profile)["pages"][0]["devices"]
+
+
+def test_header_tiles_reach_guests_without_an_entity() -> None:
+    """Header-family tiles have no entity; they are never dropped for that."""
+    devices = _header_page(make_profile(**{"light.room": None}))
+    assert [d["id"] for d in devices] == [d["id"] for d in HEADER_TILES]
+    # the weather entity is not in the profile: the option is removed, the tile stays
+    assert "entity" not in devices[0]
+    assert "entity" not in devices[3]
+    assert devices[0]["showWifi"] is True
+
+
+def test_header_weather_entity_kept_when_the_profile_allows_it() -> None:
+    devices = _header_page(make_profile(**{"light.room": None, "weather.home": None}))
+    assert devices[0]["entity"] == "weather.home"
+    assert devices[3]["entity"] == "weather.home"
+
+
+def test_wifi_tile_and_button_removed_without_show_wifi() -> None:
+    profile = make_profile(**{"light.room": None})
+    profile["show_wifi"] = False
+    devices = _header_page(profile)
+    assert "wifi" not in [d["type"] for d in devices]
+    assert devices[0]["showWifi"] is False
+
+
+def test_page_with_only_header_tiles_is_not_sent() -> None:
+    """Like dividers: a page needs a tile the guest may use."""
+    config = {**CONFIG, "pages": [{"id": "p", "devices": HEADER_TILES[:-1]}]}
+    out = policy.filter_config(config, make_profile(**{"light.room": None}))
+    assert out["pages"] == []
 
 
 # ─── profiles ────────────────────────────────────────────────────────────────

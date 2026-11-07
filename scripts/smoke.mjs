@@ -83,7 +83,8 @@ try {
   await dock.first().waitFor({ state: 'visible', timeout: 15_000 })
   const labels = await dock.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))
   // Ložnice has nothing in the profile; Chodba keeps only the coffee machine
-  if (labels.join('|') !== 'Obývák|Koupelna|Chodba') problems.push(`[guest] dock shows ${labels.join(', ')}`)
+  // the demo profile has bedroom night lights and the overview (scene, sensors) since stage 2
+  if (labels.join('|') !== 'Obývák|Ložnice|Koupelna|Chodba|Přehled') problems.push(`[guest] dock shows ${labels.join(', ')}`)
   if (await guest.getByText('TV', { exact: true }).count()) problems.push('[guest] TV tile is outside the profile but rendered')
   const dial = guest.locator('svg.dial-svg').first()
   await dial.scrollIntoViewIfNeeded()

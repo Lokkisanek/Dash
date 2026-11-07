@@ -3,19 +3,20 @@ import { isStandalone } from '@/lib/guestPass'
 
 /**
  * index.html sets apple-mobile-web-app-status-bar-style=black-translucent, so
- * iOS always draws the status bar text in white over our content. In the light
- * theme that white clock would sit on a light background; this strip gives it a
- * solid dark backdrop. Only in the installed app (standalone), only in light
- * theme; StandBy (black, z-index 90) covers it.
+ * iOS always draws the status bar text in white over our content. By default the
+ * wallpaper runs under it. `general.statusBarStrip` (off by default) puts a solid
+ * dark strip behind the white clock instead, for light wallpapers. Only in the
+ * installed app (standalone), only in the light theme; StandBy covers it.
  */
 defineProps({
+  enabled: { type: Boolean, default: false },
   dark: { type: Boolean, default: false },
 })
 const standalone = isStandalone()
 </script>
 
 <template>
-  <div v-if="standalone && !dark" class="status-strip" aria-hidden="true" />
+  <div v-if="enabled && standalone && !dark" class="status-strip" aria-hidden="true" />
 </template>
 
 <style scoped>

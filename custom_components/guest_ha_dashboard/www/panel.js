@@ -134,16 +134,10 @@ const IPHONE_15_PRO = {
   safeBottomLandscape: 21,
 };
 
+/** Since config version 3 the header, clock, greeting, weather and Wi-Fi button are tiles. */
 const DEFAULT_GENERAL = {
-  showTopBar: true,
-  showWelcome: true,
-  weatherEntity: "",
-  showTime: true,
   use24h: true,
-  showDate: true,
-  showWifi: true,
-  showTemperature: true,
-  showHumidity: true,
+  statusBarStrip: false,
 };
 
 const PANEL_I18N = {
@@ -164,19 +158,41 @@ const PANEL_I18N = {
     rotateLandscape: "Na šířku",
     rotatePortrait: "Na výšku",
     dashboardUrl: "URL tvého web dashboardu",
-    headerSection: "Hlavička",
-    headerHint: "Jedna plocha nahoře: řádek s časem, datem a tlačítkem Wi-Fi, pod ním pozdrav a venkovní počasí. Vypnuté části nezabírají místo.",
-    genShowTopBar: "Řádek s časem, datem a Wi-Fi",
-    welcomeSection: "Pozdrav a počasí",
-    genShowWelcome: "Pozdrav (jméno uživatele HA) a počasí",
-    weatherSource: "Počasí",
-    weatherAuto: "Auto — poloha domova v HA",
-    genShowTime: "Čas",
+    headerTilesHint: "Hlavičku, hodiny, pozdrav a počasí přidáš jako dlaždice na stránce.",
+    clockSection: "Hodiny",
+    weatherAuto: "Auto — první entita počasí, jinak poloha domova v HA",
     genUse24h: "24hodinový formát",
-    genShowDate: "Datum",
-    genShowWifi: "Tlačítko Wi-Fi",
-    genShowTemperature: "Teplota venku (velké číslo)",
-    genShowHumidity: "Vlhkost venku",
+    addMenuLabel: "Přidat dlaždici",
+    group_devices: "Zařízení",
+    group_info: "Informace",
+    group_header: "Hlavička",
+    group_layout: "Rozvržení",
+    type_header: "Hlavička",
+    type_clock: "Hodiny",
+    type_greeting: "Pozdrav",
+    type_weather: "Počasí",
+    type_wifi: "Wi-Fi",
+    style_card: "Karta",
+    style_plain: "Bez pozadí",
+    style_lockscreen: "Zamčená obrazovka",
+    style_compact: "Jeden řádek",
+    style_glass: "Sklo",
+    opt_showTime: "Čas",
+    opt_showDate: "Datum",
+    opt_showGreeting: "Pozdrav",
+    opt_showWeather: "Počasí",
+    opt_showTemperature: "Teplota venku",
+    opt_showHumidity: "Vlhkost venku",
+    opt_showWifi: "Tlačítko Wi-Fi",
+    opt_entity: "Zdroj počasí",
+    opt_contrast: "Barva textu",
+    opt_contrast_auto: "Podle motivu",
+    opt_contrast_light: "Bílá",
+    opt_contrast_dark: "Tmavá",
+    optionsHint: "Volby se ukládají u dlaždice, každá dlaždice může vypadat jinak.",
+    iphoneSection: "iPhone",
+    statusBarStrip: "Tmavý pruh pod stavovým řádkem",
+    statusBarStripHint: "Pomůže, když je světlé pozadí a bílé hodiny iOS nejsou čitelné.",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi heslo",
     wifiSecurity: "Zabezpečení",
@@ -188,7 +204,7 @@ const PANEL_I18N = {
     pageName: "Název page",
     pageIcon: "Ikona",
     devices: "Zařízení",
-    addDevice: "+ Zařízení",
+    addDevice: "+ Přidat",
     delete: "Smazat",
     deletePage: "Smazat stránku",
     confirmDelete: "Opravdu smazat?",
@@ -220,6 +236,29 @@ const PANEL_I18N = {
     iconLoadFailed: "Ikony se nepodařilo načíst.",
     iconCount: (n) => `${n} ikon`,
     type_divider: "Oddělovač",
+    type_scene: "Scéna",
+    type_fan: "Ventilátor",
+    type_light_group: "Skupina světel",
+    type_sensor: "Senzor",
+    type_binary_sensor: "Binární senzor",
+    type_entity: "Entita",
+    style_value: "Hodnota",
+    style_status: "Stav",
+    style_toggle: "Tlačítko",
+    opt_attribute: "Atribut",
+    attributeNone: "— jen stav —",
+    opt_entities: "Světla ve skupině",
+    opt_outputs: "Další přehrávače v listu",
+    outputsHint: "Prázdné = všechny přehrávače, které dashboard (nebo host) vidí.",
+    style_nowplaying: "Teď hraje",
+    style_vinyl: "Gramofon",
+    speakerGuide: "Jak připojit reproduktor",
+    mediaHint: "Klepnutím na dlaždici se otevře přehrávač: přehrávače, procházení a hledání podle toho, co přehrávač umí.",
+    entitiesSearch: "Hledat světlo",
+    entitiesCount: (n, min, max) => `Vybráno ${n} (nejméně ${min}, nejvýš ${max})`,
+    entitiesTooFew: (min) => `Skupina potřebuje aspoň ${min} světla.`,
+    entityGenericHint: "Jen ke čtení. Zámky, alarmy, kamery a další zakázané domény tu nejsou.",
+    longPressHint: "V aplikaci: podržením dlaždice světla otevřeš jas, teplotu bílé, barvu a efekty (jen co světlo umí).",
     addDivider: "+ Oddělovač",
     dividerPlaceholder: "Název sekce (nepovinný)",
     dividerHint: "Oddělovač je přes celý řádek: text vlevo, za ním linka. Prázdný = jen linka.",
@@ -293,19 +332,41 @@ const PANEL_I18N = {
     rotateLandscape: "Landscape",
     rotatePortrait: "Portrait",
     dashboardUrl: "Your web dashboard URL",
-    headerSection: "Header",
-    headerHint: "One surface at the top: a row with time, date and the Wi-Fi button, below it the greeting and the outside weather. Parts that are off take no space.",
-    genShowTopBar: "Row with time, date and Wi-Fi",
-    welcomeSection: "Greeting & weather",
-    genShowWelcome: "Greeting (HA user name) and weather",
-    weatherSource: "Weather",
-    weatherAuto: "Auto — HA home location",
-    genShowTime: "Time",
+    headerTilesHint: "Add the header, clock, greeting and weather as tiles on a page.",
+    clockSection: "Clock",
+    weatherAuto: "Auto — first weather entity, else the HA home location",
     genUse24h: "24-hour clock",
-    genShowDate: "Date",
-    genShowWifi: "Wi-Fi button",
-    genShowTemperature: "Outside temperature (large)",
-    genShowHumidity: "Outside humidity",
+    addMenuLabel: "Add a tile",
+    group_devices: "Devices",
+    group_info: "Info",
+    group_header: "Header",
+    group_layout: "Layout",
+    type_header: "Header",
+    type_clock: "Clock",
+    type_greeting: "Greeting",
+    type_weather: "Weather",
+    type_wifi: "Wi-Fi",
+    style_card: "Card",
+    style_plain: "No background",
+    style_lockscreen: "Lock screen",
+    style_compact: "One line",
+    style_glass: "Glass",
+    opt_showTime: "Time",
+    opt_showDate: "Date",
+    opt_showGreeting: "Greeting",
+    opt_showWeather: "Weather",
+    opt_showTemperature: "Outside temperature",
+    opt_showHumidity: "Outside humidity",
+    opt_showWifi: "Wi-Fi button",
+    opt_entity: "Weather source",
+    opt_contrast: "Text colour",
+    opt_contrast_auto: "Follow the theme",
+    opt_contrast_light: "White",
+    opt_contrast_dark: "Dark",
+    optionsHint: "Options are stored on the tile, so every tile can look different.",
+    iphoneSection: "iPhone",
+    statusBarStrip: "Dark strip behind the status bar",
+    statusBarStripHint: "Helps when the background is light and the white iOS clock is hard to read.",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi password",
     wifiSecurity: "Security",
@@ -317,7 +378,7 @@ const PANEL_I18N = {
     pageName: "Page name",
     pageIcon: "Icon",
     devices: "Devices",
-    addDevice: "+ Device",
+    addDevice: "+ Add",
     delete: "Delete",
     deletePage: "Delete page",
     confirmDelete: "Really delete?",
@@ -348,6 +409,29 @@ const PANEL_I18N = {
     iconLoadFailed: "Icons could not be loaded.",
     iconCount: (n) => `${n} icons`,
     type_divider: "Divider",
+    type_scene: "Scene",
+    type_fan: "Fan",
+    type_light_group: "Light group",
+    type_sensor: "Sensor",
+    type_binary_sensor: "Binary sensor",
+    type_entity: "Entity",
+    style_value: "Value",
+    style_status: "Status",
+    style_toggle: "Button",
+    opt_attribute: "Attribute",
+    attributeNone: "— state only —",
+    opt_entities: "Lights in the group",
+    opt_outputs: "Other players in the sheet",
+    outputsHint: "Empty = every player the dashboard (or the guest) can see.",
+    style_nowplaying: "Now playing",
+    style_vinyl: "Record player",
+    speakerGuide: "How to connect a speaker",
+    mediaHint: "A tap on the tile opens the player: players, browse and search, as far as the player supports them.",
+    entitiesSearch: "Search lights",
+    entitiesCount: (n, min, max) => `${n} selected (at least ${min}, at most ${max})`,
+    entitiesTooFew: (min) => `A group needs at least ${min} lights.`,
+    entityGenericHint: "Read only. Locks, alarms, cameras and other denied domains are not offered.",
+    longPressHint: "In the app: hold a light tile for brightness, white temperature, colour and effects (only what the light supports).",
     addDivider: "+ Divider",
     dividerPlaceholder: "Section name (optional)",
     dividerHint: "A divider spans the whole row: text on the left, a line after it. Empty = just the line.",
@@ -407,7 +491,7 @@ const PANEL_I18N = {
 };
 
 const emptyConfig = () => ({
-  configVersion: 2,
+  configVersion: 3,
   guestInfo: {
     wifiSsid: "",
     wifiPassword: "",
@@ -844,13 +928,53 @@ class GuestHaDashboardPanel extends HTMLElement {
     this.shadowRoot.querySelector(`[data-div-label="${page.devices.length - 1}"]`)?.focus();
   }
 
-  _addDevice(page) {
-    page.devices.push({
-      id: "", type: "light", label: this._t("type_light"), supportsBrightness: true,
-      icon: DEFAULT_DEVICE_ICON.light, style: "tile", size: "2x2",
-    });
+  /** A new tile of `type` with the registry defaults (first style and size, option defaults). */
+  _newDevice(type) {
+    const spec = TILE_TYPES[type];
+    const style = Object.keys(spec.styles)[0];
+    const device = { id: "", type, style, size: spec.styles[style][0] };
+    if (spec.needsEntity) {
+      device.label = this._t(`type_${type}`);
+      device.icon = DEFAULT_DEVICE_ICON[type];
+      if (type === "light") device.supportsBrightness = true;
+    } else {
+      const hex = Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, "0")).join("");
+      device.id = `${type}-${hex}`;
+    }
+    for (const [name, f] of Object.entries(spec.fields || {})) {
+      if (f.type === "bool" || f.type === "enum") device[name] = f.default;
+      else if (f.type === "entities") device[name] = [];
+      else device[name] = "";
+    }
+    return device;
+  }
+
+  _addDevice(page, type = "light") {
+    page.devices.push(this._newDevice(type));
     this._devIdx = page.devices.length - 1;
+    this._addOpen = false;
     this._render();
+    this.shadowRoot.querySelector(".inspector")?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  /** Inline list under "+ Přidat", grouped like the registry (devices, info, header). */
+  _renderAddMenu() {
+    if (!this._addOpen) return "";
+    const groups = ["devices", "info", "header"];
+    return `
+      <div class="add-menu" id="addMenu" role="group" aria-label="${this._escape(this._t("addMenuLabel"))}">
+        ${groups.map((g) => {
+          const types = DEVICE_TYPES.filter((t) => TILE_TYPES[t].group === g);
+          if (!types.length) return "";
+          return `
+            <div class="add-group">
+              <span class="add-group-title">${this._t(`group_${g}`)}</span>
+              <div class="add-items">${types.map((t) => `
+                <button type="button" class="add-item" data-add-type="${t}">${iconSvg(DEFAULT_DEVICE_ICON[t], 16)}<span>${this._t(`type_${t}`)}</span></button>`).join("")}
+              </div>
+            </div>`;
+        }).join("")}
+      </div>`;
   }
 
   /**
@@ -1013,6 +1137,8 @@ class GuestHaDashboardPanel extends HTMLElement {
     const names = [
       ...(c.pages || []).flatMap((p) => [p?.icon, ...(p?.devices || []).map((d) => d?.icon)]),
       ...(c.dock || []).map((d) => d?.icon),
+      // default icons of every tile type (the add menu shows them)
+      ...Object.values(DEFAULT_DEVICE_ICON),
     ].filter(Boolean);
     if (ICON_CATALOG || names.every((n) => ICONS[n])) return;
     loadIconCatalog().then(() => this._render()).catch((err) => console.warn("[dash] icon catalog failed to load", err));
@@ -1021,6 +1147,17 @@ class GuestHaDashboardPanel extends HTMLElement {
     return Object.keys(this._hass?.states || {})
       .filter((id) => id.startsWith(`${domain}.`))
       .sort();
+  }
+
+  /** Entities offered for a tile type (registry domains; "*" = all but excludeDomains). */
+  _entitiesForType(type) {
+    const spec = TILE_TYPES[type];
+    if (!spec) return [];
+    if (spec.domains.includes("*")) {
+      const skip = new Set(spec.excludeDomains || []);
+      return Object.keys(this._hass?.states || {}).filter((id) => !skip.has(id.split(".")[0])).sort();
+    }
+    return spec.domains.flatMap((d) => this._entities(d));
   }
   _on(sel, ev, fn) {
     this.shadowRoot.querySelectorAll(sel).forEach((el) => el.addEventListener(ev, fn));
@@ -1387,6 +1524,21 @@ class GuestHaDashboardPanel extends HTMLElement {
         animation: pop-in 0.22s ease;
       }
       .inspector-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .ent-pick { display: grid; gap: 6px; min-width: 0; }
+      .ent-list { display: grid; gap: 2px; max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 14px; padding: 6px; }
+      .ent-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 10px; cursor: pointer; }
+      .ent-item:hover { background: var(--btn); }
+      .ent-item code { font-size: 0.72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ent-count { margin: 0; }
+      .add-menu { display: grid; gap: 12px; max-width: 560px; margin: 4px auto 14px; animation: pop-in 0.18s ease; }
+      .add-group { display: grid; gap: 6px; }
+      .add-group-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+      .add-items { display: flex; flex-wrap: wrap; gap: 6px; }
+      .add-item {
+        display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+        background: var(--btn); border: 1px solid var(--border); color: var(--text); font: inherit; cursor: pointer;
+      }
+      .add-item:hover, .add-item:focus-visible { border-color: var(--accent); outline: none; }
       .inspector-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .inspector-head .btn { padding: 6px 12px; font-size: 0.82rem; }
       .seg.wrap { flex-wrap: wrap; border-radius: 18px; }
@@ -1887,38 +2039,26 @@ class GuestHaDashboardPanel extends HTMLElement {
 
   _renderGeneral(c) {
     const gen = { ...DEFAULT_GENERAL, ...(c.general || {}) };
-    // One header in the app (HeaderCard.vue): the clock row, then greeting + weather
-    const clockItems = [
-      ["showTime", "genShowTime"],
-      ["use24h", "genUse24h"],
-      ["showDate", "genShowDate"],
-      ["showWifi", "genShowWifi"],
-    ];
-    const weatherItems = [
-      ["showTemperature", "genShowTemperature"],
-      ["showHumidity", "genShowHumidity"],
-    ];
-    const toggles = (items) => items.map(([key, label]) => this._toggle(`data-gen="${key}"`, gen[key], this._t(label))).join("");
-    const weathers = this._entities("weather");
+    // The header, clock, greeting, weather and Wi-Fi button are tiles (Pages tab)
     return `
       ${this._renderHosting(c)}
-      <h3>${this._t("headerSection")}</h3>
-      <p class="hint">${this._t("headerHint")}</p>
+      <h3>${this._t("clockSection")}</h3>
       <div class="toggle-list">
-        ${this._toggle('data-gen="showTopBar"', gen.showTopBar, this._t("genShowTopBar"))}
-        ${gen.showTopBar ? toggles(clockItems) : ""}
+        ${this._toggle('data-gen="use24h"', gen.use24h !== false, this._t("genUse24h"))}
       </div>
-      <h3>${this._t("welcomeSection")}</h3>
+      <p class="hint" data-header-hint>${this._t("headerTilesHint")}</p>
+      ${this._renderIphone(gen)}
+    `;
+  }
+
+  /** Installed iPhone app: iOS draws a white status bar over the wallpaper. */
+  _renderIphone(gen) {
+    return `
+      <h3>${this._t("iphoneSection")}</h3>
       <div class="toggle-list">
-        ${this._toggle('data-gen="showWelcome"', gen.showWelcome, this._t("genShowWelcome"))}
-        ${gen.showWelcome ? toggles(weatherItems) : ""}
+        ${this._toggle('data-gen="statusBarStrip"', gen.statusBarStrip === true, this._t("statusBarStrip"))}
       </div>
-      ${gen.showWelcome ? `
-      <div class="row" style="margin-top:12px"><label>${this._t("weatherSource")}</label>
-        <select id="weatherEntity">
-          <option value="">${this._t("weatherAuto")}</option>
-          ${weathers.map((w) => `<option value="${w}" ${gen.weatherEntity === w ? "selected" : ""}>${this._escape(this._friendly(w))}</option>`).join("")}
-        </select></div>` : ""}
+      <p class="hint">${this._t("statusBarStripHint")}</p>
     `;
   }
 
@@ -1939,12 +2079,8 @@ class GuestHaDashboardPanel extends HTMLElement {
       } catch { /* clipboard blocked */ }
     });
     this._on("[data-gen]", "change", (e) => {
-      const key = e.currentTarget.dataset.gen;
-      general()[key] = e.currentTarget.checked;
-      if (key === "showTopBar" || key === "showWelcome") this._render();
+      general()[e.currentTarget.dataset.gen] = e.currentTarget.checked;
     });
-    const weather = this.shadowRoot.getElementById("weatherEntity");
-    weather?.addEventListener("change", () => { general().weatherEntity = weather.value; });
   }
 
   _renderHosting(c) {
@@ -2336,9 +2472,10 @@ class GuestHaDashboardPanel extends HTMLElement {
       <div class="cc-wrap">
         ${page.devices.length ? `<div class="cc-grid" id="ccGrid">${this._gridTiles(page)}</div>` : `<p class="hint">${this._t("gridEmpty")}</p>`}
         <div class="actions cc-actions">
-          <button type="button" class="btn primary" id="addDevice">${this._t("addDevice")}</button>
+          <button type="button" class="btn primary" id="addDevice" aria-expanded="${this._addOpen ? "true" : "false"}" aria-controls="addMenu">${this._t("addDevice")}</button>
           <button type="button" class="btn ghost" id="addDivider">${this._t("addDivider")}</button>
         </div>
+        ${this._renderAddMenu()}
       </div>`;
   }
 
@@ -2539,7 +2676,13 @@ class GuestHaDashboardPanel extends HTMLElement {
     const d = page.devices[this._devIdx];
     if (!d) return "";
     const di = this._devIdx;
-    if (!TILE_TYPES[d.type]?.needsEntity) {
+    const { style, size } = resolveTile(d);
+    const styles = TILE_STYLES[d.type] || TILE_STYLES.switch;
+    const seg = (attr, options, active, label) => `
+      <div class="seg wrap">${options.map((o) => `
+        <button type="button" data-${attr}="${o}" class="${o === active ? "active" : ""}">${label(o)}</button>`).join("")}
+      </div>`;
+    if (d.type === "divider") {
       return `
       <div class="inspector" data-di="${di}">
         <div class="inspector-head">
@@ -2551,13 +2694,30 @@ class GuestHaDashboardPanel extends HTMLElement {
         <p class="hint">${this._t("dividerHint")}</p>
       </div>`;
     }
-    const { style, size } = resolveTile(d);
-    const styles = TILE_STYLES[d.type] || TILE_STYLES.switch;
-    const pool = this._entities(d.type);
-    const seg = (attr, options, active, label) => `
-      <div class="seg wrap">${options.map((o) => `
-        <button type="button" data-${attr}="${o}" class="${o === active ? "active" : ""}">${label(o)}</button>`).join("")}
+    if (!TILE_TYPES[d.type]?.needsEntity) {
+      // Header family (and other tiles without an entity of their own): style, size, options
+      return `
+      <div class="inspector" data-di="${di}" data-inspector-type="${d.type}">
+        <div class="inspector-head">
+          <strong>${this._escape(d.label || this._t(`type_${d.type}`))}</strong>
+          <button type="button" class="btn" data-move="-1" ${di === 0 ? "disabled" : ""}>${this._t("moveLeft")}</button>
+          <button type="button" class="btn" data-move="1" ${di === page.devices.length - 1 ? "disabled" : ""}>${this._t("moveRight")}</button>
+          <button type="button" class="btn danger" id="removeDevice">${this._t("delete")}</button>
+        </div>
+        ${Object.keys(styles).length > 1 ? `<div class="row"><label>${this._t("devStyle")}</label>
+          ${seg("tile-style", Object.keys(styles), style, (s) => this._t(`style_${s}`))}</div>` : ""}
+        ${styles[style].length > 1 ? `<div class="row"><label>${this._t("devSize")}</label>
+          ${seg("tile-size", styles[style], size, (s) => s.replace("x", "×"))}</div>` : ""}
+        ${d.type === "light_group" ? `
+        <div class="row"><label>${this._t("devLabel")}</label>
+          <input data-k="label" value="${this._escape(d.label || "")}" /></div>
+        <div class="row"><label>${this._t("pageIcon")}</label>
+          ${this._iconPicker(`dev-${di}`, d.icon || DEFAULT_DEVICE_ICON[d.type], (ic) => { d.icon = ic; })}</div>
+        <p class="hint">${this._t("longPressHint")}</p>` : ""}
+        ${this._fieldControls(d, style)}
       </div>`;
+    }
+    const pool = this._entitiesForType(d.type);
     return `
       <div class="inspector" data-di="${di}">
         <div class="inspector-head">
@@ -2578,6 +2738,77 @@ class GuestHaDashboardPanel extends HTMLElement {
           ${seg("tile-style", Object.keys(styles), style, (s) => this._t(`style_${s}`))}</div>
         <div class="row"><label>${this._t("devSize")}</label>
           ${seg("tile-size", styles[style], size, (s) => s.replace("x", "×"))}</div>
+        ${d.type === "entity" ? `<p class="hint">${this._t("entityGenericHint")}</p>` : ""}
+        ${d.type === "light" ? `<p class="hint">${this._t("longPressHint")}</p>` : ""}
+        ${d.type === "media_player" ? `<p class="hint">${this._t("mediaHint")}
+          <a href="https://github.com/Lokkisanek/Dash/blob/main/docs/SPEAKERS.md" target="_blank" rel="noopener">${this._t("speakerGuide")}</a></p>` : ""}
+        ${this._fieldControls(d, style)}
+      </div>`;
+  }
+
+  /**
+   * Inline editors for a tile's options (registry `fields`): toggles for bool,
+   * segments for enum, a select for one entity. Fields limited to some styles
+   * are shown only for those styles.
+   */
+  _fieldControls(d, style) {
+    const fields = Object.entries(TILE_TYPES[d.type]?.fields || {})
+      .filter(([name, f]) => !(d.type === "divider" && name === "label") && (!f.styles || f.styles.includes(style)));
+    if (!fields.length) return "";
+    const toggles = [];
+    const rows = [];
+    for (const [name, f] of fields) {
+      const label = this._t(`opt_${name}`);
+      if (f.type === "bool") {
+        toggles.push(this._toggle(`data-field="${name}"`, typeof d[name] === "boolean" ? d[name] : f.default, label));
+      } else if (f.type === "enum") {
+        const current = f.values.includes(d[name]) ? d[name] : f.default;
+        rows.push(`<div class="row"><label>${label}</label><div class="seg wrap">${f.values.map((v) => `
+          <button type="button" data-field-enum="${name}" data-value="${v}" class="${v === current ? "active" : ""}">${this._t(`opt_${name}_${v}`)}</button>`).join("")}</div></div>`);
+      } else if (f.type === "entity") {
+        const pool = f.domains.flatMap((dom) => this._entities(dom));
+        rows.push(`<div class="row"><label>${label}</label>
+          <select data-field-entity="${name}"><option value="">${this._t("weatherAuto")}</option>
+            ${pool.map((e) => `<option value="${e}" ${d[name] === e ? "selected" : ""}>${this._escape(this._friendly(e))}</option>`).join("")}
+          </select></div>`);
+      } else if (f.type === "entities") {
+        rows.push(this._entitiesPicker(d, name, f));
+      } else if (f.type === "string" && d.type === "entity" && name === "attribute") {
+        // one attribute of the chosen entity, read only
+        const keys = Object.keys(this._hass?.states?.[d.id]?.attributes || {})
+          .filter((k) => !["friendly_name", "icon", "entity_picture", "entity_picture_local", "supported_features"].includes(k))
+          .sort();
+        rows.push(`<div class="row"><label>${label}</label>
+          <select data-field-string="${name}"><option value="">${this._t("attributeNone")}</option>
+            ${keys.map((k) => `<option value="${this._escape(k)}" ${d[name] === k ? "selected" : ""}>${this._escape(k)}</option>`).join("")}
+          </select></div>`);
+      }
+    }
+    return `
+      ${toggles.length ? `<div class="toggle-list" style="margin-top:6px">${toggles.join("")}</div>` : ""}
+      ${rows.join("")}`;
+  }
+
+  /** Checklist with search for a list of entities (light groups), inline. */
+  _entitiesPicker(d, name, f) {
+    const chosen = Array.isArray(d[name]) ? d[name] : [];
+    const q = (this._entSearch || "").trim().toLowerCase();
+    const pool = [...new Set(f.domains.flatMap((dom) => this._entities(dom)))];
+    const visible = pool.filter((e) => chosen.includes(e) || !q || `${e} ${this._friendly(e)}`.toLowerCase().includes(q));
+    const full = chosen.length >= f.max;
+    return `
+      <div class="row ent-row"><label>${this._t(`opt_${name}`)}</label>
+        <div class="ent-pick">
+          <input type="search" data-entities-search="${name}" value="${this._escape(this._entSearch || "")}" placeholder="${this._escape(this._t("entitiesSearch"))}" aria-label="${this._escape(this._t("entitiesSearch"))}" />
+          <p class="hint ent-count" aria-live="polite">${name === "outputs" ? this._t("outputsHint") : `${this._t("entitiesCount", chosen.length, f.min, f.max)}${chosen.length < f.min ? ` · ${this._t("entitiesTooFew", f.min)}` : ""}`}</p>
+          <div class="ent-list" role="group" aria-label="${this._escape(this._t(`opt_${name}`))}">
+            ${visible.map((e) => {
+              const on = chosen.includes(e);
+              return `<label class="ent-item"><input type="checkbox" data-entities-field="${name}" value="${this._escape(e)}" ${on ? "checked" : ""} ${!on && full ? "disabled" : ""} />
+                <span>${this._escape(this._friendly(e))}</span><code>${this._escape(e)}</code></label>`;
+            }).join("")}
+          </div>
+        </div>
       </div>`;
   }
 
@@ -2636,7 +2867,18 @@ class GuestHaDashboardPanel extends HTMLElement {
     const pageLabel = this.shadowRoot.getElementById("pageLabel");
     pageLabel?.addEventListener("input", () => { page.label = pageLabel.value; });
     pageLabel?.addEventListener("change", () => this._render());
-    this.shadowRoot.getElementById("addDevice")?.addEventListener("click", () => this._addDevice(page));
+    this.shadowRoot.getElementById("addDevice")?.addEventListener("click", () => {
+      this._addOpen = !this._addOpen;
+      this._render();
+      this.shadowRoot.querySelector("#addMenu .add-item")?.focus();
+    });
+    this._on("[data-add-type]", "click", (e) => this._addDevice(page, e.currentTarget.dataset.addType));
+    this.shadowRoot.getElementById("addMenu")?.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      this._addOpen = false;
+      this._render();
+      this.shadowRoot.getElementById("addDevice")?.focus();
+    });
     this.shadowRoot.getElementById("addDivider")?.addEventListener("click", () => this._addDivider(page));
 
     this._bindGrid(page);
@@ -2661,6 +2903,36 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._on("[data-tile-size]", "click", (e) => {
       device.size = e.currentTarget.dataset.tileSize;
       this._render();
+    });
+    // Tile options (registry fields): stored on the tile, the preview shows them after Uložit
+    this._on(".inspector [data-field]", "change", (e) => {
+      device[e.currentTarget.dataset.field] = e.currentTarget.checked;
+    });
+    this._on(".inspector [data-field-enum]", "click", (e) => {
+      device[e.currentTarget.dataset.fieldEnum] = e.currentTarget.dataset.value;
+      this._render();
+    });
+    this._on(".inspector [data-field-entity]", "change", (e) => {
+      device[e.currentTarget.dataset.fieldEntity] = e.currentTarget.value;
+    });
+    this._on(".inspector [data-field-string]", "change", (e) => {
+      device[e.currentTarget.dataset.fieldString] = e.currentTarget.value;
+    });
+    this._on(".inspector [data-entities-field]", "change", (e) => {
+      const key = e.currentTarget.dataset.entitiesField;
+      const list = Array.isArray(device[key]) ? device[key].slice() : [];
+      const id = e.currentTarget.value;
+      device[key] = e.currentTarget.checked ? [...new Set([...list, id])] : list.filter((x) => x !== id);
+      this._render();
+      this.shadowRoot.querySelector(`.inspector [data-entities-field][value="${CSS.escape(id)}"]`)?.focus();
+    });
+    this._on(".inspector [data-entities-search]", "input", (e) => {
+      this._entSearch = e.currentTarget.value;
+      const pos = e.currentTarget.selectionStart;
+      this._render();
+      const input = this.shadowRoot.querySelector(".inspector [data-entities-search]");
+      input?.focus();
+      input?.setSelectionRange(pos, pos);
     });
     this.shadowRoot.querySelectorAll(".inspector [data-k]").forEach((el) => {
       const key = el.dataset.k;

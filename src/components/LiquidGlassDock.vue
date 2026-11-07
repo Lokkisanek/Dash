@@ -180,16 +180,16 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Fixed to the viewport: the home-indicator inset is added once, here. */
 .liquid-dock {
-  position: absolute;
+  position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: calc(var(--safe-bottom, 0px) + var(--dock-gap, 12px));
   z-index: 30;
   display: flex;
   justify-content: center;
-  padding: 0 calc(20px + var(--safe-right, 0px)) calc(12px + var(--safe-bottom, 0px))
-    calc(20px + var(--safe-left, 0px));
+  padding: 0 calc(20px + var(--safe-right, 0px)) 0 calc(20px + var(--safe-left, 0px));
   pointer-events: none;
   background: transparent;
 }
@@ -206,12 +206,9 @@ onUnmounted(() => {
   position: relative;
   pointer-events: auto;
   isolation: isolate;
-  background: rgba(255, 255, 255, 0.06);
-  border: 0.5px solid rgba(255, 255, 255, 0.55);
-  box-shadow:
-    0 8px 28px rgba(40, 20, 60, 0.12),
-    0 1px 0 rgba(255, 255, 255, 0.55) inset,
-    0 -1px 0 rgba(255, 255, 255, 0.25) inset;
+  background: var(--glass-bg);
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 .liquid-dock__glass::after {
@@ -221,10 +218,10 @@ onUnmounted(() => {
   z-index: -1;
   border-radius: inherit;
   isolation: isolate;
-  backdrop-filter: blur(22px) saturate(1.85) brightness(1.05);
-  -webkit-backdrop-filter: blur(22px) saturate(1.85) brightness(1.05);
-  backdrop-filter: var(--lg-filter, blur(22px) saturate(1.85) brightness(1.05));
-  -webkit-backdrop-filter: var(--lg-filter, blur(22px) saturate(1.85) brightness(1.05));
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--lg-filter, var(--glass-filter));
+  -webkit-backdrop-filter: var(--lg-filter, var(--glass-filter));
 }
 
 .liquid-dock__lens {

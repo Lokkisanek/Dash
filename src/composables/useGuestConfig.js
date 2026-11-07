@@ -1,5 +1,6 @@
 import { reactive, computed } from 'vue'
 import { guestDashboard as fallbackConfig } from '@/config/guestDashboard'
+import { migrateConfig } from '@/lib/configMigrate'
 
 const state = reactive({
   loaded: false,
@@ -56,6 +57,7 @@ export function useGuestConfig() {
     rooms: computed(() => state.config.pages || []),
     pages: computed(() => state.config.pages || []),
     dock: computed(() => (Array.isArray(state.config.dock) ? state.config.dock.slice(0, DOCK_MAX) : [])),
+    capabilities: computed(() => state.config.capabilities || null),
     appearance: computed(() => ({
       mode: 'light',
       accent: '#ff6b00',
@@ -71,11 +73,13 @@ export function useGuestConfig() {
   }
 }
 
-export function applyGuestConfig(config, source = 'ha') {
-  if (!config || typeof config !== 'object') return
+export function applyGuestConfig(raw, source = 'ha') {
+  if (!raw || typeof raw !== 'object') return
+  // An older integration may still send the header switches in `general` (v2):
+  // convert them like config_schema.migrate_config does on the server.
+  const config = migrateConfig(raw)
   state.config = {
-    // 1 = config stored before 2.1 (no field), see config_schema.py in the integration
-    configVersion: Number(config.configVersion) || 1,
+    configVersion: config.configVersion,
     guestInfo: {
       ...fallbackConfig.guestInfo,
       ...(config.guestInfo || {}),
@@ -95,6 +99,8 @@ export function applyGuestConfig(config, source = 'ha') {
     },
     pages: normalizePages(config),
     dock: normalizeDock(config),
+    // guest passes only: what the profile allows beyond on/off (null = owner, everything)
+    capabilities: config.capabilities && typeof config.capabilities === 'object' ? { ...config.capabilities } : null,
     dashboardUrl: config.dashboardUrl || '',
   }
   state.source = source

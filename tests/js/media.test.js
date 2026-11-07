@@ -66,9 +66,11 @@ describe('media features', () => {
   it('uses the Home Assistant bit values', () => {
     expect(MEDIA_FEATURE).toMatchObject({ PAUSE: 1, VOLUME_SET: 4, NEXT_TRACK: 32, SELECT_SOURCE: 2048, PLAY: 16384 })
   })
-  it('treats a missing bitmask as everything and 0 as nothing', () => {
-    expect(mediaSupports({}, MEDIA_FEATURE.PAUSE)).toBe(true)
+  it('treats a missing bitmask as nothing (no control because it usually exists)', () => {
+    expect(mediaSupports({}, MEDIA_FEATURE.PAUSE)).toBe(false)
+    expect(mediaSupports({ supported_features: '1' }, MEDIA_FEATURE.PAUSE)).toBe(false)
     expect(mediaSupports({ supported_features: 0 }, MEDIA_FEATURE.PAUSE)).toBe(false)
+    expect(mediaSupports({ supported_features: 1 }, MEDIA_FEATURE.PAUSE)).toBe(true)
   })
   it('hides controls the player does not support', () => {
     // a Spotify account entity while idle only reports SELECT_SOURCE

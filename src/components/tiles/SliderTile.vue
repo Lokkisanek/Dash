@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, inject } from 'vue'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
 import { useI18n } from '@/composables/useI18n'
 import { unlockAudio, playTick } from '@/composables/useSound'
@@ -18,6 +18,8 @@ const props = defineProps({
 })
 
 const { getEntityState, setLightBrightness, callService, setCoverPosition } = useHomeAssistant()
+/** Long-press controls (DeviceTile): after a long press this pointer does nothing. */
+const longPress = inject('dashLongPress', null)
 const { t } = useI18n()
 
 const entity = computed(() => getEntityState(props.entityId))
@@ -61,6 +63,7 @@ function onDown(e) {
 
 function onMove(e) {
   if (!drag) return
+  if (longPress?.isFired()) return
   const delta = props.vertical ? drag.y - e.clientY : e.clientX - drag.x
   if (!drag.moved && Math.abs(delta) < 6) return
   drag.moved = true
@@ -70,10 +73,20 @@ function onMove(e) {
   if (props.kind === 'light' && next > 0) setLightBrightness(props.entityId, next)
 }
 
+function onCancel() {
+  // the browser took the pointer (scroll, swipe): reset, never toggle
+  drag = null
+  local.value = null
+}
+
 async function onUp() {
   if (!drag) return
   const { moved } = drag
   drag = null
+  if (longPress?.consume()) {
+    local.value = null
+    return
+  }
   if (!moved) {
     local.value = null
     if (props.kind === 'light') await callService('light', 'toggle', { entity_id: props.entityId })
@@ -108,7 +121,7 @@ async function onUp() {
     @pointerdown="onDown"
     @pointermove="onMove"
     @pointerup="onUp"
-    @pointercancel="onUp"
+    @pointercancel="onCancel"
   >
     <div class="fill" :style="vertical ? { height: `${value}%` } : { width: `${value}%` }">
       <span v-if="!vertical && value > 0 && value < 100" class="handle" />

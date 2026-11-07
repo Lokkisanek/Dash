@@ -12,7 +12,7 @@ import HaLogin from '@/components/HaLogin.vue'
 import PairingScreen from '@/components/PairingScreen.vue'
 import GuestPassStatus from '@/components/GuestPassStatus.vue'
 import GuestToast from '@/components/GuestToast.vue'
-import HeaderCard from '@/components/HeaderCard.vue'
+import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import StatusBarStrip from '@/components/StatusBarStrip.vue'
 import DeviceTile from '@/components/DeviceTile.vue'
 import DividerTile from '@/components/tiles/DividerTile.vue'
@@ -20,6 +20,7 @@ import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
 import BackgroundOrbs from '@/components/BackgroundOrbs.vue'
 
 const { status } = useHomeAssistant()
+
 const { pages, dock, appearance, themeMode, general, standby } = useGuestConfig()
 const { t } = useI18n()
 useWakeLock()
@@ -185,10 +186,11 @@ watch(
     document.documentElement.setAttribute('data-theme', theme)
     document.documentElement.style.setProperty('--guest-accent', appearance.value.accent || '#ff6b00')
     document.documentElement.classList.toggle('dark', mode === 'dark')
-    // iOS paints the status bar with theme-color; match the shell so it blends in
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', mode === 'dark' ? '#0e1014' : '#f3f0f7')
+    // The wallpaper colour also sits on <html>, so no other colour can show at an
+    // edge (status bar, home indicator, overscroll). theme-color matches it.
+    const shellBg = mode === 'dark' ? '#0e1014' : '#f3f0f7'
+    document.documentElement.style.setProperty('--app-bg', shellBg)
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', shellBg)
   },
   { immediate: true, deep: true },
 )
@@ -245,7 +247,7 @@ onMounted(() => {
 
   <div
     v-else
-    class="dashboard-shell relative h-full w-full overflow-hidden text-base-content safe-pad"
+    class="dashboard-shell relative h-full w-full overflow-hidden text-base-content"
     :class="{ 'is-dark': themeMode === 'dark' }"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
@@ -253,13 +255,18 @@ onMounted(() => {
     @pointercancel="onPointerCancel"
     @click.capture="onClickCapture"
   >
-    <BackgroundOrbs :dark="themeMode === 'dark'" />
-    <StatusBarStrip :dark="themeMode === 'dark'" />
-    <div class="top-fade" aria-hidden="true" />
+    <!-- Full-bleed wallpaper: fixed to the large viewport, so it runs under the
+         iOS status bar, the home indicator and rubber-band overscroll. -->
+    <div class="wallpaper" aria-hidden="true">
+      <BackgroundOrbs :dark="themeMode === 'dark'" />
+    </div>
+    <StatusBarStrip :enabled="general.statusBarStrip === true" :dark="themeMode === 'dark'" />
+    <ConnectionBadge />
 
-    <div class="relative z-10 flex flex-col h-full px-4 pt-4 max-w-lg mx-auto">
-      <HeaderCard class="mb-4" />
-
+    <div
+      class="relative z-10 flex flex-col h-full px-4 max-w-lg mx-auto"
+      :class="status === 'connected' ? 'pt-4' : 'pt-9'"
+    >
       <div class="pages-viewport -mx-4" :style="{ '--release': `${releaseX}px` }">
         <Transition :name="pageTransition">
           <div
@@ -269,7 +276,7 @@ onMounted(() => {
             :class="{ 'is-dragging': dragging }"
             :style="{ '--drag': `${dragX}px` }"
           >
-            <div class="pb-[120px]">
+            <div class="page-content">
               <template v-for="section in sections" :key="section.key">
                 <DividerTile v-if="section.divider" class="section-divider" :label="section.divider.label || ''" />
                 <div v-if="section.devices.length" class="tile-grid">
@@ -299,10 +306,33 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/*
+ * The shell pads only the top and the sides: the pages run to the bottom edge
+ * (behind the dock and the home indicator) and pad their own content instead.
+ */
 .dashboard-shell {
   --shell-bg: #f3f0f7;
-  background: var(--shell-bg);
+  background: transparent;
   touch-action: pan-y;
+  padding: var(--safe-top, 0px) var(--safe-right, 0px) 0 var(--safe-left, 0px);
+}
+
+.wallpaper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100vh;
+  height: 100lvh;
+  min-height: 100%;
+  z-index: 0;
+  background: var(--shell-bg);
+  pointer-events: none;
+}
+
+/* Last row of tiles clears the dock: dock height + gap + home indicator. */
+.page-content {
+  padding-bottom: calc(var(--dock-h) + var(--dock-gap) + var(--safe-bottom, 0px) + 16px);
 }
 
 .dashboard-shell.is-dark {
@@ -314,28 +344,6 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-}
-
-/*
- * Status-bar area: solid shell colour (like the native iOS status bar), then a
- * short eased fade so the tinted background starts below it.
- */
-.top-fade {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 5;
-  height: calc(var(--safe-top, 0px) + 22px);
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    var(--shell-bg) 0,
-    var(--shell-bg) var(--safe-top, 0px),
-    color-mix(in srgb, var(--shell-bg) 70%, transparent) calc(var(--safe-top, 0px) + 7px),
-    color-mix(in srgb, var(--shell-bg) 25%, transparent) calc(var(--safe-top, 0px) + 15px),
-    transparent 100%
-  );
 }
 
 /*

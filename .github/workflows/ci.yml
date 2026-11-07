@@ -83,6 +83,26 @@ jobs:
         env:
           BASE_URL: http://localhost:4173
 
+      - name: Run layout edge test
+        run: node scripts/layout-edges.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run header tile test
+        run: node scripts/header-tiles.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run stage 2 tile test
+        run: node scripts/stage2-tiles.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run player test
+        run: node scripts/player.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
       - name: Preview server log
         if: failure()
         run: cat preview.log

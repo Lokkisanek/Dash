@@ -11,7 +11,7 @@
  */
 
 export const guestDashboard = {
-  configVersion: 2,
+  configVersion: 3,
 
   guestInfo: {
     wifiSsid: 'Guest-Home',
@@ -19,19 +19,11 @@ export const guestDashboard = {
     wifiSecurity: 'WPA',
   },
 
+  /** The header (clock, greeting, weather, Wi-Fi) is a tile since config version 3. */
   general: {
-    /** Whole top status bar */
-    showTopBar: true,
-    /** "Good evening, <HA user>" + outside weather */
-    showWelcome: true,
-    /** '' = first weather.* entity, else Open-Meteo at the HA home location */
-    weatherEntity: '',
-    showTime: true,
     use24h: true,
-    showDate: true,
-    showWifi: true,
-    showTemperature: true,
-    showHumidity: true,
+    /** Installed iPhone app: dark strip behind the white status bar (off = wallpaper runs under it) */
+    statusBarStrip: false,
   },
 
   /** Idle screen: big clock or a cross-fading photo frame */
@@ -57,6 +49,21 @@ export const guestDashboard = {
       label: 'Obývák',
       icon: 'Sofa',
       devices: [
+        {
+          id: 'header-demo',
+          type: 'header',
+          style: 'card',
+          size: '4x2',
+          showTime: true,
+          showDate: true,
+          showGreeting: true,
+          showWeather: true,
+          showTemperature: true,
+          showHumidity: true,
+          showWifi: true,
+          entity: '',
+          contrast: 'auto',
+        },
         {
           id: 'light.obyvak_strop',
           type: 'light',
@@ -166,6 +173,30 @@ export const guestDashboard = {
           type: 'climate',
           label: 'Topení',
         },
+        {
+          // dash light group: one tile, one call for all three lights
+          id: 'light_group-5a6b7c8d',
+          type: 'light_group',
+          label: 'Všechna světla',
+          icon: 'LampCeiling',
+          style: 'slider',
+          size: '4x1',
+          entities: ['light.loznice_strop', 'light.loznice_nocni_leva', 'light.loznice_nocni_prava'],
+        },
+        {
+          id: 'fan.loznice',
+          type: 'fan',
+          label: 'Ventilátor',
+          style: 'slider',
+          size: '2x1',
+        },
+        {
+          id: 'fan.loznice',
+          type: 'fan',
+          label: 'Ventilátor',
+          style: 'toggle',
+          size: '1x1',
+        },
       ],
     },
     {
@@ -221,8 +252,16 @@ export const guestDashboard = {
           id: 'light.chodba_vstup',
           type: 'light',
           label: 'Vstup',
-          supportsBrightness: true,
+          supportsBrightness: false,
           supportsColorTemp: false,
+        },
+        {
+          // Home Assistant light group (domain light, members in attributes.entity_id)
+          id: 'light.chodba_skupina',
+          type: 'light',
+          label: 'Chodba vše',
+          style: 'button',
+          size: '2x1',
         },
         {
           id: 'switch.kava',
@@ -230,6 +269,32 @@ export const guestDashboard = {
           label: 'Kávovar',
           icon: 'Coffee',
         },
+      ],
+    },
+    {
+      id: 'prehled',
+      label: 'Přehled',
+      icon: 'Activity',
+      devices: [
+        { id: 'scene.vecer', type: 'scene', label: 'Večer', icon: 'Moon', style: 'row', size: '4x1' },
+        { id: 'scene.kino', type: 'scene', label: 'Kino', icon: 'Clapperboard', style: 'button', size: '1x1' },
+        { id: 'sensor.obyvak_teplota', type: 'sensor', label: 'Obývák', style: 'value', size: '1x1' },
+        { id: 'sensor.obyvak_vlhkost', type: 'sensor', label: 'Vlhkost', style: 'row', size: '2x1' },
+        { id: 'binary_sensor.vchodove_dvere', type: 'binary_sensor', label: 'Vchodové dveře', style: 'row', size: '2x1' },
+        { id: 'binary_sensor.chodba_pohyb', type: 'binary_sensor', label: 'Pohyb', style: 'status', size: '1x1' },
+        { id: 'sensor.pracka', type: 'sensor', label: 'Pračka', style: 'row', size: '2x1' },
+        { id: 'sun.sun', type: 'entity', label: 'Slunce', icon: 'Sun', style: 'row', size: '4x1' },
+        { id: 'sun.sun', type: 'entity', label: 'Výška', icon: 'Sunrise', attribute: 'elevation', style: 'value', size: '1x1' },
+        { id: 'divider-7e8f9a0b', type: 'divider', label: 'Hudba', style: 'line', size: '4x1' },
+        {
+          id: 'media_player.obyvak',
+          type: 'media_player',
+          label: 'Obývák',
+          style: 'vinyl',
+          size: '4x3',
+          outputs: ['media_player.kuchyn'],
+        },
+        { id: 'media_player.kuchyn', type: 'media_player', label: 'Kuchyň', style: 'nowplaying', size: '4x3' },
       ],
     },
   ],

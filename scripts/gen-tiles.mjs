@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Generates the tile registry for the guest app, the HA panel and the
  * integration from shared/tiles.json, so all three agree on device types,
@@ -18,6 +17,43 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SOURCE = 'shared/tiles.json'
 const SIZE_RE = /^[1-4]x[1-4]$/
 const NAME_RE = /^[a-z][a-z0-9_]*$/
+const FIELD_RE = /^[a-z][a-zA-Z0-9]*$/
+const GROUPS = ['devices', 'info', 'header', 'layout']
+const RESERVED_FIELDS = ['id', 'type', 'style', 'size', 'icon']
+
+/** Problems with one field spec ([] = fine). */
+function fieldErrors(spec, styles) {
+  const errors = []
+  const isList = (v) => Array.isArray(v) && v.length > 0 && v.every((s) => typeof s === 'string' && s)
+  switch (spec?.type) {
+    case 'string':
+      if (!Number.isInteger(spec.max) || spec.max < 1) errors.push('string needs an integer max')
+      break
+    case 'bool':
+      if (typeof spec.default !== 'boolean') errors.push('bool needs a true/false default')
+      break
+    case 'enum':
+      if (!isList(spec.values)) errors.push('enum needs values')
+      else if (!spec.values.includes(spec.default)) errors.push('enum default must be one of the values')
+      break
+    case 'entity':
+      if (!isList(spec.domains)) errors.push('entity needs domains')
+      break
+    case 'entities':
+      if (!isList(spec.domains)) errors.push('entities needs domains')
+      if (!Number.isInteger(spec.min) || !Number.isInteger(spec.max) || spec.min < 1 || spec.max < spec.min) {
+        errors.push('entities needs integer min <= max')
+      }
+      break
+    default:
+      errors.push('type must be string, bool, enum, entity or entities')
+  }
+  if (spec?.styles !== undefined) {
+    if (!isList(spec.styles)) errors.push('styles must be a list of style names')
+    else for (const s of spec.styles) if (!styles.includes(s)) errors.push(`styles: unknown style ${s}`)
+  }
+  return errors
+}
 
 export const TILE_OUTPUTS = {
   app: 'src/lib/tileRegistry.generated.js',
@@ -38,6 +74,8 @@ export function loadTiles(base = root) {
     if (!NAME_RE.test(name)) errors.push(`${where}: bad type name`)
     if (typeof t.label !== 'string' || !t.label) errors.push(`${where}.label missing`)
     if (typeof t.icon !== 'string' || !t.icon) errors.push(`${where}.icon missing`)
+    if (!GROUPS.includes(t.group)) errors.push(`${where}.group must be one of ${GROUPS.join(', ')}`)
+    if (t.excludeDomains !== undefined && !Array.isArray(t.excludeDomains)) errors.push(`${where}.excludeDomains must be a list`)
     if (typeof t.needsEntity !== 'boolean') errors.push(`${where}.needsEntity must be true/false`)
     if (!Array.isArray(t.domains)) errors.push(`${where}.domains must be a list`)
     if (t.needsEntity && !t.domains?.length) errors.push(`${where}: needsEntity without domains`)
@@ -52,9 +90,10 @@ export function loadTiles(base = root) {
       }
     }
     for (const [field, spec] of Object.entries(t.fields || {})) {
-      if (spec?.type !== 'string' || !Number.isInteger(spec.max)) {
-        errors.push(`${where}.fields.${field}: only {"type":"string","max":N} is supported`)
+      if (!FIELD_RE.test(field) || RESERVED_FIELDS.includes(field)) {
+        errors.push(`${where}.fields.${field}: bad or reserved field name`)
       }
+      for (const e of fieldErrors(spec, Object.keys(t.styles || {}))) errors.push(`${where}.fields.${field}: ${e}`)
     }
   }
   if (errors.length) throw new Error(`${SOURCE} is invalid:\n  ${errors.join('\n  ')}`)
@@ -68,9 +107,11 @@ function registry(types) {
       name,
       {
         label: t.label,
+        group: t.group,
         icon: t.icon,
         needsEntity: t.needsEntity,
         domains: t.domains,
+        ...(t.excludeDomains ? { excludeDomains: t.excludeDomains } : {}),
         styles: t.styles,
         ...(t.fields ? { fields: t.fields } : {}),
       },
