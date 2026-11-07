@@ -5,7 +5,7 @@ import { useI18n } from '@/composables/useI18n'
 import { hassUrlFromPath } from '@/lib/hassTarget'
 import IntroHello from './IntroHello.vue'
 
-const { status, lastError, hassUrl, setupDone, loginWithHassUrl, startMockMode } = useHomeAssistant()
+const { status, lastError, hassUrl, setupDone, loginWithHassUrl, startMockMode, openPairing } = useHomeAssistant()
 const { t } = useI18n()
 
 const introDone = ref(setupDone.value)
@@ -40,6 +40,7 @@ async function submit() {
     <div class="login-card">
       <p class="eyebrow">dash</p>
       <h1>{{ t('loginTitle') }}</h1>
+      <p class="owner-note">{{ t('loginOwnerNote') }}</p>
 
       <template v-if="!editUrl">
         <p class="lead host">{{ pathHost }}</p>
@@ -66,6 +67,9 @@ async function submit() {
         {{ editUrl ? t('loginContinue') : t('loginSignIn') }}
       </button>
 
+      <button type="button" class="btn-ghost guest-code" @click="openPairing()">
+        {{ t('loginGuestCode') }}
+      </button>
       <button v-if="!editUrl" type="button" class="btn-ghost" @click="editUrl = true">
         {{ t('loginOther') }}
       </button>
@@ -79,6 +83,13 @@ async function submit() {
 </template>
 
 <style scoped>
+.owner-note {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: rgba(26, 18, 32, 0.6);
+}
+
 .login-shell {
   height: 100%;
   display: grid;

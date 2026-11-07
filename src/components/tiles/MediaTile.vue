@@ -22,7 +22,7 @@ const props = defineProps({
   rich: { type: Boolean, default: false },
 })
 
-const { getEntityState, mediaCommand, haAssetUrl } = useHomeAssistant()
+const { getEntityState, mediaCommand, mediaArtwork } = useHomeAssistant()
 const { t } = useI18n()
 
 const entity = computed(() => getEntityState(props.entityId))
@@ -31,7 +31,7 @@ const isPlaying = computed(() => entity.value?.state === 'playing')
 const isActive = computed(() => ['playing', 'paused', 'buffering'].includes(entity.value?.state))
 const title = computed(() => attrs.value.media_title || (isActive.value ? props.label : t('mediaIdle')))
 const subtitle = computed(() => attrs.value.media_artist || attrs.value.media_album_name || props.label)
-const artwork = computed(() => haAssetUrl(attrs.value.entity_picture_local || attrs.value.entity_picture))
+const artwork = computed(() => mediaArtwork(props.entityId, attrs.value))
 const artFailed = ref(false)
 const brand = computed(() => detectMediaBrand(props.entityId, attrs.value))
 const outputs = computed(() => (Array.isArray(attrs.value.source_list) ? attrs.value.source_list : []))
