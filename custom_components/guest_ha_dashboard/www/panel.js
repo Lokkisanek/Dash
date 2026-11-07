@@ -6,9 +6,9 @@
  * picks up saved config through its own HA subscription.
  */
 import { ICONS } from "./icons.js?v=2.0.0";
-import { GuestsTab } from "./guests.js?v=2.0.0";
+import { GuestsTab } from "./guests.js?v=2.1.0-beta.1";
 
-const PANEL_VERSION = "2.0.0";
+const PANEL_VERSION = "2.1.0-beta.1";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
 const ORIENT_KEY = "guest_ha_panel_preview_orient";
