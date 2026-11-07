@@ -28,7 +28,8 @@ const angle = (page) =>
     const el = document.querySelector('[data-vinyl-disc]')
     const m = getComputedStyle(el).transform
     if (!m || m === 'none') return 0
-    const [a, b] = m.match(/-?[\d.e]+/g).map(Number)
+    // numbers may use exponents such as 6.1e-17 (a near-zero sine)
+    const [a, b] = m.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi).map(Number)
     return ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360
   })
 const playState = (page) => page.evaluate(() => getComputedStyle(document.querySelector('[data-vinyl-disc]')).animationPlayState)
