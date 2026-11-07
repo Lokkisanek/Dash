@@ -4,6 +4,7 @@ export const GRID_COLS = 4
 export const TILE_TYPES = {
   "light": {
     "label": "type_light",
+    "group": "devices",
     "icon": "Lightbulb",
     "needsEntity": true,
     "domains": [
@@ -30,6 +31,7 @@ export const TILE_TYPES = {
   },
   "switch": {
     "label": "type_switch",
+    "group": "devices",
     "icon": "Power",
     "needsEntity": true,
     "domains": [
@@ -51,6 +53,7 @@ export const TILE_TYPES = {
   },
   "climate": {
     "label": "type_climate",
+    "group": "devices",
     "icon": "Thermometer",
     "needsEntity": true,
     "domains": [
@@ -67,6 +70,7 @@ export const TILE_TYPES = {
   },
   "cover": {
     "label": "type_cover",
+    "group": "devices",
     "icon": "Blinds",
     "needsEntity": true,
     "domains": [
@@ -88,6 +92,7 @@ export const TILE_TYPES = {
   },
   "media_player": {
     "label": "type_media_player",
+    "group": "devices",
     "icon": "Music",
     "needsEntity": true,
     "domains": [
@@ -109,11 +114,30 @@ export const TILE_TYPES = {
       ],
       "button": [
         "1x1"
+      ],
+      "nowplaying": [
+        "4x3",
+        "4x4"
+      ],
+      "vinyl": [
+        "2x2",
+        "4x3"
       ]
+    },
+    "fields": {
+      "outputs": {
+        "type": "entities",
+        "domains": [
+          "media_player"
+        ],
+        "min": 1,
+        "max": 8
+      }
     }
   },
   "divider": {
     "label": "type_divider",
+    "group": "layout",
     "icon": "Minus",
     "needsEntity": false,
     "domains": [],
@@ -127,6 +151,378 @@ export const TILE_TYPES = {
         "type": "string",
         "max": 60
       }
+    }
+  },
+  "header": {
+    "label": "type_header",
+    "group": "header",
+    "icon": "SunMoon",
+    "needsEntity": false,
+    "domains": [],
+    "styles": {
+      "card": [
+        "4x2",
+        "4x3"
+      ],
+      "plain": [
+        "4x2",
+        "4x3"
+      ],
+      "lockscreen": [
+        "4x2",
+        "4x3"
+      ],
+      "compact": [
+        "4x1"
+      ],
+      "glass": [
+        "4x2",
+        "4x3"
+      ]
+    },
+    "fields": {
+      "showTime": {
+        "type": "bool",
+        "default": true
+      },
+      "showDate": {
+        "type": "bool",
+        "default": true
+      },
+      "showGreeting": {
+        "type": "bool",
+        "default": true
+      },
+      "showWeather": {
+        "type": "bool",
+        "default": true
+      },
+      "showTemperature": {
+        "type": "bool",
+        "default": true
+      },
+      "showHumidity": {
+        "type": "bool",
+        "default": true
+      },
+      "showWifi": {
+        "type": "bool",
+        "default": false
+      },
+      "entity": {
+        "type": "entity",
+        "domains": [
+          "weather"
+        ]
+      },
+      "contrast": {
+        "type": "enum",
+        "values": [
+          "auto",
+          "light",
+          "dark"
+        ],
+        "default": "auto",
+        "styles": [
+          "plain",
+          "lockscreen",
+          "compact"
+        ]
+      }
+    }
+  },
+  "clock": {
+    "label": "type_clock",
+    "group": "header",
+    "icon": "Clock",
+    "needsEntity": false,
+    "domains": [],
+    "styles": {
+      "card": [
+        "2x1",
+        "4x1",
+        "4x2"
+      ],
+      "plain": [
+        "2x1",
+        "4x1",
+        "4x2"
+      ],
+      "lockscreen": [
+        "4x2"
+      ],
+      "compact": [
+        "4x1",
+        "2x1"
+      ]
+    },
+    "fields": {
+      "showDate": {
+        "type": "bool",
+        "default": true
+      },
+      "contrast": {
+        "type": "enum",
+        "values": [
+          "auto",
+          "light",
+          "dark"
+        ],
+        "default": "auto",
+        "styles": [
+          "plain",
+          "lockscreen",
+          "compact"
+        ]
+      }
+    }
+  },
+  "greeting": {
+    "label": "type_greeting",
+    "group": "header",
+    "icon": "Hand",
+    "needsEntity": false,
+    "domains": [],
+    "styles": {
+      "card": [
+        "4x1",
+        "2x1"
+      ],
+      "plain": [
+        "4x1",
+        "2x1"
+      ]
+    },
+    "fields": {
+      "contrast": {
+        "type": "enum",
+        "values": [
+          "auto",
+          "light",
+          "dark"
+        ],
+        "default": "auto",
+        "styles": [
+          "plain"
+        ]
+      }
+    }
+  },
+  "weather": {
+    "label": "type_weather",
+    "group": "header",
+    "icon": "CloudSun",
+    "needsEntity": false,
+    "domains": [],
+    "styles": {
+      "card": [
+        "2x2",
+        "1x1",
+        "2x1",
+        "4x2"
+      ],
+      "plain": [
+        "2x2",
+        "1x1",
+        "2x1",
+        "4x2"
+      ],
+      "glass": [
+        "2x2",
+        "1x1",
+        "2x1",
+        "4x2"
+      ],
+      "compact": [
+        "4x1",
+        "2x1"
+      ]
+    },
+    "fields": {
+      "entity": {
+        "type": "entity",
+        "domains": [
+          "weather"
+        ]
+      },
+      "showHumidity": {
+        "type": "bool",
+        "default": true
+      },
+      "contrast": {
+        "type": "enum",
+        "values": [
+          "auto",
+          "light",
+          "dark"
+        ],
+        "default": "auto",
+        "styles": [
+          "plain",
+          "compact"
+        ]
+      }
+    }
+  },
+  "scene": {
+    "label": "type_scene",
+    "group": "devices",
+    "icon": "Clapperboard",
+    "needsEntity": true,
+    "domains": [
+      "scene"
+    ],
+    "styles": {
+      "button": [
+        "1x1"
+      ],
+      "row": [
+        "2x1",
+        "4x1"
+      ]
+    }
+  },
+  "fan": {
+    "label": "type_fan",
+    "group": "devices",
+    "icon": "Fan",
+    "needsEntity": true,
+    "domains": [
+      "fan"
+    ],
+    "styles": {
+      "toggle": [
+        "1x1"
+      ],
+      "slider": [
+        "2x1",
+        "4x1"
+      ]
+    }
+  },
+  "light_group": {
+    "label": "type_light_group",
+    "group": "devices",
+    "icon": "LampCeiling",
+    "needsEntity": false,
+    "domains": [],
+    "styles": {
+      "tile": [
+        "2x2",
+        "4x2"
+      ],
+      "slider": [
+        "4x1",
+        "2x1"
+      ],
+      "vertical": [
+        "1x2",
+        "2x2"
+      ],
+      "button": [
+        "1x1",
+        "2x1"
+      ]
+    },
+    "fields": {
+      "entities": {
+        "type": "entities",
+        "domains": [
+          "light"
+        ],
+        "min": 2,
+        "max": 20
+      }
+    }
+  },
+  "sensor": {
+    "label": "type_sensor",
+    "group": "info",
+    "icon": "Gauge",
+    "needsEntity": true,
+    "domains": [
+      "sensor"
+    ],
+    "styles": {
+      "value": [
+        "1x1"
+      ],
+      "row": [
+        "2x1",
+        "4x1"
+      ]
+    }
+  },
+  "binary_sensor": {
+    "label": "type_binary_sensor",
+    "group": "info",
+    "icon": "Activity",
+    "needsEntity": true,
+    "domains": [
+      "binary_sensor"
+    ],
+    "styles": {
+      "status": [
+        "1x1"
+      ],
+      "row": [
+        "2x1",
+        "4x1"
+      ]
+    }
+  },
+  "entity": {
+    "label": "type_entity",
+    "group": "info",
+    "icon": "Info",
+    "needsEntity": true,
+    "domains": [
+      "*"
+    ],
+    "excludeDomains": [
+      "lock",
+      "alarm_control_panel",
+      "camera",
+      "siren",
+      "script",
+      "automation",
+      "button",
+      "input_button",
+      "person",
+      "device_tracker",
+      "update",
+      "shell_command",
+      "command_line",
+      "homeassistant",
+      "persistent_notification"
+    ],
+    "styles": {
+      "row": [
+        "2x1",
+        "4x1"
+      ],
+      "value": [
+        "1x1",
+        "2x1"
+      ]
+    },
+    "fields": {
+      "attribute": {
+        "type": "string",
+        "max": 64
+      }
+    }
+  },
+  "wifi": {
+    "label": "type_wifi",
+    "group": "header",
+    "icon": "Wifi",
+    "needsEntity": false,
+    "domains": [],
+    "styles": {
+      "button": [
+        "1x1"
+      ]
     }
   }
 }

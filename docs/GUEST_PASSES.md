@@ -68,13 +68,13 @@ Times are ISO 8601 UTC strings. Status is derived, never stored: `revoked` (revo
 
 | Domain | Services (default) | Data fields |
 |---|---|---|
-| light | turn_on, turn_off, toggle | turn_on: brightness_pct (0–100), color_temp_kelvin (1000–12000), rgb_color ([0–255]×3), transition (0–60). Raw `brightness` is not allowed: with both fields a guest could bypass a `brightness_pct` limit |
+| light | turn_on, turn_off, toggle | turn_on: brightness (0–255, checked against the brightness_pct limit after conversion; not together with brightness_pct), brightness_pct (0–100), color_temp_kelvin (1000–12000 and the light's own min/max), hs_color ([0–360, 0–100]), rgb_color ([0–255]×3), effect (must be in the light's effect_list), transition (0–60 and ≤ the profile's max_transition, default 5 s). One colour field per call. Colour, colour temperature and effects also need the profile capability and a light that supports them |
 | switch, input_boolean | turn_on, turn_off, toggle | – |
-| fan | turn_on, turn_off, set_percentage | percentage (0–100) |
+| fan | turn_on, turn_off, set_percentage, oscillate, set_preset_mode | percentage (0–100, SET_SPEED), oscillating (bool, OSCILLATE), preset_mode (in the fan's preset_modes, PRESET_MODE) |
 | cover | open_cover, close_cover, stop_cover, set_cover_position | position (0–100). **device_class door/garage/gate denied** |
 | climate | set_temperature, set_hvac_mode, turn_on, turn_off | temperature (**limit required**, default 16–26 °C), hvac_mode (enum: off, heat, cool, heat_cool, auto, dry, fan_only) |
-| media_player | media_play, media_pause, media_play_pause, media_next_track, media_previous_track, volume_set, volume_up, volume_down, turn_on, turn_off, select_source | volume_level (0–1), source (string ≤ 100) |
-| scene | turn_on | – |
+| media_player | media_play, media_pause, media_play_pause, media_stop, media_next_track, media_previous_track, media_seek, volume_set, volume_mute, volume_up, volume_down, turn_on, turn_off, select_source, join, unjoin, play_media | Each service needs its feature bit (below). volume_level (0–1, clamped to the profile's max_volume, default 0.7; volume_up refused at the maximum), is_volume_muted (bool), seek_position (0–86400), source (must be in source_list), group_members (≤ 10 players, all in the profile; needs media_group), play_media: media_content_type, media_content_id, enqueue (add/next/play/replace); needs media_browse and an id this pass got from browse/search in the last 10 minutes; URL-like ids are never played |
+| scene | turn_on | no fields (scene.turn_on's `transition` is refused) |
 | humidifier | turn_on, turn_off, set_humidity | humidity (0–100) |
 | vacuum | start, pause, return_to_base | – |
 | sensor, binary_sensor, weather, sun | read only | – |
@@ -85,13 +85,15 @@ Hard denied always, even if a profile in storage lists them: `lock`, `alarm_cont
 
 `guest_policy.validate_call(profile, entity_meta, domain, service, entity_id, data)` is a pure function. It returns `(ok, reason_code, clean_data)` and never raises. A call is allowed only if **all** hold:
 
-1. `entity_id` is a single string matching `domain.object_id`; no lists, no `area_id`/`device_id`/`label_id`/`floor_id`, no `all`.
+1. `entity_id` is a single string matching `domain.object_id`; no `area_id`/`device_id`/`label_id`/`floor_id`, no `all`. Since 2.1 a **list** is accepted for `light` only (dash light groups): at most 20 ids, deduplicated, every one checked like a single call (profile, services, limits, the light's own support); one failure rejects the whole call, which then runs once with the list.
 2. `domain` equals the entity's domain, is in the table and not hard denied; `domain.service` is in the global table and in the entity's profile services.
 3. The entity is in the profile and not `read_only`; for covers, the live and registry device class is not door/garage/gate.
 4. Only the top-level keys `domain, service, entity_id, data` are present; every key of `data` is in that service's field allowlist; every value has the right type (bools are not numbers, NaN/∞ rejected) and lies inside the global range **and** the profile limit.
 5. `climate.set_temperature` always uses a limit: the profile's, or the default 16–26 °C.
+6. Device-dependent rules use the entity's current state attributes (unknown = denied): the `supported_features` bit of the service (`GUEST_SERVICE_FEATURES`: fan SET_SPEED 1, OSCILLATE 2, PRESET_MODE 8; media PAUSE 1, SEEK 2, VOLUME_SET 4, VOLUME_MUTE 8, PREVIOUS_TRACK 16, NEXT_TRACK 32, TURN_ON 128, TURN_OFF 256, PLAY_MEDIA 512, VOLUME_STEP 1024, SELECT_SOURCE 2048, STOP 4096, PLAY 16384, GROUPING 524288; read from Home Assistant 2026.10.4), the light's colour modes, colour temperature range and effect list, the fan's preset modes, the player's source list.
+7. Profile capabilities (`capabilities`, Guests tab, defaults in `GUEST_CAPABILITY_DEFAULTS`): `allow_color` (off), `allow_color_temp` (on, as before), `allow_effects` (off), `max_transition` (5 s), `media_browse` (off), `media_group` (off), `max_volume` (0.7). Stored profiles without the field get these defaults. The guest config carries them, so the app hides what the profile does not allow.
 
-Reason codes: `bad_request`, `entity_not_allowed`, `entity_read_only`, `domain_denied`, `service_not_allowed`, `field_not_allowed`, `invalid_value`, `out_of_range`, `device_class_denied`, `rate_limited`, `pass_inactive`. Denied calls are audited with the reason code only. The call runs as `hass.services.async_call(domain, service, {entity_id, **clean_data}, blocking=True, context=Context())` with a 10 s timeout.
+Reason codes: `bad_request`, `entity_not_allowed`, `entity_read_only`, `domain_denied`, `service_not_allowed`, `field_not_allowed`, `invalid_value`, `out_of_range`, `device_class_denied`, `capability_disabled`, `feature_unsupported`, `rate_limited`, `pass_inactive`. Denied calls are audited with the reason code only. The call runs as `hass.services.async_call(domain, service, {entity_id, **clean_data}, blocking=True, context=Context())` with a 10 s timeout.
 
 ## Pairing
 
@@ -144,6 +146,22 @@ Every message re-checks that the pass exists, is not revoked and is within its v
 - Never exposed: entity/device/area registries, users, HA config (including home coordinates; the Open-Meteo fallback is off in guest mode), other profiles, passes, audit log, history, logbook, templates.
 
 *Refinements against the spec:* `media_image` is answered over the WebSocket (base64) instead of a separate HTTP view, so no token ever appears in an image URL. `photo_list`/`photo_get` are added so a guest tablet keeps the StandBy photo frame; the photos are the ones the owner uploaded for the dashboard.
+
+**Header tiles and other tiles (config v3).**
+- Header, clock, greeting, weather and Wi-Fi tiles have no entity. Like dividers they are never dropped for that, and a page still needs one usable tile.
+- A weather source outside the profile is removed from the tile; the app then uses the first weather entity the guest may see, or shows "—".
+- Without `show_wifi` the Wi-Fi tile is dropped and the header's Wi-Fi button is switched off.
+- Scenes, sensors, binary sensors, fans and generic `entity` tiles are ordinary entity tiles: shown only when the entity is in the profile. Hard-denied domains can never be in a profile, so a generic tile can never show a lock or a camera.
+- A dash light group shows only the lights that are in the profile, and is dropped when none is (the stricter of the two options).
+- Media `outputs` outside the profile are removed.
+
+**Browse and search (stage 3).** The guest socket has the message kinds `browse_media` `{entity_id, media_content_type?, media_content_id?}` and `search_media` `{entity_id, search_query}`. Every request is checked:
+- The player must be in the profile, the profile must have `media_browse`, and the player must report BROWSE_MEDIA (131072) or SEARCH_MEDIA (4194304).
+- Requests use the same token bucket as service calls. A search query is at most 100 characters.
+- Browsing below the root needs an id this pass was given before. The server keeps a small store of issued ids per pass: up to 500, each valid for 10 minutes.
+- The result is reduced to title, media class, content type and id, can_play, can_expand and children class. It has at most 100 children, no thumbnails (they are Home Assistant URLs, often with a token), nothing token-like, and no items with URL-like ids (http, https, ftp, file, data, rtsp, rtmp, ws, wss, `/…`).
+- `play_media` accepts only issued ids.
+Calls are made with the player entity's own `async_browse_media` and `async_internal_search_media`, the same methods Home Assistant's `media_player/browse_media` and `media_player/search_media` websocket commands use (2026.10.4).
 
 **Section dividers (2.1).** A divider tile (`type: "divider"`) has no entity, so it is not part of a profile and never an allowed or denied entity. `filter_config` keeps dividers on the pages it sends, but a page is sent only if it still contains at least one tile the guest may use. Without that rule, a page that consists only of dividers after filtering would reveal its name, icon and section names to guests of other rooms. A divider id (`divider-…`) is not an entity id, so a `call_service` aimed at it fails validation like any other id outside the profile.
 

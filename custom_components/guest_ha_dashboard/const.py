@@ -1,12 +1,13 @@
 """Constants for dash (Guest HA Dashboard integration)."""
 
 DOMAIN = "guest_ha_dashboard"
-VERSION = "2.1.0-beta.2"
+VERSION = "2.1.0-beta.3"
 STORAGE_KEY = f"{DOMAIN}.config"
 STORAGE_VERSION = 1
 # Version of the dashboard config inside the store (see config_schema.py).
-# 1 = everything stored before 2.1, 2 = configVersion + tile registry validation.
-CONFIG_VERSION = 2
+# 1 = everything stored before 2.1, 2 = configVersion + tile registry validation,
+# 3 = header switches in `general` became a `header` tile.
+CONFIG_VERSION = 3
 
 PANEL_ICON = "mdi:tablet-dashboard"
 PANEL_TITLE = "dash"
@@ -20,17 +21,12 @@ PHOTOS_DIR = "dash_photos"
 PHOTOS_MAX = 60
 PHOTO_MAX_BYTES = 3 * 1024 * 1024
 
+# Since config version 3 the clock, greeting, weather and Wi-Fi button are tiles
+# (header, clock, greeting, weather, wifi); their options live on the tile.
 DEFAULT_GENERAL: dict = {
-    "showTopBar": True,
-    "showWelcome": True,
-    # "" = first weather.* entity, else Open-Meteo for the HA home location
-    "weatherEntity": "",
-    "showTime": True,
     "use24h": True,
-    "showDate": True,
-    "showWifi": True,
-    "showTemperature": True,
-    "showHumidity": True,
+    # Installed iPhone app: solid dark strip behind the white status bar (opt-in)
+    "statusBarStrip": False,
 }
 
 DEFAULT_STANDBY: dict = {
@@ -48,7 +44,7 @@ DEFAULT_CONFIG: dict = {
         "wifiPassword": "",
         "wifiSecurity": "WPA",
     },
-    # Top status bar of the dashboard
+    # Clock format and iPhone status bar; the header itself is a tile
     "general": dict(DEFAULT_GENERAL),
     "standby": dict(DEFAULT_STANDBY),
     # Dashboard pages: grid of entity tiles
@@ -123,18 +119,26 @@ _NUM = "number"
 _STR = "string"
 _ENUM = "enum"
 _RGB = "rgb"
+_HS = "hs"
+_BOOL = "bool"
+_ENTITIES = "entities"
 
 HVAC_MODES = ("off", "heat", "cool", "heat_cool", "auto", "dry", "fan_only")
 
 # domain -> service -> {field: spec}. Anything not listed is denied.
 GUEST_SERVICES: dict = {
+    # Fields and ranges as in light.turn_on of HA 2026.10.4 (light/const.py,
+    # LIGHT_TURN_ON_SCHEMA). `brightness` is checked against the brightness_pct
+    # limit after conversion; colour, colour temperature and effects also need
+    # the profile capability and the light's own support (guest_policy.py).
     "light": {
         "turn_on": {
-            # `brightness` (0-255) is left out on purpose: with both it and
-            # brightness_pct allowed, a guest could bypass a brightness_pct limit.
+            "brightness": {"type": _INT, "min": 0, "max": 255},
             "brightness_pct": {"type": _NUM, "min": 0, "max": 100},
             "color_temp_kelvin": {"type": _INT, "min": 1000, "max": 12000},
+            "hs_color": {"type": _HS},
             "rgb_color": {"type": _RGB, "min": 0, "max": 255},
+            "effect": {"type": _STR, "max_len": 100},
             "transition": {"type": _NUM, "min": 0, "max": 60},
         },
         "turn_off": {"transition": {"type": _NUM, "min": 0, "max": 60}},
@@ -142,10 +146,13 @@ GUEST_SERVICES: dict = {
     },
     "switch": {"turn_on": {}, "turn_off": {}, "toggle": {}},
     "input_boolean": {"turn_on": {}, "turn_off": {}, "toggle": {}},
+    # fan services of HA 2026.10.4 (fan/services.py)
     "fan": {
         "turn_on": {},
         "turn_off": {},
         "set_percentage": {"percentage": {"type": _INT, "min": 0, "max": 100}},
+        "oscillate": {"oscillating": {"type": _BOOL}},
+        "set_preset_mode": {"preset_mode": {"type": _STR, "max_len": 100}},
     },
     "cover": {
         "open_cover": {},
@@ -159,18 +166,34 @@ GUEST_SERVICES: dict = {
         "turn_on": {},
         "turn_off": {},
     },
+    # media_player services of HA 2026.10.4 (media_player/services.py). The
+    # feature bit each one needs is in GUEST_SERVICE_FEATURES; join needs the
+    # profile capability media_group, play_media media_browse plus a content id
+    # this pass got from browse/search (guest_policy.py).
     "media_player": {
         "media_play": {},
         "media_pause": {},
         "media_play_pause": {},
+        "media_stop": {},
         "media_next_track": {},
         "media_previous_track": {},
+        "media_seek": {"seek_position": {"type": _NUM, "min": 0, "max": 86400}},
         "volume_set": {"volume_level": {"type": _NUM, "min": 0, "max": 1}},
+        "volume_mute": {"is_volume_muted": {"type": _BOOL}},
         "volume_up": {},
         "volume_down": {},
         "turn_on": {},
         "turn_off": {},
         "select_source": {"source": {"type": _STR, "max_len": 100}},
+        "join": {
+            "group_members": {"type": _ENTITIES, "domain": "media_player", "max": 10}
+        },
+        "unjoin": {},
+        "play_media": {
+            "media_content_type": {"type": _STR, "max_len": 100},
+            "media_content_id": {"type": _STR, "max_len": 1000},
+            "enqueue": {"type": _ENUM, "enum": ["add", "next", "play", "replace"]},
+        },
     },
     "scene": {"turn_on": {}},
     "humidifier": {
@@ -182,6 +205,79 @@ GUEST_SERVICES: dict = {
 }
 
 GUEST_READ_ONLY_DOMAINS = ("sensor", "binary_sensor", "weather", "sun")
+
+# Profile-wide switches, edited in the Guests tab. Missing in a stored profile =
+# these defaults: what profiles could do before stays (colour temperature), new
+# capabilities start switched off (colour, effects).
+GUEST_CAPABILITY_DEFAULTS: dict = {
+    "allow_color": False,
+    "allow_color_temp": True,
+    "allow_effects": False,
+    "max_transition": 5,
+    # music: browse/search and play what was found, group speakers, volume cap
+    "media_browse": False,
+    "media_group": False,
+    "max_volume": 0.7,
+}
+
+# supported_features bit an entity must have for a guest call (HA 2026.10.4:
+# FanEntityFeature SET_SPEED=1, OSCILLATE=2, PRESET_MODE=8).
+# A mask means "any of these bits" (media_play_pause: PLAY or PAUSE).
+# MediaPlayerEntityFeature of HA 2026.10.4: PAUSE=1 SEEK=2 VOLUME_SET=4
+# VOLUME_MUTE=8 PREVIOUS_TRACK=16 NEXT_TRACK=32 TURN_ON=128 TURN_OFF=256
+# PLAY_MEDIA=512 VOLUME_STEP=1024 SELECT_SOURCE=2048 STOP=4096 PLAY=16384
+# BROWSE_MEDIA=131072 GROUPING=524288 SEARCH_MEDIA=4194304.
+GUEST_SERVICE_FEATURES: dict = {
+    "fan.set_percentage": 1,
+    "fan.oscillate": 2,
+    "fan.set_preset_mode": 8,
+    "media_player.media_play": 16384,
+    "media_player.media_pause": 1,
+    "media_player.media_play_pause": 16384 | 1,
+    "media_player.media_stop": 4096,
+    "media_player.media_next_track": 32,
+    "media_player.media_previous_track": 16,
+    "media_player.media_seek": 2,
+    "media_player.volume_set": 4,
+    "media_player.volume_mute": 8,
+    "media_player.volume_up": 4 | 1024,
+    "media_player.volume_down": 4 | 1024,
+    "media_player.turn_on": 128,
+    "media_player.turn_off": 256,
+    "media_player.select_source": 2048,
+    "media_player.join": 524288,
+    "media_player.unjoin": 524288,
+    "media_player.play_media": 512,
+}
+MEDIA_FEATURE_BROWSE = 131072
+MEDIA_FEATURE_SEARCH = 4194304
+
+# Browse/search for guests: what is sent, how much, how long a found id stays playable
+MEDIA_BROWSE_MAX_CHILDREN = 100
+MEDIA_ISSUED_TTL_SECONDS = 10 * 60
+MEDIA_ISSUED_MAX = 500
+MEDIA_SEARCH_MAX_LEN = 100
+# Content ids that point straight at a stream or a file are never played for a guest
+MEDIA_URL_SCHEMES = (
+    "http",
+    "https",
+    "ftp",
+    "file",
+    "data",
+    "rtsp",
+    "rtmp",
+    "ws",
+    "wss",
+)
+
+# LightEntityFeature.EFFECT and ColorMode groups (HA 2026.10.4, light/const.py)
+LIGHT_FEATURE_EFFECT = 4
+LIGHT_COLOR_MODES = ("hs", "rgb", "rgbw", "rgbww", "xy")
+LIGHT_COLOR_TEMP_MODE = "color_temp"
+
+# A guest call may target a list of lights (dash light groups); every one is checked.
+LIST_TARGET_DOMAINS = ("light",)
+LIST_TARGET_MAX = 20
 
 GUEST_DENIED_DOMAINS = (
     "lock",

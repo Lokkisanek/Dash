@@ -1,0 +1,131 @@
+[
+  {
+    "name": "v2 with the header on: one header tile at the top of page 1, old keys removed",
+    "input": {
+      "configVersion": 2,
+      "general": {
+        "showTopBar": true,
+        "showWelcome": true,
+        "weatherEntity": "weather.home",
+        "showTime": true,
+        "use24h": true,
+        "showDate": false,
+        "showWifi": true,
+        "showTemperature": false,
+        "showHumidity": true,
+        "statusBarStrip": false
+      },
+      "pages": [
+        { "id": "a", "devices": [{ "id": "light.a", "type": "light" }] },
+        { "id": "b", "devices": [] }
+      ]
+    },
+    "output": {
+      "configVersion": 3,
+      "general": { "use24h": true, "statusBarStrip": false },
+      "pages": [
+        {
+          "id": "a",
+          "devices": [
+            {
+              "id": "header-*",
+              "type": "header",
+              "style": "card",
+              "size": "4x2",
+              "showTime": true,
+              "showDate": false,
+              "showWifi": true,
+              "showGreeting": true,
+              "showWeather": true,
+              "showTemperature": false,
+              "showHumidity": true,
+              "entity": "weather.home",
+              "contrast": "auto"
+            },
+            { "id": "light.a", "type": "light" }
+          ]
+        },
+        { "id": "b", "devices": [] }
+      ]
+    }
+  },
+  {
+    "name": "only the top bar: the greeting block is off",
+    "input": {
+      "configVersion": 2,
+      "general": { "showTopBar": true, "showWelcome": false, "showWifi": false },
+      "pages": [{ "id": "a", "devices": [] }]
+    },
+    "output": {
+      "configVersion": 3,
+      "general": {},
+      "pages": [
+        {
+          "id": "a",
+          "devices": [
+            {
+              "id": "header-*",
+              "type": "header",
+              "style": "card",
+              "size": "4x2",
+              "showTime": true,
+              "showDate": true,
+              "showWifi": false,
+              "showGreeting": false,
+              "showWeather": false,
+              "showTemperature": true,
+              "showHumidity": true,
+              "entity": "",
+              "contrast": "auto"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "both blocks off: no tile",
+    "input": {
+      "configVersion": 2,
+      "general": { "showTopBar": false, "showWelcome": false, "use24h": false },
+      "pages": [{ "id": "a", "devices": [{ "id": "switch.x", "type": "switch" }] }]
+    },
+    "output": {
+      "configVersion": 3,
+      "general": { "use24h": false },
+      "pages": [{ "id": "a", "devices": [{ "id": "switch.x", "type": "switch" }] }]
+    }
+  },
+  {
+    "name": "a clock tile already exists: nothing inserted",
+    "input": {
+      "configVersion": 2,
+      "general": { "showTopBar": true },
+      "pages": [
+        { "id": "a", "devices": [] },
+        { "id": "b", "devices": [{ "id": "clock-1", "type": "clock" }] }
+      ]
+    },
+    "output": {
+      "configVersion": 3,
+      "general": {},
+      "pages": [
+        { "id": "a", "devices": [] },
+        { "id": "b", "devices": [{ "id": "clock-1", "type": "clock" }] }
+      ]
+    }
+  },
+  {
+    "name": "already version 3: unchanged",
+    "input": {
+      "configVersion": 3,
+      "general": { "use24h": true },
+      "pages": [{ "id": "a", "devices": [] }]
+    },
+    "output": {
+      "configVersion": 3,
+      "general": { "use24h": true },
+      "pages": [{ "id": "a", "devices": [] }]
+    }
+  }
+]

@@ -204,6 +204,9 @@ onUnmounted(() => {
 .standby {
   position: fixed;
   inset: 0;
+  /* Large viewport, so black also covers the home-indicator zone on iOS. */
+  min-height: 100vh;
+  min-height: 100lvh;
   z-index: 90;
   display: grid;
   place-items: center;

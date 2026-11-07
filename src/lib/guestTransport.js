@@ -178,6 +178,17 @@ export class GuestPassTransport {
     return this.request({ type: 'call_service', domain, service, entity_id: entityId, data: rest })
   }
 
+  /** Library of an allowed player (needs the profile capability media_browse). */
+  browseMedia(entityId, contentType, contentId) {
+    const msg = { type: 'browse_media', entity_id: entityId }
+    if (contentId) Object.assign(msg, { media_content_type: contentType, media_content_id: contentId })
+    return this.request(msg)
+  }
+
+  searchMedia(entityId, query) {
+    return this.request({ type: 'search_media', entity_id: entityId, search_query: query })
+  }
+
   /** Artwork of an allowed media player as an object URL (or null). */
   async mediaImage(entityId) {
     try {

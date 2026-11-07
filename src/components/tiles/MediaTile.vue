@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { Music, Pause, Play, SkipBack, SkipForward, Volume2, Speaker, Check, X } from 'lucide-vue-next'
+import { Music, Pause, Play, SkipBack, SkipForward, Volume2, Speaker, Check, X, Power, LoaderCircle } from 'lucide-vue-next'
+import { useGuestConfig } from '@/composables/useGuestConfig'
 import { useHomeAssistant } from '@/composables/useHomeAssistant'
 import { useI18n } from '@/composables/useI18n'
 import { unlockAudio } from '@/composables/useSound'
@@ -41,9 +42,16 @@ const brand = computed(() => detectMediaBrand(props.entityId, attrs.value))
 const can = computed(() => mediaControls(entity.value))
 const outputs = computed(() => can.value.sources)
 const showOutputs = ref(false)
+/** unavailable | off | idle | buffering | playing | paused (mediaCaps.js) */
+const phase = computed(() => can.value.phase)
+const { capabilities } = useGuestConfig()
+/** A guest's volume slider ends at the profile maximum (the server clamps too). */
+const volumeMax = computed(() => Math.round((capabilities.value?.max_volume ?? 1) * 100))
 
 const localVolume = ref(null)
-const volume = computed(() => Math.round((localVolume.value ?? Number(attrs.value.volume_level ?? 0)) * 100))
+const volume = computed(() =>
+  Math.min(100, Math.max(0, Math.round((localVolume.value ?? Number(attrs.value.volume_level ?? 0)) * 100))),
+)
 
 const now = ref(Date.now())
 let clock = 0
@@ -57,6 +65,8 @@ const position = computed(() => mediaPosition(entity.value, now.value))
 const progress = computed(() =>
   duration.value && position.value != null ? Math.min(100, (position.value / duration.value) * 100) : 0,
 )
+/** Idle/standby players have no real position: no progress bar. */
+const showProgress = computed(() => ['playing', 'paused', 'buffering'].includes(phase.value) && duration.value > 0 && position.value != null)
 
 async function cmd(service, data) {
   unlockAudio()
@@ -65,7 +75,7 @@ async function cmd(service, data) {
 
 let volTimer = null
 function onVolume(e) {
-  const v = Number(e.target.value) / 100
+  const v = Math.min(volumeMax.value, Math.max(0, Number(e.target.value))) / 100
   localVolume.value = v
   clearTimeout(volTimer)
   volTimer = setTimeout(async () => {
@@ -103,7 +113,8 @@ async function pickOutput(source) {
   <div
     v-else
     class="media-tile squircle"
-    :class="[`is-${variant}`, { 'is-compact': compact, 'is-playing': isPlaying, 'is-rich': rich }]"
+    :class="[`is-${variant}`, `phase-${phase}`, { 'is-compact': compact, 'is-playing': isPlaying, 'is-rich': rich }]"
+    :data-phase="phase"
   >
     <div class="art">
       <img v-if="artwork && !artFailed" :src="artwork" alt="" draggable="false" @error="artFailed = true" />
@@ -114,21 +125,27 @@ async function pickOutput(source) {
       <div class="head">
         <div class="min-w-0">
           <p class="title truncate">{{ title }}</p>
-          <p class="subtitle truncate">{{ subtitle }}</p>
+          <p class="subtitle truncate">{{ phase === 'unavailable' ? t('unavailable') : subtitle }}</p>
         </div>
         <span v-if="brand && variant !== 'mini'" class="brand" :style="{ '--brand': brand.color }">
           <i />{{ brand.name }}
         </span>
       </div>
 
-      <div v-if="variant === 'cover' && rich && duration" class="progress">
+      <div v-if="variant === 'cover' && rich && showProgress" class="progress">
         <div class="bar"><span :style="{ width: `${progress}%` }" /></div>
         <div class="times tabular-nums">
           <span>{{ formatTime(position) }}</span><span>{{ formatTime(duration) }}</span>
         </div>
       </div>
 
-      <div class="controls">
+      <!-- off: only the power button -->
+      <div v-if="phase === 'off'" class="controls">
+        <button v-if="can.turnOn" type="button" class="ctl ctl-main" :aria-label="t('on')" @click="cmd('turn_on')">
+          <Power :size="20" />
+        </button>
+      </div>
+      <div v-else class="controls">
         <button
           v-if="variant !== 'mini' && !compact && can.previous"
           type="button"
@@ -143,9 +160,11 @@ async function pickOutput(source) {
           type="button"
           class="ctl ctl-main"
           :aria-label="isPlaying ? t('mediaPause') : t('mediaPlay')"
+          :aria-busy="phase === 'buffering'"
           @click="cmd('media_play_pause')"
         >
-          <Pause v-if="isPlaying" :size="22" fill="currentColor" />
+          <LoaderCircle v-if="phase === 'buffering'" :size="22" class="spin" />
+          <Pause v-else-if="isPlaying" :size="22" fill="currentColor" />
           <Play v-else :size="22" fill="currentColor" class="translate-x-[1px]" />
         </button>
         <button
@@ -168,12 +187,12 @@ async function pickOutput(source) {
         </button>
       </div>
 
-      <label v-if="can.volume && ((variant === 'card' && !compact) || (variant === 'cover' && rich))" class="volume">
+      <label v-if="can.volume && phase !== 'off' && ((variant === 'card' && !compact) || (variant === 'cover' && rich))" class="volume">
         <Volume2 :size="15" class="shrink-0 opacity-60" />
         <input
           type="range"
           min="0"
-          max="100"
+          :max="volumeMax"
           :value="volume"
           class="range range-xs range-primary flex-1"
           data-no-swipe
@@ -225,6 +244,26 @@ async function pickOutput(source) {
   background: var(--color-base-100);
   color: var(--color-base-content);
   user-select: none;
+}
+
+.media-tile.phase-unavailable {
+  opacity: 0.55;
+}
+
+.spin {
+  animation: media-spin 1s linear infinite;
+}
+
+@keyframes media-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
 }
 
 .media-tile.is-compact {

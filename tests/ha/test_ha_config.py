@@ -1,4 +1,4 @@
-"""Dashboard config store: v1 -> v2 migration, tile validation, round trip."""
+"""Dashboard config store: migrations to v3, tile validation, round trip."""
 
 from __future__ import annotations
 
@@ -51,12 +51,15 @@ async def test_v1_is_migrated_on_load(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     data = hass.data[DOMAIN]["store"].data
-    assert data["configVersion"] == 2
+    assert data["configVersion"] == 3
     assert "rooms" not in data
     page = data["pages"][0]
     assert page["id"] == "obyvak"
     assert "haAreaId" not in page
-    devices = page["devices"]
+    # no `general` in v1: the old defaults showed the header, so it is now a tile
+    header, *devices = page["devices"]
+    assert header["type"] == "header"
+    assert header["showTime"] is True and header["showWifi"] is True
     assert [d["type"] for d in devices] == ["light", "switch", "cover"]
     assert devices[0]["style"] == "slider"
     assert devices[0]["size"] == "4x1"
@@ -65,8 +68,8 @@ async def test_v1_is_migrated_on_load(
     assert data["dock"] == [
         {"pageId": "obyvak", "label": "", "showLabel": True, "icon": "Sofa"}
     ]
-    # missing sections come back with defaults
-    assert data["general"]["showTopBar"] is True
+    # missing sections come back with defaults; header switches are gone
+    assert data["general"] == {"use24h": True, "statusBarStrip": False}
     assert data["standby"] == {
         "enabled": False,
         "idleMinutes": 2,
@@ -88,6 +91,7 @@ async def test_save_validates_and_round_trips(
 ) -> None:
     client = await hass_ws_client(hass)
     config = {
+        "configVersion": 3,
         "pages": [
             {
                 "id": "p1",
@@ -102,13 +106,14 @@ async def test_save_validates_and_round_trips(
     }
     await client.send_json_auto_id({"type": f"{DOMAIN}/set_config", "config": config})
     saved = (await client.receive_json())["result"]
-    assert saved["configVersion"] == 2
+    assert saved["configVersion"] == 3
     assert saved["pages"][0]["devices"] == [
         {
             "id": "media_player.tv",
             "type": "media_player",
             "style": "tile",
             "size": "4x2",
+            "outputs": [],  # tile option since 2.1.0-beta.3
         }
     ]
     assert saved["standby"]["mode"] == "photos"
@@ -128,4 +133,47 @@ async def test_save_validates_and_round_trips(
 async def test_fresh_install_has_current_version(
     hass: HomeAssistant, setup_integration: MockConfigEntry
 ) -> None:
-    assert hass.data[DOMAIN]["store"].data["configVersion"] == 2
+    assert hass.data[DOMAIN]["store"].data["configVersion"] == 3
+
+
+async def test_v2_header_settings_become_a_tile_on_save(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+    hass_ws_client: Any,
+) -> None:
+    """A 2.1.0-beta panel still sends the header switches in `general`."""
+    client = await hass_ws_client(hass)
+    config = {
+        "configVersion": 2,
+        "general": {
+            "showTopBar": True,
+            "showWelcome": False,
+            "showTime": True,
+            "showDate": False,
+            "showWifi": True,
+            "showTemperature": False,
+            "showHumidity": True,
+            "weatherEntity": "weather.home",
+            "use24h": False,
+        },
+        "pages": [{"id": "p1", "devices": [{"id": "light.a", "type": "light"}]}],
+    }
+    await client.send_json_auto_id({"type": f"{DOMAIN}/set_config", "config": config})
+    saved = (await client.receive_json())["result"]
+    assert saved["configVersion"] == 3
+    assert saved["general"] == {"use24h": False, "statusBarStrip": False}
+    header, light = saved["pages"][0]["devices"]
+    assert light["id"] == "light.a"
+    assert header["type"] == "header"
+    assert (header["showTime"], header["showDate"], header["showWifi"]) == (
+        True,
+        False,
+        True,
+    )
+    assert (header["showGreeting"], header["showWeather"]) == (False, False)
+    assert header["entity"] == "weather.home"
+
+    # saving again does not add a second header
+    await client.send_json_auto_id({"type": f"{DOMAIN}/set_config", "config": saved})
+    again = (await client.receive_json())["result"]
+    assert again == saved

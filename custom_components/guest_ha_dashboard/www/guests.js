@@ -10,6 +10,11 @@ qrcode.stringToBytes = utf8Bytes;
 
 const WS = "guest_ha_dashboard";
 
+/** Same defaults as GUEST_CAPABILITY_DEFAULTS in const.py (checked by tests/pure). */
+const CAPABILITY_DEFAULTS = { allow_color: false, allow_color_temp: true, allow_effects: false, max_transition: 5, media_browse: false, media_group: false, max_volume: 0.7 };
+const CAPABILITY_TOGGLES = ["allow_color", "allow_color_temp", "allow_effects", "media_browse", "media_group"];
+const MAX_VOLUME_STEPS = [0.3, 0.5, 0.7, 0.85, 1];
+
 const I18N = {
   cs: {
     loading: "Načítám…",
@@ -65,6 +70,15 @@ const I18N = {
     devices: (n) => `${n} zařízení`,
     editDevices: "Zařízení",
     wifi: "Wi-Fi hostům",
+    capsTitle: "Co smí host navíc",
+    cap_allow_color: "Barva světel",
+    cap_allow_color_temp: "Teplota bílé",
+    cap_allow_effects: "Efekty světel",
+    cap_media_browse: "Procházet a pouštět hudbu",
+    cap_media_group: "Seskupovat reproduktory",
+    maxVolume: "Nejvyšší hlasitost",
+    mediaCapsHint: "Procházení ukáže hostovi knihovnu přehrávače z jeho šablony a dovolí pustit jen to, co v ní našel. Odkazy na proudy a soubory se nepustí nikdy.",
+    capsHint: "Platí pro všechna světla v profilu a jen tam, kde to světlo umí. Jas omezíš u každého světla zvlášť.",
     confirmDeleteProfile: "Smazat šablonu?",
     noProfiles: "Zatím žádné šablony.",
     name: "Název",
@@ -157,6 +171,15 @@ const I18N = {
     devices: (n) => `${n} devices`,
     editDevices: "Devices",
     wifi: "Wi-Fi for guests",
+    capsTitle: "Extra guest controls",
+    cap_allow_color: "Light colour",
+    cap_allow_color_temp: "White temperature",
+    cap_allow_effects: "Light effects",
+    cap_media_browse: "Browse and play music",
+    cap_media_group: "Group speakers",
+    maxVolume: "Maximum volume",
+    mediaCapsHint: "Browsing shows the guest the library of the players in their profile and plays only what they found there. Stream and file links are never played.",
+    capsHint: "Applies to every light in the profile, and only where the light supports it. Limit brightness per light.",
     confirmDeleteProfile: "Delete this profile?",
     noProfiles: "No profiles yet.",
     name: "Name",
@@ -222,6 +245,9 @@ const CSS = `
   .g-url { display: block; font-size: 0.78rem; color: var(--muted); word-break: break-all; margin: 6px 0; }
   .g-prof { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
   @media (max-width: 720px) { .g-prof { grid-template-columns: 1fr; } }
+  .g-caps { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 2px 18px; align-items: center; }
+  .g-caps-title { grid-column: 1 / -1; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .g-caps .hint { grid-column: 1 / -1; margin: 2px 0 0; }
   .g-prof input.g-name { border-color: transparent; background: transparent !important; padding-left: 0; font-weight: 600; }
   .g-prof input.g-name:focus { border-color: var(--border); padding-left: 12px; }
   .g-editor { padding: 10px 0 16px; border-bottom: 1px solid var(--border); }
@@ -565,6 +591,7 @@ export class GuestsTab {
             <input class="g-name" data-gprof-name="${p.id}" value="${this.esc(p.name)}" aria-label="${this.t("name")}" maxlength="80" />
             <span class="count">${this.t("devices", Object.keys(p.entities || {}).length)}</span>
             ${this.panel._toggle(`data-gprof-wifi="${p.id}"`, p.show_wifi !== false, this.t("wifi"))}
+            ${this.renderCaps(p)}
             <div class="g-acts">
               <button type="button" class="btn ghost" data-gprof-edit="${p.id}">${this.t("editDevices")}</button>
               <button type="button" class="btn ghost" data-gprof-delete="${p.id}">${this.t("del")}</button>
@@ -572,6 +599,23 @@ export class GuestsTab {
           </div>
           ${this.ui.editing?.id === p.id ? this.renderEditor() : ""}`).join("")}
       </section>`;
+  }
+
+  /**
+   * Profile-wide capability switches (guest_policy.GUEST_CAPABILITY_DEFAULTS).
+   * Missing in an older profile = the defaults: colour and effects off.
+   */
+  renderCaps(p) {
+    const caps = { ...CAPABILITY_DEFAULTS, ...(p.capabilities || {}) };
+    return `
+      <div class="g-caps" role="group" aria-label="${this.esc(this.t("capsTitle"))}">
+        <span class="g-caps-title">${this.t("capsTitle")}</span>
+        ${CAPABILITY_TOGGLES.map((key) => this.panel._toggle(`data-gprof-cap="${p.id}" data-cap="${key}"`, caps[key] === true, this.t(`cap_${key}`))).join("")}
+        <label class="g-cap-vol">${this.t("maxVolume")}
+          <select data-gprof-vol="${p.id}">${MAX_VOLUME_STEPS.map((v) => `<option value="${v}" ${Math.abs((caps.max_volume ?? 0.7) - v) < 0.001 ? "selected" : ""}>${Math.round(v * 100)} %</option>`).join("")}</select>
+        </label>
+        <p class="hint">${this.t("capsHint")} ${this.t("mediaCapsHint")}</p>
+      </div>`;
   }
 
   renderEditor() {
@@ -754,6 +798,17 @@ export class GuestsTab {
     });
     on("[data-gprof-name]", "change", (e) => this.saveProfile(e.currentTarget.dataset.gprofName, { name: e.currentTarget.value }));
     on("[data-gprof-wifi]", "change", (e) => this.saveProfile(e.currentTarget.dataset.gprofWifi, { show_wifi: e.currentTarget.checked }));
+    on("[data-gprof-cap]", "change", (e) => {
+      const id = e.currentTarget.dataset.gprofCap;
+      const p = this.profiles.find((x) => x.id === id);
+      const caps = { ...CAPABILITY_DEFAULTS, ...(p?.capabilities || {}), [e.currentTarget.dataset.cap]: e.currentTarget.checked };
+      this.saveProfile(id, { capabilities: caps });
+    });
+    on("[data-gprof-vol]", "change", (e) => {
+      const id = e.currentTarget.dataset.gprofVol;
+      const p = this.profiles.find((x) => x.id === id);
+      this.saveProfile(id, { capabilities: { ...CAPABILITY_DEFAULTS, ...(p?.capabilities || {}), max_volume: Number(e.currentTarget.value) } });
+    });
     on("[data-gprof-edit]", "click", (e) => {
       const p = this.profiles.find((x) => x.id === e.currentTarget.dataset.gprofEdit);
       this.ui.editing = this.ui.editing?.id === p.id ? null : JSON.parse(JSON.stringify(p));

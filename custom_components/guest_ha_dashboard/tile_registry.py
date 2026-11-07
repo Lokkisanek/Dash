@@ -5,6 +5,7 @@ GRID_COLS = 4
 TILE_TYPES: dict[str, dict] = {
     "light": {
         "label": "type_light",
+        "group": "devices",
         "icon": "Lightbulb",
         "needsEntity": True,
         "domains": [
@@ -31,6 +32,7 @@ TILE_TYPES: dict[str, dict] = {
     },
     "switch": {
         "label": "type_switch",
+        "group": "devices",
         "icon": "Power",
         "needsEntity": True,
         "domains": [
@@ -52,6 +54,7 @@ TILE_TYPES: dict[str, dict] = {
     },
     "climate": {
         "label": "type_climate",
+        "group": "devices",
         "icon": "Thermometer",
         "needsEntity": True,
         "domains": [
@@ -68,6 +71,7 @@ TILE_TYPES: dict[str, dict] = {
     },
     "cover": {
         "label": "type_cover",
+        "group": "devices",
         "icon": "Blinds",
         "needsEntity": True,
         "domains": [
@@ -89,6 +93,7 @@ TILE_TYPES: dict[str, dict] = {
     },
     "media_player": {
         "label": "type_media_player",
+        "group": "devices",
         "icon": "Music",
         "needsEntity": True,
         "domains": [
@@ -111,10 +116,29 @@ TILE_TYPES: dict[str, dict] = {
             "button": [
                 "1x1",
             ],
+            "nowplaying": [
+                "4x3",
+                "4x4",
+            ],
+            "vinyl": [
+                "2x2",
+                "4x3",
+            ],
+        },
+        "fields": {
+            "outputs": {
+                "type": "entities",
+                "domains": [
+                    "media_player",
+                ],
+                "min": 1,
+                "max": 8,
+            },
         },
     },
     "divider": {
         "label": "type_divider",
+        "group": "layout",
         "icon": "Minus",
         "needsEntity": False,
         "domains": [],
@@ -128,6 +152,378 @@ TILE_TYPES: dict[str, dict] = {
                 "type": "string",
                 "max": 60,
             },
+        },
+    },
+    "header": {
+        "label": "type_header",
+        "group": "header",
+        "icon": "SunMoon",
+        "needsEntity": False,
+        "domains": [],
+        "styles": {
+            "card": [
+                "4x2",
+                "4x3",
+            ],
+            "plain": [
+                "4x2",
+                "4x3",
+            ],
+            "lockscreen": [
+                "4x2",
+                "4x3",
+            ],
+            "compact": [
+                "4x1",
+            ],
+            "glass": [
+                "4x2",
+                "4x3",
+            ],
+        },
+        "fields": {
+            "showTime": {
+                "type": "bool",
+                "default": True,
+            },
+            "showDate": {
+                "type": "bool",
+                "default": True,
+            },
+            "showGreeting": {
+                "type": "bool",
+                "default": True,
+            },
+            "showWeather": {
+                "type": "bool",
+                "default": True,
+            },
+            "showTemperature": {
+                "type": "bool",
+                "default": True,
+            },
+            "showHumidity": {
+                "type": "bool",
+                "default": True,
+            },
+            "showWifi": {
+                "type": "bool",
+                "default": False,
+            },
+            "entity": {
+                "type": "entity",
+                "domains": [
+                    "weather",
+                ],
+            },
+            "contrast": {
+                "type": "enum",
+                "values": [
+                    "auto",
+                    "light",
+                    "dark",
+                ],
+                "default": "auto",
+                "styles": [
+                    "plain",
+                    "lockscreen",
+                    "compact",
+                ],
+            },
+        },
+    },
+    "clock": {
+        "label": "type_clock",
+        "group": "header",
+        "icon": "Clock",
+        "needsEntity": False,
+        "domains": [],
+        "styles": {
+            "card": [
+                "2x1",
+                "4x1",
+                "4x2",
+            ],
+            "plain": [
+                "2x1",
+                "4x1",
+                "4x2",
+            ],
+            "lockscreen": [
+                "4x2",
+            ],
+            "compact": [
+                "4x1",
+                "2x1",
+            ],
+        },
+        "fields": {
+            "showDate": {
+                "type": "bool",
+                "default": True,
+            },
+            "contrast": {
+                "type": "enum",
+                "values": [
+                    "auto",
+                    "light",
+                    "dark",
+                ],
+                "default": "auto",
+                "styles": [
+                    "plain",
+                    "lockscreen",
+                    "compact",
+                ],
+            },
+        },
+    },
+    "greeting": {
+        "label": "type_greeting",
+        "group": "header",
+        "icon": "Hand",
+        "needsEntity": False,
+        "domains": [],
+        "styles": {
+            "card": [
+                "4x1",
+                "2x1",
+            ],
+            "plain": [
+                "4x1",
+                "2x1",
+            ],
+        },
+        "fields": {
+            "contrast": {
+                "type": "enum",
+                "values": [
+                    "auto",
+                    "light",
+                    "dark",
+                ],
+                "default": "auto",
+                "styles": [
+                    "plain",
+                ],
+            },
+        },
+    },
+    "weather": {
+        "label": "type_weather",
+        "group": "header",
+        "icon": "CloudSun",
+        "needsEntity": False,
+        "domains": [],
+        "styles": {
+            "card": [
+                "2x2",
+                "1x1",
+                "2x1",
+                "4x2",
+            ],
+            "plain": [
+                "2x2",
+                "1x1",
+                "2x1",
+                "4x2",
+            ],
+            "glass": [
+                "2x2",
+                "1x1",
+                "2x1",
+                "4x2",
+            ],
+            "compact": [
+                "4x1",
+                "2x1",
+            ],
+        },
+        "fields": {
+            "entity": {
+                "type": "entity",
+                "domains": [
+                    "weather",
+                ],
+            },
+            "showHumidity": {
+                "type": "bool",
+                "default": True,
+            },
+            "contrast": {
+                "type": "enum",
+                "values": [
+                    "auto",
+                    "light",
+                    "dark",
+                ],
+                "default": "auto",
+                "styles": [
+                    "plain",
+                    "compact",
+                ],
+            },
+        },
+    },
+    "scene": {
+        "label": "type_scene",
+        "group": "devices",
+        "icon": "Clapperboard",
+        "needsEntity": True,
+        "domains": [
+            "scene",
+        ],
+        "styles": {
+            "button": [
+                "1x1",
+            ],
+            "row": [
+                "2x1",
+                "4x1",
+            ],
+        },
+    },
+    "fan": {
+        "label": "type_fan",
+        "group": "devices",
+        "icon": "Fan",
+        "needsEntity": True,
+        "domains": [
+            "fan",
+        ],
+        "styles": {
+            "toggle": [
+                "1x1",
+            ],
+            "slider": [
+                "2x1",
+                "4x1",
+            ],
+        },
+    },
+    "light_group": {
+        "label": "type_light_group",
+        "group": "devices",
+        "icon": "LampCeiling",
+        "needsEntity": False,
+        "domains": [],
+        "styles": {
+            "tile": [
+                "2x2",
+                "4x2",
+            ],
+            "slider": [
+                "4x1",
+                "2x1",
+            ],
+            "vertical": [
+                "1x2",
+                "2x2",
+            ],
+            "button": [
+                "1x1",
+                "2x1",
+            ],
+        },
+        "fields": {
+            "entities": {
+                "type": "entities",
+                "domains": [
+                    "light",
+                ],
+                "min": 2,
+                "max": 20,
+            },
+        },
+    },
+    "sensor": {
+        "label": "type_sensor",
+        "group": "info",
+        "icon": "Gauge",
+        "needsEntity": True,
+        "domains": [
+            "sensor",
+        ],
+        "styles": {
+            "value": [
+                "1x1",
+            ],
+            "row": [
+                "2x1",
+                "4x1",
+            ],
+        },
+    },
+    "binary_sensor": {
+        "label": "type_binary_sensor",
+        "group": "info",
+        "icon": "Activity",
+        "needsEntity": True,
+        "domains": [
+            "binary_sensor",
+        ],
+        "styles": {
+            "status": [
+                "1x1",
+            ],
+            "row": [
+                "2x1",
+                "4x1",
+            ],
+        },
+    },
+    "entity": {
+        "label": "type_entity",
+        "group": "info",
+        "icon": "Info",
+        "needsEntity": True,
+        "domains": [
+            "*",
+        ],
+        "excludeDomains": [
+            "lock",
+            "alarm_control_panel",
+            "camera",
+            "siren",
+            "script",
+            "automation",
+            "button",
+            "input_button",
+            "person",
+            "device_tracker",
+            "update",
+            "shell_command",
+            "command_line",
+            "homeassistant",
+            "persistent_notification",
+        ],
+        "styles": {
+            "row": [
+                "2x1",
+                "4x1",
+            ],
+            "value": [
+                "1x1",
+                "2x1",
+            ],
+        },
+        "fields": {
+            "attribute": {
+                "type": "string",
+                "max": 64,
+            },
+        },
+    },
+    "wifi": {
+        "label": "type_wifi",
+        "group": "header",
+        "icon": "Wifi",
+        "needsEntity": False,
+        "domains": [],
+        "styles": {
+            "button": [
+                "1x1",
+            ],
         },
     },
 }

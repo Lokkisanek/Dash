@@ -3,6 +3,46 @@
 All notable changes to dash are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.1.0-beta.3] - 07.11.2026
+
+### Added
+
+- Header tiles: `header`, `clock`, `greeting`, `weather` and `wifi`, placed anywhere on a page.
+  - Styles: card, no background (text colour auto/white/dark), lock screen, one line, glass (the dock's material).
+  - One shared clock and one shared weather source.
+- Config version 3: the old header switches in `general` become one header tile at the top of page 1, done by the integration and by the app for older integrations. The General tab keeps the 24-hour clock and the iPhone status bar setting.
+- Scene tile with a check confirmation; sensor, binary sensor (wording for all 29 device classes) and generic entity tiles (read only); fan tile with speed, oscillation and presets.
+- Long-press light controls:
+  - brightness, white temperature with presets, colour (swatches and hue) and effects, only what the light supports;
+  - cancelled by movement, scrolling and page swipes; right-click, Shift+Enter or a keyboard button open it too.
+- dash light groups (`light_group`, 2–20 lights): one tile, one service call with a list of lights, values shown as mixed when the lights disagree, controls limited to what all lights support.
+- Music:
+  - capability table of every MediaPlayerEntityFeature bit;
+  - "Now playing" and record-player styles;
+  - a player sheet with players (volume, power, grouping), browse and search (with play next / add to queue where supported).
+- Guest passes:
+  - `light` calls may target a list of lights (light groups, every light checked);
+  - new fields and services for lights, fans and media players, each checked against the device's own support;
+  - profile capabilities (colour, colour temperature, effects, transition, music browse, speaker grouping, maximum volume) with safe defaults;
+  - `browse_media` / `search_media` on the guest socket with filtered results; `play_media` only for ids the pass was given.
+- Panel: "+ Přidat" menu grouped by kind, inline options for every tile, a checklist for light groups and media outputs, capability switches in the Guests tab.
+- Opt-in `general.statusBarStrip` (dark strip behind the iPhone status bar).
+- `docs/SPEAKERS.md` (Music Assistant, MPD, Snapcast, Bluetooth) and `docs/PROGRESS.md`.
+- Browser tests for the screen edges, header tiles, stage 2 tiles and the player; HA tests for config v3, light groups, colour checks and media browse rules.
+
+### Changed
+
+- The wallpaper runs under the iPhone status bar and to the bottom edge. The dark status bar strip is no longer on by default. The dock sits a fixed 12 px above the home indicator.
+- Media tiles show a control only when the player reports it; a player without `supported_features` gets none. They also handle the unavailable, off, idle and buffering states.
+- Guests: colour and effects are off by default for every profile (colour temperature stays allowed); the volume is capped at 70 % unless the owner changes it.
+- The status badge (Demo, offline) is an overlay under the status bar, not part of the header.
+
+### Fixed
+
+- A black strip behind the iPhone status bar, a grey band under the dock, and the dock sitting too high in the installed app.
+- `tests/js/tiles.test.js` failed on Windows checkouts (CRLF after the shebang of `scripts/gen-tiles.mjs`).
+- The slider tile toggled the light on `pointercancel`.
+
 ## [2.1.0-beta.2] - 07.11.2026
 
 ### Added
@@ -87,6 +127,7 @@ First public release under the name **dash**.
 - The bundled demo Wi-Fi password in the default config. The mock/demo build shows `demo-password` instead.
 - The old React liquid-glass demo page and its unused dependencies.
 
+[2.1.0-beta.3]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.3
 [2.1.0-beta.2]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.2
 [2.1.0-beta.1]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.1
 [2.0.0]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.0.0

@@ -12,7 +12,10 @@
 - About 340 icons with Czech and English search and categories.
 - Media player in several styles, with Spotify, Apple Music and YouTube Music (via Music Assistant) and Chromecast output switching.
 - StandBy: after a period of inactivity the phone shows a big clock (portrait and landscape) or a slowly fading photo frame that starts with the first photo loaded and keeps the photos between sessions.
-- One header with the clock, the greeting and the outside weather; guest Wi-Fi card with a QR code; light and dark mode; Czech and English.
+- Header, clock, greeting, weather and Wi-Fi are tiles in five styles (card, no background, lock screen, one line, glass); guest Wi-Fi card with a QR code; light and dark mode; Czech and English.
+- Scenes, sensors, binary sensors, fans, any entity (read only), dash light groups and long-press light controls (brightness, white temperature, colour, effects; only what the light supports).
+- Music: a player sheet with players, browse and search where the player supports them, "now playing" and record-player styles. [How to connect a speaker](docs/SPEAKERS.md).
+- The wallpaper runs under the iPhone status bar and to the bottom edge.
 - A playful `hello.dash` intro on first setup.
 - **Guest passes** (Přístupy pro hosty): give a guest or a wall tablet a QR code that unlocks only the devices of one room, within limits (e.g. heating 18–25 °C) and only until check-out. Enforced by the integration on the server; the guest never gets a Home Assistant account or token.
 
@@ -29,6 +32,12 @@
   <img src="docs/img/wifi-qr.png" width="240" alt="Guest Wi-Fi card with QR code">
   <img src="docs/img/standby-photos.png" width="240" alt="StandBy photo frame">
   <img src="docs/img/section-divider.png" width="240" alt="Section divider above the media player">
+</p>
+<p>
+  <img src="docs/img/header-lockscreen.png" width="240" alt="Header tile in the lock-screen style">
+  <img src="docs/img/light-sheet.png" width="240" alt="Long-press light controls with colour and effects">
+  <img src="docs/img/vinyl.png" width="240" alt="Record-player media style">
+  <img src="docs/img/player-sheet.png" width="240" alt="Player sheet browsing a music library">
 </p>
 <p>
   <img src="docs/img/media-card.png" width="360" alt="Media player card">
@@ -85,6 +94,7 @@ Pick the mode in the panel under **General → Dashboard**. Hosted mode shows yo
 
 - [Configuration](docs/CONFIGURATION.md): header, pages, dividers, icons, tile styles, dock, media, StandBy, photos, config versions.
 - [Diagnostics](docs/DIAGNOSTICS.md): photo frame and music player, with a checklist for a real Home Assistant.
+- [Speakers](docs/SPEAKERS.md): Music Assistant, MPD, Snapcast and Bluetooth speakers.
 - [Self-hosting](docs/SELF_HOSTING.md): Docker, Coolify, nginx, reverse proxies.
 - [Security & privacy](docs/SECURITY.md): what is stored where, what the host can and can't see, owner mode vs. guest passes, logging.
 - [Guest passes](docs/GUEST_PASSES.md): design, threat model and protocol.
@@ -107,14 +117,14 @@ Other scripts:
 - `npm run brand`: renders the integration icon (`custom_components/guest_ha_dashboard/brand/`) from `public/favicon.svg`.
 - `npm test`: unit tests (vitest) for the photo cache, media helpers, tile registry and icons.
 - `npm run gen:tiles` / `npm run gen:icons`: regenerate the tile registry (`shared/tiles.json`) and the icon files (`scripts/icon-catalog.json`); `npm run check:generated` fails if a generated file is stale.
-- `node scripts/smoke.mjs` and `node scripts/standby-photos.mjs`: browser tests against a running mock preview (see `.github/workflows/ci.yml`).
+- `node scripts/smoke.mjs`, `standby-photos.mjs`, `layout-edges.mjs`, `header-tiles.mjs`, `stage2-tiles.mjs` and `player.mjs`: browser tests against a running mock preview (see `.github/workflows/ci.yml`).
 - `pytest`: integration tests (`pip install -r requirements_test.txt`; Linux/macOS, Python 3.14). `pytest tests/pure -p no:homeassistant` runs the policy tests anywhere, also on Windows.
 
 Useful URL flags:
 
 - `?standby=1` forces StandBy.
 - `?lang=en` or `?lang=cs` forces the UI language.
-- Demo build only: `?guest=1` shows the restricted guest dashboard, `?guest=ended` the ended-pass screen, `#pair=XXXX-XXXX-XXXX` the pairing screen, `?theme=dark` the dark theme, `?mockPhotos=1` (or `empty`, `fail`) the StandBy photo frame with demo photos.
+- Demo build only: `?guest=1` shows the restricted guest dashboard, `?guest=ended` the ended-pass screen, `#pair=XXXX-XXXX-XXXX` the pairing screen, `?theme=dark` the dark theme, `?mockPhotos=1` (or `empty`, `fail`) the StandBy photo frame with demo photos, `?headerStyle=lockscreen` (card, plain, lockscreen, compact, glass) the demo header tile's style, `?safe=59,34` simulated iPhone insets (top, bottom; dev and demo builds only).
 - `?glass=lens` forces the WebKit liquid-glass path in Chrome.
 
 The integration lives in `custom_components/guest_ha_dashboard/`. The panel is a single web component (`www/panel.js`) with no build step.

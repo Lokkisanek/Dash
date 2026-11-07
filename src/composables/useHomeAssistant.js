@@ -37,6 +37,9 @@ import {
 } from '@/lib/guestPass'
 import { GuestPassTransport, GuestError } from '@/lib/guestTransport'
 import { MOCK_PHOTO_IDS, mockPhotoUrl, mockPhotosFlag } from '@/lib/mockPhotos'
+import { TILE_TYPES } from '@/lib/tileRegistry.generated.js'
+import { mockBrowse, mockSearch, mockItem } from '@/lib/mockMedia'
+import { aggregateLightGroup, groupToggleService, lightGroupEntityId } from '@/lib/lightGroup'
 import {
   MOCK_GUEST_PASS,
   MOCK_GUEST_PROFILE,
@@ -278,8 +281,76 @@ function buildMockEntities() {
   setLightMock(entities, 'light.obyvak_strop', true, 70, 3000)
   setLightMock(entities, 'light.obyvak_lampa', true, 45, 2700)
   setLightMock(entities, 'light.chodba_vstup', true, 40, 3000)
+  addMockStage2(entities, now)
 
   return entities
+}
+
+/**
+ * Demo devices for the stage 2 tiles: lights with different capabilities (the
+ * long-press sheet shows only what each supports), an HA light group, scenes,
+ * sensors, binary sensors, a fan and a generic entity.
+ */
+function addMockStage2(entities, now) {
+  const add = (id, st, attributes) => {
+    entities[id] = { entity_id: id, state: st, attributes, last_changed: now, last_updated: now }
+  }
+  const patch = (id, attrs) => {
+    if (entities[id]) entities[id].attributes = { ...entities[id].attributes, ...attrs }
+  }
+  // full colour + effects; brightness only; on/off only
+  patch('light.obyvak_led_pas', {
+    supported_color_modes: ['color_temp', 'hs'],
+    supported_features: 4 | 32,
+    effect_list: ['off', 'Duha', 'Svíčka', 'Pulz', 'Západ slunce'],
+    effect: 'off',
+    hs_color: [28, 70],
+  })
+  patch('light.obyvak_lampa', { supported_color_modes: ['brightness'], color_temp_kelvin: null })
+  patch('light.chodba_vstup', { supported_color_modes: ['onoff'], brightness: null, color_temp_kelvin: null })
+  // Home Assistant light group: a normal light entity whose attributes list its members
+  add('light.chodba_skupina', 'on', {
+    friendly_name: 'Chodba vše',
+    entity_id: ['light.chodba_strop', 'light.chodba_vstup'],
+    supported_color_modes: ['brightness'],
+    brightness: 128,
+  })
+  add('scene.vecer', '2026-11-07T18:30:00+00:00', { friendly_name: 'Večer' })
+  add('scene.kino', 'unknown', { friendly_name: 'Kino' })
+  patch('sensor.obyvak_teplota', { device_class: 'temperature', friendly_name: 'Teplota obývák' })
+  patch('sensor.obyvak_vlhkost', { device_class: 'humidity', friendly_name: 'Vlhkost obývák' })
+  add('sensor.pracka', 'Ždímání', { friendly_name: 'Pračka – program' })
+  add('binary_sensor.vchodove_dvere', 'off', { device_class: 'door', friendly_name: 'Vchodové dveře' })
+  add('binary_sensor.chodba_pohyb', 'on', { device_class: 'motion', friendly_name: 'Pohyb v chodbě' })
+  add('fan.loznice', 'on', {
+    friendly_name: 'Ventilátor',
+    supported_features: 1 | 2 | 8 | 16 | 32,
+    percentage: 40,
+    percentage_step: 10,
+    oscillating: false,
+    preset_modes: ['auto', 'sleep', 'turbo'],
+    preset_mode: null,
+  })
+  // Players: the living room can do everything (browse, search, grouping), the
+  // kitchen speaker only plays, pauses and sets the volume.
+  patch('media_player.obyvak', {
+    supported_features: 1 | 2 | 4 | 8 | 16 | 32 | 128 | 256 | 512 | 2048 | 4096 | 16384 | 131072 | 524288 | 2097152 | 4194304,
+    source_list: ['Obývák', 'Kuchyň', 'Sluchátka'],
+    source: 'Obývák',
+    media_duration: 244,
+    media_position: 71,
+    media_position_updated_at: now,
+    group_members: ['media_player.obyvak'],
+  })
+  add('media_player.kuchyn', 'paused', {
+    friendly_name: 'Kuchyň',
+    supported_features: 1 | 4 | 16384 | 524288,
+    volume_level: 0.25,
+    media_title: 'Ranní zprávy',
+    media_artist: 'Radio',
+    group_members: ['media_player.kuchyn'],
+  })
+  add('sun.sun', 'above_horizon', { friendly_name: 'Slunce', elevation: 18.4, next_setting: '2026-11-07T15:58:00+00:00' })
 }
 
 function setLightMock(entities, id, on, brightnessPct = 80, kelvin = 3000) {
@@ -327,6 +398,16 @@ function startMockMode() {
   // demo only: ?theme=dark|light wins over the bundled config (screenshots, previews)
   const urlTheme = new URLSearchParams(window.location.search).get('theme')
   if (urlTheme === 'dark' || urlTheme === 'light') cfg.appearance = { ...cfg.appearance, mode: urlTheme }
+  // demo only: ?headerStyle=lockscreen (card | plain | lockscreen | compact | glass) for the header tile
+  const headerStyle = new URLSearchParams(window.location.search).get('headerStyle')
+  const headerSizes = TILE_TYPES.header?.styles?.[headerStyle]
+  if (headerSizes) {
+    for (const page of cfg.pages || []) {
+      for (const d of page.devices || []) {
+        if (d.type === 'header') Object.assign(d, { style: headerStyle, size: headerSizes[0] })
+      }
+    }
+  }
   state.entities = buildMockEntities()
   state.lastError = null
   state.userName = 'Host'
@@ -665,8 +746,39 @@ export function getEntity(entityId) {
   return computed(() => state.entities[entityId] || null)
 }
 
+/** dash light groups: virtual light entity id -> member entity ids (see lib/lightGroup.js). */
+const lightGroups = reactive({})
+
+/** Register a group tile; returns the virtual entity id its light tile reads. */
+export function registerLightGroup(tileId, members, label = '') {
+  const id = lightGroupEntityId(tileId)
+  lightGroups[id] = { members: [...new Set(members || [])], label }
+  return id
+}
+
+export function unregisterLightGroup(id) {
+  delete lightGroups[id]
+}
+
 export function getEntityState(entityId) {
+  const group = lightGroups[entityId]
+  if (group) {
+    const agg = aggregateLightGroup(entityId, group.members.map((m) => state.entities[m] || null))
+    agg.attributes.friendly_name = group.label
+    return agg
+  }
   return state.entities[entityId] || null
+}
+
+/**
+ * A call aimed at a group tile becomes ONE call with the list of members; a tap
+ * (toggle) switches all off when any is on, else all on.
+ */
+function expandGroupTarget(domain, service, data) {
+  const group = data && lightGroups[data.entity_id]
+  if (!group) return [domain, service, data]
+  const next = service === 'toggle' ? groupToggleService(getEntityState(data.entity_id)) : service
+  return [domain, next, { ...data, entity_id: [...group.members] }]
 }
 
 /* ─── Transports ───────────────────────────────────────────
@@ -683,6 +795,15 @@ const ownerTransport = {
       return
     }
     await haCallService(connection, domain, service, data)
+  },
+  // websocket commands of HA's media_player integration (2026.10.4)
+  async browseMedia(entityId, contentType, contentId) {
+    const msg = { type: 'media_player/browse_media', entity_id: entityId }
+    if (contentId) Object.assign(msg, { media_content_type: contentType, media_content_id: contentId })
+    return connection.sendMessagePromise(msg)
+  },
+  async searchMedia(entityId, query) {
+    return connection.sendMessagePromise({ type: 'media_player/search_media', entity_id: entityId, search_query: query })
   },
   async photoList() {
     if (!connection) return []
@@ -718,12 +839,30 @@ const mockTransport = {
   async photoGet(id) {
     return mockPhotoUrl(id)
   },
+  async browseMedia(entityId, _type, contentId) {
+    if (state.mode === 'guest' && !MOCK_GUEST_PROFILE.capabilities?.media_browse) throw new GuestError('capability_disabled')
+    return mockBrowse(contentId)
+  },
+  async searchMedia(entityId, query) {
+    if (state.mode === 'guest' && !MOCK_GUEST_PROFILE.capabilities?.media_browse) throw new GuestError('capability_disabled')
+    return mockSearch(query)
+  },
 }
 
 function transport() {
   if (state.isMock) return mockTransport
   if (state.mode === 'guest' && guestTransport) return guestTransport
   return ownerTransport
+}
+
+/**
+ * Player sheet: browse and search a player's library. Owner mode uses HA's
+ * websocket commands; a guest pass goes through the guest socket, which checks
+ * the profile and returns a filtered result (no thumbnails).
+ */
+export const mediaBrowser = {
+  browse: (entityId, contentType, contentId) => transport().browseMedia(entityId, contentType, contentId),
+  search: (entityId, query) => transport().searchMedia(entityId, query),
 }
 
 /** Photo calls that throw on failure (the StandBy photo cache shows the reason). */
@@ -745,6 +884,7 @@ function onGuestRefused(code, entityId) {
 }
 
 async function sendService(domain, service, serviceData) {
+  ;[domain, service, serviceData] = expandGroupTarget(domain, service, serviceData)
   try {
     await transport().callService(domain, service, serviceData)
   } catch (err) {
@@ -763,6 +903,10 @@ export async function callService(domain, service, serviceData = {}) {
 }
 
 function handleMockService(domain, service, data) {
+  if (Array.isArray(data?.entity_id)) {
+    for (const id of data.entity_id) handleMockService(domain, service, { ...data, entity_id: id })
+    return
+  }
   const now = new Date().toISOString()
   const entityId = data?.entity_id
   const cfg = getGuestConfig()
@@ -770,6 +914,17 @@ function handleMockService(domain, service, data) {
   if (domain === 'light' && entityId) {
     const e = state.entities[entityId]
     if (!e) return
+    if (service === 'turn_on' && (data.hs_color || data.rgb_color || data.effect)) {
+      e.state = 'on'
+      const next = { ...e.attributes }
+      if (data.hs_color) Object.assign(next, { hs_color: data.hs_color, color_mode: 'hs', color_temp_kelvin: null })
+      if (data.rgb_color) Object.assign(next, { rgb_color: data.rgb_color, color_mode: 'rgb', color_temp_kelvin: null })
+      if (data.effect) next.effect = data.effect === 'off' ? 'off' : data.effect
+      if (!next.brightness) next.brightness = 204
+      e.attributes = next
+      e.last_updated = now
+      return
+    }
 
     if (service === 'toggle') {
       const on = e.state !== 'on'
@@ -835,6 +990,26 @@ function handleMockService(domain, service, data) {
     if (!e) return
     if (service === 'media_play_pause') {
       e.state = e.state === 'playing' ? 'paused' : 'playing'
+    } else if (service === 'media_play') {
+      e.state = 'playing'
+    } else if (service === 'media_pause') {
+      e.state = 'paused'
+    } else if (service === 'play_media') {
+      const item = mockItem(data.media_content_id)
+      e.state = 'playing'
+      e.attributes = {
+        ...e.attributes,
+        media_title: item?.title || data.media_content_id,
+        media_artist: item?.dash_artist || '',
+        media_position: 0,
+        media_position_updated_at: now,
+      }
+    } else if (service === 'join') {
+      e.attributes = { ...e.attributes, group_members: [entityId, ...(data.group_members || [])] }
+    } else if (service === 'unjoin') {
+      e.attributes = { ...e.attributes, group_members: [entityId] }
+    } else if (service === 'volume_mute') {
+      e.attributes = { ...e.attributes, is_volume_muted: data.is_volume_muted }
     } else if (service === 'volume_set') {
       e.attributes = { ...e.attributes, volume_level: data.volume_level }
     } else if (service === 'turn_off') {
@@ -844,10 +1019,27 @@ function handleMockService(domain, service, data) {
     }
     e.last_updated = now
   } else if (domain === 'scene' && service === 'turn_on' && entityId) {
-    // Scenes removed from guest UI — keep mock hook for optional future use
-    if (entityId && cfg.pages) {
-      /* no-op */
+    // A scene's state is the time it was last activated
+    const e = state.entities[entityId]
+    if (!e || !cfg) return
+    e.state = now
+    e.last_updated = now
+  } else if (domain === 'fan' && entityId) {
+    const e = state.entities[entityId]
+    if (!e) return
+    const a = { ...e.attributes }
+    if (service === 'turn_on') e.state = 'on'
+    else if (service === 'turn_off') e.state = 'off'
+    else if (service === 'set_percentage') {
+      a.percentage = data.percentage
+      e.state = data.percentage > 0 ? 'on' : 'off'
+    } else if (service === 'oscillate') a.oscillating = data.oscillating === true
+    else if (service === 'set_preset_mode') {
+      a.preset_mode = data.preset_mode
+      e.state = 'on'
     }
+    e.attributes = a
+    e.last_updated = now
   }
 }
 

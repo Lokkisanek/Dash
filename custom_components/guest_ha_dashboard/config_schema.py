@@ -7,15 +7,36 @@ shared/tiles.json.
 Config versions:
   1  everything stored before 2.1 (no `configVersion` key)
   2  `configVersion` added; devices validated against the tile registry
+  3  the header (clock, greeting, weather, Wi-Fi) is a tile; its old switches
+     in `general` are converted into one `header` tile and removed
 """
 
 from __future__ import annotations
 
+from copy import deepcopy
+import re
 import secrets
 from typing import Any
 
 from .const import CONFIG_VERSION
 from .tile_registry import TILE_TYPES
+
+_ENTITY_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
+
+# Tiles that show the header content; a page with one of them needs no migrated header.
+HEADER_FAMILY = ("header", "clock", "greeting", "weather")
+
+# `general` keys of config version 2 and earlier, with the defaults they had then.
+LEGACY_HEADER_GENERAL: dict[str, Any] = {
+    "showTopBar": True,
+    "showWelcome": True,
+    "weatherEntity": "",
+    "showTime": True,
+    "showDate": True,
+    "showWifi": True,
+    "showTemperature": True,
+    "showHumidity": True,
+}
 
 
 def config_version(data: Any) -> int:
@@ -82,9 +103,34 @@ def normalize_device(raw: Any, used: set[str] | None = None) -> dict | None:
     if used is not None and device_id:
         used.add(device_id)
     for field, field_spec in (spec.get("fields") or {}).items():
-        value = raw.get(field)
-        device[field] = str(value if value is not None else "")[: field_spec["max"]]
+        device[field] = normalize_field(field_spec, raw.get(field))
     return device
+
+
+def _entity_ok(value: Any, domains: list[str]) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) <= 255
+        and bool(_ENTITY_RE.match(value))
+        and value.split(".", 1)[0] in domains
+    )
+
+
+def normalize_field(spec: dict, value: Any) -> Any:
+    """One tile option, typed by its registry spec (see shared/tiles.json)."""
+    kind = spec.get("type")
+    if kind == "bool":
+        return value if isinstance(value, bool) else spec["default"]
+    if kind == "enum":
+        return value if value in spec["values"] else spec["default"]
+    if kind == "entity":
+        return value if _entity_ok(value, spec["domains"]) else ""
+    if kind == "entities":
+        items = value if isinstance(value, list) else []
+        clean = [v for v in dict.fromkeys(i for i in items if isinstance(i, str))]
+        return [v for v in clean if _entity_ok(v, spec["domains"])][: spec["max"]]
+    # string
+    return str(value if value is not None else "")[: spec["max"]]
 
 
 def normalize_devices(
@@ -106,13 +152,84 @@ def normalize_devices(
     return kept, dropped
 
 
+def header_from_general(general: Any) -> dict | None:
+    """The `header` tile that shows what the old `general` switches showed.
+
+    None when both the top bar and the greeting block were switched off. Missing
+    keys take the defaults they had before version 3.
+    """
+    old = {**LEGACY_HEADER_GENERAL, **(general if isinstance(general, dict) else {})}
+    top = bool(old["showTopBar"])
+    welcome = bool(old["showWelcome"])
+    if not top and not welcome:
+        return None
+    entity = old.get("weatherEntity")
+    return {
+        "id": new_tile_id("header"),
+        "type": "header",
+        "style": "card",
+        "size": "4x2",
+        "showTime": top and bool(old["showTime"]),
+        "showDate": top and bool(old["showDate"]),
+        "showWifi": top and bool(old["showWifi"]),
+        "showGreeting": welcome,
+        "showWeather": welcome,
+        "showTemperature": bool(old["showTemperature"]),
+        "showHumidity": bool(old["showHumidity"]),
+        "entity": entity if _entity_ok(entity, ["weather"]) else "",
+        "contrast": "auto",
+    }
+
+
+def _page_list(data: dict) -> str | None:
+    """Key of the page list the store will use (`pages`, or legacy `rooms`)."""
+    pages = data.get("pages")
+    if isinstance(pages, list) and pages:
+        return "pages"
+    if isinstance(data.get("rooms"), list):
+        return "rooms"
+    return "pages" if isinstance(pages, list) else None
+
+
+def _has_header_tile(pages: list) -> bool:
+    return any(
+        isinstance(d, dict) and d.get("type") in HEADER_FAMILY
+        for page in pages
+        if isinstance(page, dict)
+        for d in (page.get("devices") if isinstance(page.get("devices"), list) else [])
+    )
+
+
 def migrate_config(data: Any) -> dict[str, Any]:
-    """Bring a stored config to CONFIG_VERSION (only adds the version today).
+    """Bring a stored config to CONFIG_VERSION. Idempotent; the input is not changed.
 
     1 -> 2 changes no data by itself; device validation runs on every load and
-    save (normalize_devices). A config from a newer integration keeps its
-    data; it is labelled with this version once it is saved again.
+    save (normalize_devices).
+    2 -> 3 inserts one `header` tile at the top of the first page, built from
+    the old `general` header switches, unless a page already has a header-family
+    tile or both old blocks were off. The old keys are removed from `general`
+    in every version, so they are only ever read here.
+    A config from a newer integration keeps its data; it is labelled with this
+    version once it is saved again.
     """
     out = dict(data) if isinstance(data, dict) else {}
+    general = out.get("general")
+    if config_version(out) < 3:
+        key = _page_list(out)
+        pages = out.get(key) if key else None
+        if pages and isinstance(pages[0], dict) and not _has_header_tile(pages):
+            header = header_from_general(general)
+            if header is not None:
+                first = deepcopy(pages[0])
+                devices = first.get("devices")
+                first["devices"] = [
+                    header,
+                    *(devices if isinstance(devices, list) else []),
+                ]
+                out[key] = [first, *pages[1:]]
+    if isinstance(general, dict):
+        out["general"] = {
+            k: v for k, v in general.items() if k not in LEGACY_HEADER_GENERAL
+        }
     out["configVersion"] = CONFIG_VERSION
     return out

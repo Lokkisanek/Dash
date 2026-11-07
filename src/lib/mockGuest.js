@@ -27,17 +27,39 @@ export const MOCK_GUEST_PROFILE = {
     'climate.obyvak': { limits: { 'climate.set_temperature': { temperature: { min: 18, max: 25 } } } },
     'light.koupelna_strop': {},
     'light.koupelna_zrcadlo': {},
+    'light.loznice_nocni_leva': {},
+    'light.loznice_nocni_prava': {},
+    'scene.vecer': {},
+    'sensor.obyvak_teplota': {},
+    'binary_sensor.vchodove_dvere': {},
+    'fan.loznice': {},
     'weather.forecast_home': {},
+  },
+  // same keys as GUEST_CAPABILITY_DEFAULTS; the demo guest may change colours
+  capabilities: {
+    allow_color: true,
+    allow_color_temp: true,
+    allow_effects: false,
+    max_transition: 5,
+    media_browse: true,
+    media_group: false,
+    max_volume: 0.7,
   },
 }
 
+import { TILE_TYPES } from './tileRegistry.generated.js'
+
 const ENTITY_ID = /^[a-z0-9_]+\.[a-z0-9_]+$/
+/** Tiles without an entity of their own (dividers, header family). */
+const isLayout = (d) =>
+  TILE_TYPES[d?.type]?.needsEntity === false &&
+  !Object.values(TILE_TYPES[d?.type]?.fields || {}).some((f) => f.type === 'entities')
 
 function stripForeign(item, allowed) {
   return Object.fromEntries(
-    Object.entries(item).filter(
-      ([k, v]) => k !== 'haAreaId' && !(typeof v === 'string' && ENTITY_ID.test(v) && !allowed.has(v)),
-    ),
+    Object.entries(item)
+      .filter(([k, v]) => k !== 'haAreaId' && !(typeof v === 'string' && ENTITY_ID.test(v) && !allowed.has(v)))
+      .map(([k, v]) => [k, Array.isArray(v) ? v.filter((x) => !(typeof x === 'string' && ENTITY_ID.test(x)) || allowed.has(x)) : v]),
   )
 }
 
@@ -48,17 +70,18 @@ export function filterConfigForProfile(config, profile) {
     .map((page) => ({
       ...stripForeign(page, allowed),
       devices: (page.devices || [])
-        .filter((d) => allowed.has(d?.id) || d?.type === 'divider')
-        .map((d) => stripForeign(d, allowed)),
+        .map((d) => stripForeign(d, allowed))
+        .filter((d) => (Array.isArray(d.entities) ? d.entities.length > 0 : allowed.has(d?.id) || isLayout(d)))
+        .filter((d) => !(d?.type === 'wifi' && !profile.show_wifi))
+        .map((d) => (!profile.show_wifi && 'showWifi' in d ? { ...d, showWifi: false } : d)),
     }))
     // same rule as guest_policy.filter_config: a page needs one usable tile
-    .filter((page) => page.devices.some((d) => d.type !== 'divider'))
+    .filter((page) => page.devices.some((d) => !isLayout(d)))
   const pageIds = new Set(pages.map((p) => p.id))
   const general = { ...(config.general || {}) }
-  if (!allowed.has(general.weatherEntity)) general.weatherEntity = ''
-  if (!profile.show_wifi) general.showWifi = false
   return {
     ...config,
+    capabilities: { ...profile.capabilities },
     general,
     guestInfo: profile.show_wifi ? config.guestInfo : { wifiSsid: '', wifiPassword: '', wifiSecurity: 'nopass' },
     pages,
@@ -68,8 +91,16 @@ export function filterConfigForProfile(config, profile) {
   }
 }
 
-/** Reason code if the mock profile refuses the call, else null. */
+/** Reason code if the mock profile refuses the call, else null. Lists: every entity. */
 export function mockDenyReason(profile, domain, service, data = {}) {
+  if (Array.isArray(data.entity_id)) {
+    if (domain !== 'light' || data.entity_id.length > 20) return 'bad_request'
+    for (const id of data.entity_id) {
+      const reason = mockDenyReason(profile, domain, service, { ...data, entity_id: id })
+      if (reason) return reason
+    }
+    return null
+  }
   const entry = profile.entities?.[data.entity_id]
   if (!entry) return 'entity_not_allowed'
   const limit = entry.limits?.[`${domain}.${service}`] || {}

@@ -251,6 +251,7 @@ async def test_get_config_filters_tiles_and_wifi(
 ) -> None:
     await runtime.config_store.async_save(
         {
+            "configVersion": 3,  # no header tile migrated in
             "guestInfo": {
                 "wifiSsid": "Guest",
                 "wifiPassword": "hunter2",
@@ -287,7 +288,10 @@ async def test_get_config_filters_tiles_and_wifi(
     await ws.send_json({"id": 1, "type": "get_config"})
     config = (await recv(ws))["result"]
     assert "hunter2" not in json.dumps(config)
-    assert config["general"]["showWifi"] is False
+    assert config["guestInfo"]["wifiSsid"] == ""
+    assert (
+        "showWifi" not in config["general"]
+    )  # since config v3 the button is a tile option
     await ws.close()
 
 
@@ -299,12 +303,13 @@ async def test_config_push_is_filtered(
     await recv(ws)
     await runtime.config_store.async_save(
         {
+            "configVersion": 3,
             "pages": [
                 {
                     "id": "a",
                     "devices": [{"id": "light.room"}, {"id": "lock.front_door"}],
                 }
-            ]
+            ],
         }
     )
     pushed = await recv(ws)
@@ -360,6 +365,154 @@ async def test_allowed_call_reaches_hass(
     await ws.close()
 
 
+async def test_light_group_call_is_one_call_with_a_list(
+    hass: HomeAssistant, runtime: Any, hass_client_no_auth: Any
+) -> None:
+    seed_states(hass)
+    hass.states.async_set("light.desk", "off", {"friendly_name": "Desk"})
+    calls = async_mock_service(hass, "light", "turn_off")
+    token, _pass_id, _profile = await make_guest(
+        runtime, entities={"light.room": {}, "light.desk": {}}
+    )
+    ws = await guest_connect(await hass_client_no_auth(), token)
+    await recv(ws)
+    result = await _call(
+        ws,
+        1,
+        domain="light",
+        service="turn_off",
+        entity_id=["light.room", "light.desk", "light.room"],
+    )
+    assert result["success"] is True
+    assert len(calls) == 1
+    assert calls[0].data == {"entity_id": ["light.room", "light.desk"]}
+    await ws.close()
+
+
+async def test_light_colour_checked_against_the_entity(
+    hass: HomeAssistant, runtime: Any, hass_client_no_auth: Any
+) -> None:
+    """Colour needs the profile capability and a colour mode of the light itself."""
+    hass.states.async_set(
+        "light.room",
+        "on",
+        {
+            "supported_color_modes": ["hs"],
+            "supported_features": 4,
+            "effect_list": ["candle"],
+        },
+    )
+    hass.states.async_set(
+        "light.plain", "on", {"supported_color_modes": ["brightness"]}
+    )
+    calls = async_mock_service(hass, "light", "turn_on")
+    token, _pass_id, profile_id = await make_guest(
+        runtime, entities={"light.room": {}, "light.plain": {}}
+    )
+    runtime.store.model.data["profiles"][profile_id]["capabilities"] = {
+        "allow_color": True,
+        "allow_effects": True,
+    }
+    ws = await guest_connect(await hass_client_no_auth(), token)
+    await recv(ws)
+    ok = await _call(
+        ws,
+        1,
+        domain="light",
+        service="turn_on",
+        entity_id="light.room",
+        data={"hs_color": [20, 80]},
+    )
+    assert ok["success"] is True
+    ok = await _call(
+        ws,
+        2,
+        domain="light",
+        service="turn_on",
+        entity_id="light.room",
+        data={"effect": "candle"},
+    )
+    assert ok["success"] is True
+    bad = await _call(
+        ws,
+        3,
+        domain="light",
+        service="turn_on",
+        entity_id="light.plain",
+        data={"hs_color": [20, 80]},
+    )
+    assert bad["error"]["code"] == "feature_unsupported"
+    bad = await _call(
+        ws,
+        4,
+        domain="light",
+        service="turn_on",
+        entity_id="light.room",
+        data={"effect": "strobe"},
+    )
+    assert bad["error"]["code"] == "out_of_range"
+    assert [c.data for c in calls] == [
+        {"entity_id": "light.room", "hs_color": [20.0, 80.0]},
+        {"entity_id": "light.room", "effect": "candle"},
+    ]
+    await ws.close()
+
+
+async def test_browse_and_play_media_rules(
+    hass: HomeAssistant, runtime: Any, hass_client_no_auth: Any
+) -> None:
+    """Browse/search need media_browse; play_media only ids this pass was given."""
+    seed_states(hass)
+    hass.states.async_set(
+        "media_player.speaker", "idle", {"supported_features": 0x7FFFFF}
+    )
+    play = async_mock_service(hass, "media_player", "play_media")
+    token, _pass_id, profile_id = await make_guest(runtime)
+    ws = await guest_connect(await hass_client_no_auth(), token)
+    await recv(ws)
+
+    # capability off (default for every profile)
+    await ws.send_json(
+        {"id": 1, "type": "browse_media", "entity_id": "media_player.speaker"}
+    )
+    assert (await recv(ws))["error"]["code"] == "capability_disabled"
+
+    runtime.store.model.data["profiles"][profile_id]["capabilities"] = {
+        "media_browse": True
+    }
+    # a player outside the profile
+    await ws.send_json(
+        {"id": 2, "type": "browse_media", "entity_id": "media_player.other"}
+    )
+    assert (await recv(ws))["error"]["code"] == "entity_not_allowed"
+    # below the root only with an id this pass got before
+    await ws.send_json(
+        {
+            "id": 3,
+            "type": "browse_media",
+            "entity_id": "media_player.speaker",
+            "media_content_type": "library",
+            "media_content_id": "library://artists",
+        }
+    )
+    assert (await recv(ws))["error"]["code"] == "bad_request"
+    # arbitrary and URL-like ids are never played
+    for i, cid in enumerate(
+        ["library://track/1", "http://evil.example/a.mp3"], start=4
+    ):
+        result = await _call(
+            ws,
+            i,
+            domain="media_player",
+            service="play_media",
+            entity_id="media_player.speaker",
+            data={"media_content_type": "music", "media_content_id": cid},
+        )
+        assert result["success"] is False
+    assert play == []
+    await ws.close()
+
+
 async def test_denied_calls_never_reach_hass(
     hass: HomeAssistant, runtime: Any, hass_client_no_auth: Any
 ) -> None:
@@ -395,17 +548,27 @@ async def test_denied_calls_never_reach_hass(
                 "domain": "light",
                 "service": "turn_on",
                 "entity_id": "light.room",
-                "data": {"brightness": 255},
+                "data": {"kelvin": 3000},
             },
             "field_not_allowed",
         ),
         (
+            # list target (light group): one light outside the profile rejects all
             {
                 "domain": "light",
                 "service": "turn_on",
                 "entity_id": ["light.room", "light.other_room"],
             },
-            "bad_request",
+            "entity_not_allowed",
+        ),
+        (
+            {
+                "domain": "light",
+                "service": "turn_on",
+                "entity_id": "light.room",
+                "data": {"hs_color": [20, 80]},
+            },
+            "capability_disabled",
         ),
         (
             {

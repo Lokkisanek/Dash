@@ -116,6 +116,12 @@
     overscroll-behavior: none;
   }
 
+  /* Same colour as the wallpaper (set by App.vue), so no other colour shows at an edge. */
+  html,
+  body {
+    background-color: var(--app-bg, #f3f0f7);
+  }
+
   body {
     position: fixed;
     inset: 0;
@@ -124,10 +130,26 @@
 }
 
 :root {
+  /* Glass material of the dock, also used by `glass` tiles (one material, one place). */
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-border: 0.5px solid rgba(255, 255, 255, 0.55);
+  --glass-shadow:
+    0 8px 28px rgba(40, 20, 60, 0.12), 0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 -1px 0 rgba(255, 255, 255, 0.25) inset;
+  --glass-filter: blur(22px) saturate(1.85) brightness(1.05);
+  /* Dock: glass height (LiquidGlassDock DOCK_H) and its fixed gap above the home indicator. */
+  --dock-h: 88px;
+  --dock-gap: 12px;
   --safe-top: max(env(safe-area-inset-top, 0px), var(--frame-safe-top, 0px));
   --safe-right: max(env(safe-area-inset-right, 0px), var(--frame-safe-right, 0px));
   --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--frame-safe-bottom, 0px));
   --safe-left: max(env(safe-area-inset-left, 0px), var(--frame-safe-left, 0px));
+}
+
+/* A sheet is open (LightSheet, player sheet): the page behind neither scrolls nor swipes. */
+html.sheet-open [data-dashboard-scroll] {
+  overflow: hidden;
+  touch-action: none;
 }
 
 @utility safe-pad {

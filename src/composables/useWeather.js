@@ -1,6 +1,5 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, effectScope, toValue } from 'vue'
 import { useHomeAssistant } from './useHomeAssistant'
-import { useGuestConfig } from './useGuestConfig'
 
 const REFRESH_MS = 15 * 60 * 1000
 
@@ -42,35 +41,52 @@ async function fetchOpenMeteo(lat, lon) {
   }
 }
 
+let shared = null
+
 /**
- * Outside weather for the HA home location: the configured (or first) weather.*
- * entity, otherwise Open-Meteo at the coordinates from HA core config.
+ * One app-wide watcher: without any weather.* entity, Open-Meteo at the HA home
+ * coordinates is fetched once and refreshed every 15 minutes, however many
+ * weather tiles are on the dashboard. Guests get no HA core config, so for them
+ * the fallback stays empty and tiles show "—".
  */
-export function useWeather() {
-  const { entities, haConfig } = useHomeAssistant()
-  const { general } = useGuestConfig()
+function startShared() {
+  if (shared) return shared
+  const scope = effectScope(true)
+  shared = scope.run(() => {
+    const { entities, haConfig } = useHomeAssistant()
+    const firstWeatherId = computed(() => Object.keys(entities.value || {}).find((k) => k.startsWith('weather.')) || '')
+    watch(
+      [firstWeatherId, haConfig],
+      ([id, cfg]) => {
+        if (id || cfg?.latitude == null || cfg?.longitude == null) return
+        const key = `${cfg.latitude},${cfg.longitude}`
+        if (key === fetchedFor) return
+        fetchedFor = key
+        fetchOpenMeteo(cfg.latitude, cfg.longitude)
+        clearInterval(timer)
+        timer = setInterval(() => fetchOpenMeteo(cfg.latitude, cfg.longitude), REFRESH_MS)
+      },
+      { immediate: true },
+    )
+    return { entities, firstWeatherId }
+  })
+  return shared
+}
+
+/**
+ * Outside weather for a tile: its own weather.* entity (`entityId`, a ref or
+ * getter), else the first weather.* entity, else Open-Meteo at the HA home
+ * location. `null` when nothing is known.
+ */
+export function useWeather(entityId = '') {
+  const { entities, firstWeatherId } = startShared()
 
   const entity = computed(() => {
     const all = entities.value || {}
-    const wanted = general.value.weatherEntity
+    const wanted = toValue(entityId)
     if (wanted && all[wanted]) return all[wanted]
-    const id = Object.keys(all).find((k) => k.startsWith('weather.'))
-    return id ? all[id] : null
+    return firstWeatherId.value ? all[firstWeatherId.value] : null
   })
-
-  watch(
-    [entity, haConfig],
-    ([ent, cfg]) => {
-      if (ent || cfg?.latitude == null || cfg?.longitude == null) return
-      const key = `${cfg.latitude},${cfg.longitude}`
-      if (key === fetchedFor) return
-      fetchedFor = key
-      fetchOpenMeteo(cfg.latitude, cfg.longitude)
-      clearInterval(timer)
-      timer = setInterval(() => fetchOpenMeteo(cfg.latitude, cfg.longitude), REFRESH_MS)
-    },
-    { immediate: true },
-  )
 
   return computed(() => {
     const ent = entity.value

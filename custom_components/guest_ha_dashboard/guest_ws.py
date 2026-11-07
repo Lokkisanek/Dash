@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from collections import OrderedDict
 import contextlib
 from datetime import datetime
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from aiohttp import WSMsgType, web
@@ -33,7 +35,12 @@ from .const import (
     CLOSE_REVOKED,
     CLOSE_TOO_MANY,
     DOMAIN,
+    MEDIA_FEATURE_BROWSE,
+    MEDIA_FEATURE_SEARCH,
     MEDIA_IMAGE_MAX_BYTES,
+    MEDIA_ISSUED_MAX,
+    MEDIA_ISSUED_TTL_SECONDS,
+    MEDIA_SEARCH_MAX_LEN,
     PASS_MAX_SOCKETS,
     SERVICE_CALL_TIMEOUT_SECONDS,
     WS_AUTH_TIMEOUT_SECONDS,
@@ -53,6 +60,8 @@ from .guest_policy import (
     domain_access,
     entity_domain,
     filter_config,
+    profile_capabilities,
+    sanitize_browse,
     sanitize_state,
     validate_call,
 )
@@ -359,6 +368,8 @@ class GuestSession:
             await self._photo_list(msg_id)
         elif kind == "photo_get":
             await self._photo_get(data, msg_id)
+        elif kind in ("browse_media", "search_media"):
+            await self._browse(kind, data, msg_id, profile)
         else:
             self._error(msg_id, "unknown_command")
 
@@ -416,16 +427,21 @@ class GuestSession:
             self._error(msg_id, "rate_limited")
             return
 
-        classes = (
-            self.runtime.device_classes(entity_id) if isinstance(entity_id, str) else ()
+        decision = validate_call(
+            profile,
+            data,
+            device_classes_of=self.runtime.device_classes,
+            attributes_of=self._attributes,
+            issued=self._issued_ok,
         )
-        decision = validate_call(profile, data, classes)
         if not decision.ok:
             self.model.audit(
                 now,
                 "call_denied",
                 pass_id=self.pass_id,
-                entity_id=entity_id if isinstance(entity_id, str) else None,
+                entity_id=decision.entity_id
+                if isinstance(decision.entity_id, str) and decision.entity_id
+                else (entity_id if isinstance(entity_id, str) else None),
                 service=f"{decision.domain}.{decision.service}"
                 if decision.domain
                 else None,
@@ -452,6 +468,107 @@ class GuestSession:
             self._error(msg_id, "service_failed")
             return
         self._result(msg_id, {})
+
+    # ─── media browse / search (profile capability media_browse) ─────────────
+
+    def _issued(self) -> OrderedDict:
+        """Content ids this pass got from browse/search: id -> expiry (monotonic)."""
+        store = self.hass.data.setdefault(f"{DOMAIN}_media_issued", {})
+        return store.setdefault(self.pass_id, OrderedDict())
+
+    def _issue(self, result: dict) -> None:
+        issued = self._issued()
+        until = time.monotonic() + MEDIA_ISSUED_TTL_SECONDS
+        for item in [result, *result.get("children", [])]:
+            cid = item.get("media_content_id")
+            if isinstance(cid, str) and cid:
+                issued[cid] = until
+                issued.move_to_end(cid)
+        while len(issued) > MEDIA_ISSUED_MAX:
+            issued.popitem(last=False)
+
+    def _issued_ok(self, content_id: str) -> bool:
+        until = self._issued().get(content_id)
+        return until is not None and until > time.monotonic()
+
+    async def _browse(self, kind: str, data: dict, msg_id: Any, profile: dict) -> None:
+        """media_player/browse_media and search_media for a guest, filtered.
+
+        Only players in the profile, only with media_browse, rate limited like
+        service calls; a browse below the root needs an id this pass was given.
+        """
+        now = self.runtime.now()
+        entity_id = data.get("entity_id")
+        if not self._bucket.take():
+            self._error(msg_id, "rate_limited")
+            return
+        if entity_domain(
+            entity_id
+        ) != "media_player" or entity_id not in self._allowed_entities(profile):
+            self._error(msg_id, "entity_not_allowed")
+            return
+        if not profile_capabilities(profile)["media_browse"]:
+            self._error(msg_id, "capability_disabled")
+            return
+        ctype = data.get("media_content_type")
+        cid = data.get("media_content_id")
+        if (ctype is None) != (cid is None) or (
+            cid is not None
+            and (
+                not isinstance(cid, str)
+                or not isinstance(ctype, str)
+                or not self._issued_ok(cid)
+            )
+        ):
+            self.model.audit(
+                now,
+                "call_denied",
+                pass_id=self.pass_id,
+                entity_id=entity_id,
+                service=f"media_player.{kind}",
+                reason="bad_request",
+            )
+            self.runtime.store.schedule_save()
+            self._error(msg_id, "bad_request")
+            return
+        query = data.get("search_query")
+        if kind == "search_media" and (
+            not isinstance(query, str)
+            or not 0 < len(query.strip()) <= MEDIA_SEARCH_MAX_LEN
+        ):
+            self._error(msg_id, "bad_request")
+            return
+        from homeassistant.components.media_player.const import DATA_COMPONENT
+
+        component = self.hass.data.get(DATA_COMPONENT)
+        player = component.get_entity(entity_id) if component else None
+        if player is None:
+            self._error(msg_id, "not_found")
+            return
+        bit = MEDIA_FEATURE_BROWSE if kind == "browse_media" else MEDIA_FEATURE_SEARCH
+        if not int(player.supported_features or 0) & bit:
+            self._error(msg_id, "feature_unsupported")
+            return
+        try:
+            async with asyncio.timeout(SERVICE_CALL_TIMEOUT_SECONDS):
+                if kind == "browse_media":
+                    payload = await player.async_browse_media(ctype, cid)
+                else:
+                    payload = await player.async_internal_search_media(
+                        query.strip(), ctype, cid, []
+                    )
+        except (TimeoutError, HomeAssistantError, NotImplementedError):
+            self._error(msg_id, "service_failed")
+            return
+        raw = payload.as_dict() if hasattr(payload, "as_dict") else payload
+        result = sanitize_browse(raw)
+        self._issue(result)
+        self._result(msg_id, result)
+
+    def _attributes(self, entity_id: str) -> dict | None:
+        """Current state attributes (colour modes, feature bits, lists) or None."""
+        state = self.hass.states.get(entity_id)
+        return dict(state.attributes) if state is not None else None
 
     async def _media_image(self, data: dict, msg_id: Any, profile: dict) -> None:
         entity_id = data.get("entity_id")
