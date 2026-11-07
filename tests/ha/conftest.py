@@ -11,6 +11,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+# Import the integration before Home Assistant mounts its testing_config on
+# sys.path (that directory has its own custom_components package).
+import custom_components.guest_ha_dashboard  # noqa: F401
 from homeassistant.core import HomeAssistant
 
 DOMAIN = "guest_ha_dashboard"
