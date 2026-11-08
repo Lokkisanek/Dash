@@ -5,13 +5,13 @@
  * The preview iframe is created once and never re-mounted; the dashboard
  * picks up saved config through its own HA subscription.
  */
-import { ICONS } from "./icons.js?v=2.1.0";
-import { GuestsTab } from "./guests.js?v=2.1.0";
-import { TILE_TYPES } from "./tiles.js?v=2.1.0";
-import { packTiles, indexForCell } from "./layout.js?v=2.1.0";
-import { DEVICE_PRESETS, DEFAULT_DEVICE } from "./devices.js?v=2.1.0";
+import { ICONS } from "./icons.js?v=2.1.1";
+import { GuestsTab } from "./guests.js?v=2.1.1";
+import { TILE_TYPES } from "./tiles.js?v=2.1.1";
+import { packTiles, indexForCell } from "./layout.js?v=2.1.1";
+import { DEVICE_PRESETS, DEFAULT_DEVICE } from "./devices.js?v=2.1.1";
 
-const PANEL_VERSION = "2.1.0";
+const PANEL_VERSION = "2.1.1";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
 const ORIENT_KEY = "guest_ha_panel_preview_orient"; // before 2.1: orientation only
@@ -71,7 +71,7 @@ function resolveTile(device) {
  * demand: when the picker opens, or when the config uses an icon outside the
  * base set in icons.js, so the panel starts as fast as before.
  */
-const ICON_CATALOG_URL = "./icon-catalog.js?v=2.1.0";
+const ICON_CATALOG_URL = "./icon-catalog.js?v=2.1.1";
 const RECENT_ICONS_KEY = "guest_ha_panel_recent_icons";
 let ICON_CATALOG = null;
 let iconCatalogLoading = null;
