@@ -12,13 +12,17 @@ import { mediaCaps, mediaVolume } from '@/lib/mediaCaps'
  * Big media views, used as tile styles and in the player sheet:
  *   nowplaying  iPhone-like: large artwork, title, artist, scrubber with times,
  *               transport row, volume
- *   vinyl       a record drawn with SVG circles (no gradients): grooves, the album
- *               art as the label, a spindle hole and a tonearm that swings on
- *               while playing. 33⅓ rpm = 1.8 s per turn, one CSS animation on the
- *               disc; pausing sets animation-play-state, so the record stops at
- *               its current angle and goes on from there. It also stops while
- *               the tile is off-screen or the page is hidden; with reduced motion
- *               it never turns (the tonearm and "Přehrává se" show the state).
+ *   vinyl       a record drawn with flat SVG circles: disc, grooves, the album art
+ *               as the label (or the accent colour with a note), a spindle hole.
+ *               The record is a square sized min(width, height) of its container
+ *               (container queries), so it never overflows the tile. 2×2: record
+ *               on top, title and artist below, no controls (a tap opens the
+ *               player sheet). 4×3: record left, text, progress and transport
+ *               right. 33⅓ rpm = 1.8 s per turn: one CSS animation on a wrapper
+ *               <div>, paused with animation-play-state, so it stops at its
+ *               current angle and goes on from there. It also stops while the
+ *               tile is off-screen or the page is hidden; with reduced motion it
+ *               never turns and "Přehrává se" shows the state.
  * Every control appears only when the player supports it (mediaCaps.js).
  */
 const props = defineProps({
@@ -87,8 +91,8 @@ function onVisibility() {
   pageVisible.value = !document.hidden
 }
 
-/** 28 groove circles between the label and the rim, alternating width/opacity. */
-const GROOVES = Array.from({ length: 28 }, (_, i) => ({ r: 46 + i * 1.75, w: i % 3 === 0 ? 0.5 : 0.28, o: i % 2 ? 0.16 : 0.3 }))
+/** 28 groove circles between the label (r 19) and the rim (r 49.5), alternating width/opacity. */
+const GROOVES = Array.from({ length: 28 }, (_, i) => ({ r: 21.5 + i * 0.95, w: i % 3 === 0 ? 0.28 : 0.14, o: i % 2 ? 0.18 : 0.34 }))
 const clipId = `vinyl-label-${Math.random().toString(36).slice(2, 8)}`
 
 onMounted(() => {
@@ -117,33 +121,31 @@ onUnmounted(() => {
   >
     <!-- artwork or record -->
     <div v-if="variant === 'vinyl'" class="vinyl-wrap">
-      <svg class="vinyl" viewBox="0 0 200 200" role="img" :aria-label="playing ? t('mediaPlaying') : title">
-        <g class="disc" :class="{ spinning }" data-vinyl-disc>
-          <circle cx="100" cy="100" r="98" class="rim" />
-          <circle
-            v-for="(g, i) in GROOVES"
-            :key="i"
-            cx="100"
-            cy="100"
-            :r="g.r"
-            fill="none"
-            stroke="currentColor"
-            :stroke-width="g.w"
-            :stroke-opacity="g.o"
-          />
-          <clipPath :id="clipId"><circle cx="100" cy="100" r="40" /></clipPath>
-          <circle cx="100" cy="100" r="40" class="label-bg" />
-          <image v-if="art" :href="art" x="60" y="60" width="80" height="80" preserveAspectRatio="xMidYMid slice" :clip-path="`url(#${clipId})`" @error="artFailed = true" />
-          <circle cx="100" cy="100" r="3.2" class="spindle" />
-        </g>
-      </svg>
-      <svg class="tonearm" :class="{ on: playing }" viewBox="0 0 200 200" aria-hidden="true" data-tonearm>
-        <g class="arm">
-          <circle cx="182" cy="18" r="9" class="pivot" />
-          <line x1="182" y1="18" x2="150" y2="128" class="rod" />
-          <rect x="140" y="124" width="16" height="10" rx="2" class="head" />
-        </g>
-      </svg>
+      <!-- the slot never turns (layout, tests); the disc inside it does -->
+      <div class="vinyl-slot" data-vinyl-slot>
+        <div class="vinyl-disc" :class="{ spinning }" data-vinyl-disc>
+          <svg class="vinyl" viewBox="0 0 100 100" role="img" :aria-label="playing ? t('mediaPlaying') : title">
+            <circle cx="50" cy="50" r="49.5" class="rim" />
+            <circle
+              v-for="(g, i) in GROOVES"
+              :key="i"
+              cx="50"
+              cy="50"
+              :r="g.r"
+              fill="none"
+              stroke="currentColor"
+              :stroke-width="g.w"
+              :stroke-opacity="g.o"
+            />
+            <clipPath :id="clipId"><circle cx="50" cy="50" r="19" /></clipPath>
+            <circle cx="50" cy="50" r="19" class="label-bg" />
+            <image v-if="art" :href="art" x="31" y="31" width="38" height="38" preserveAspectRatio="xMidYMid slice" :clip-path="`url(#${clipId})`" @error="artFailed = true" />
+            <circle cx="50" cy="50" r="1.6" class="spindle" />
+            <circle cx="50" cy="50" r="49.5" class="outline" />
+          </svg>
+          <Music v-if="!art" class="vinyl-note" :stroke-width="2" aria-hidden="true" />
+        </div>
+      </div>
     </div>
     <div v-else class="np-art">
       <img v-if="art" :src="art" alt="" draggable="false" @error="artFailed = true" />
@@ -154,6 +156,7 @@ onUnmounted(() => {
       <div class="np-text">
         <p class="np-title">{{ title }}</p>
         <p class="np-artist">{{ artist }}</p>
+        <!-- shown only with reduced motion, where the record does not turn -->
         <p v-if="variant === 'vinyl' && playing" class="np-state">{{ t('mediaPlaying') }}</p>
       </div>
 
@@ -175,7 +178,9 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="phase === 'off'" class="np-transport">
+      <!-- 2×2 vinyl: no controls, a tap opens the player sheet -->
+      <template v-if="variant === 'vinyl' && compact" />
+      <div v-else-if="phase === 'off'" class="np-transport">
         <button v-if="caps.turnOn" type="button" class="np-btn main" :aria-label="t('on')" @click="cmd('turn_on')"><Power :size="22" /></button>
       </div>
       <div v-else-if="phase !== 'unavailable'" class="np-transport">
@@ -203,7 +208,7 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <label v-if="caps.volumeSet && phase !== 'off' && !compact" class="np-volume" data-no-swipe>
+      <label v-if="caps.volumeSet && phase !== 'off' && !compact && (variant !== 'vinyl' || large)" class="np-volume" data-no-swipe>
         <Volume2 :size="15" class="shrink-0 opacity-60" />
         <input type="range" min="0" :max="volumeMax" :value="volume" class="range range-xs range-primary flex-1" :aria-label="t('volume')" @input="onVolume" />
       </label>
@@ -229,10 +234,6 @@ onUnmounted(() => {
 .stage.large {
   background: transparent;
   padding: 0;
-}
-
-.phase-unavailable {
-  opacity: 0.55;
 }
 
 .np-art {
@@ -343,50 +344,81 @@ onUnmounted(() => {
 /* ── vinyl ─────────────────────────────────────────── */
 .v-vinyl {
   flex-direction: row;
-  align-items: center;
+  align-items: stretch;
 }
 
 .v-vinyl.compact {
   flex-direction: column;
-  justify-content: center;
   gap: 6px;
-  padding: 10px;
+  padding: 10px 10px 12px;
 }
 
 .v-vinyl.large {
   flex-direction: column;
 }
 
+/* The record is min(width, height) of this box, so it can never overflow. */
 .vinyl-wrap {
-  position: relative;
-  flex-shrink: 0;
-  width: 52%;
-  aspect-ratio: 1;
+  container-type: size;
+  flex: 0 0 46%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
 }
 
 .compact .vinyl-wrap {
-  width: 78%;
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 .large .vinyl-wrap {
-  width: min(82%, 340px);
-  align-self: center;
+  flex: none;
+  width: 100%;
+  height: min(82vw, 340px);
 }
 
-.vinyl,
-.tonearm {
-  position: absolute;
-  inset: 0;
+.vinyl-slot {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+}
+
+/* Only transform animates; the origin is the centre of a plain square <div>. */
+.vinyl-disc {
+  position: relative;
   width: 100%;
   height: 100%;
+  border-radius: 50%;
+  animation: vinyl-spin 1.8s linear infinite;
+  animation-play-state: paused;
+}
+
+.vinyl-disc.spinning {
+  animation-play-state: running;
+}
+
+@keyframes vinyl-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .vinyl {
+  display: block;
+  width: 100%;
+  height: 100%;
   color: #9a9a9a;
 }
 
 .rim {
   fill: #141414;
+}
+
+/* thin ring in a theme colour: the black disc stays visible on a dark card */
+.outline {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-base-content) 28%, transparent);
+  stroke-width: 0.6;
 }
 
 .label-bg {
@@ -397,51 +429,39 @@ onUnmounted(() => {
   fill: var(--color-base-100);
 }
 
-.disc {
-  transform-origin: 100px 100px;
-  transform-box: view-box;
-  animation: vinyl-spin 1.8s linear infinite;
-  animation-play-state: paused;
+.vinyl-note {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16%;
+  height: 16%;
+  transform: translate(-50%, -62%);
+  color: var(--color-primary-content);
+  pointer-events: none;
 }
 
-.disc.spinning {
-  animation-play-state: running;
+/* "Přehrává se" only where the record does not turn (reduced motion, below) */
+.v-vinyl .np-state {
+  display: none;
 }
 
-@keyframes vinyl-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.compact .np-body {
+  gap: 0;
+  text-align: center;
 }
 
-.tonearm .arm {
-  transform-origin: 182px 18px;
-  transform-box: view-box;
-  transform: rotate(-24deg);
-  transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);
+.compact .np-title {
+  font-size: 14px;
 }
 
-.tonearm.on .arm {
-  transform: rotate(0deg);
-}
-
-.pivot {
-  fill: color-mix(in srgb, var(--color-base-content) 55%, transparent);
-}
-
-.rod {
-  stroke: color-mix(in srgb, var(--color-base-content) 70%, transparent);
-  stroke-width: 3.5;
-  stroke-linecap: round;
-}
-
-.head {
-  fill: color-mix(in srgb, var(--color-base-content) 80%, transparent);
+.compact .np-artist {
+  font-size: 12px;
 }
 
 .v-vinyl:not(.compact):not(.large) .np-body {
   flex: 1;
   min-width: 0;
+  align-content: center;
 }
 
 /* record next to the text: a narrower transport row */
@@ -471,12 +491,12 @@ onUnmounted(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .disc,
-  .disc.spinning {
+  .vinyl-disc,
+  .vinyl-disc.spinning {
     animation: none;
   }
-  .tonearm .arm {
-    transition: none;
+  .v-vinyl .np-state {
+    display: block;
   }
   .spin {
     animation: none;

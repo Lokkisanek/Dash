@@ -1,15 +1,28 @@
-# Jak připojit reproduktor
+# Hudba v dash: bez doplňků
 
-dash přehrává hudbu jen přes Home Assistant. Každá entita domény `media_player` funguje jako dlaždice hudby a jako přehrávač v listu „Teď hraje“. Co dlaždice nabídne (přehrát a pozastavit, hlasitost, výběr výstupu, procházení, hledání, seskupení), určuje přehrávač sám přes `supported_features`.
+dash hraje hudbu třemi způsoby. Žádný nepotřebuje doplněk ani další server. Každá dlaždice hudby (styly karta, mini, obal, tlačítko, „Teď hraje“, gramofon) umí kterýkoli z nich; volí se v panelu u dlaždice v řádku **Zdroj**.
 
-dash **neumí**:
+| Zdroj | Odkud jde zvuk | Co potřebuješ |
+|---|---|---|
+| **HA přehrávač** | Reproduktor, televize nebo jiný `media_player` v Home Assistantu | Integraci toho zařízení v Home Assistantu (Google Cast, Sonos, AirPlay…) |
+| **Rádio v prohlížeči** | Telefon nebo tablet, na kterém dash běží | Seznam stanic v panelu (Hudba → Rádio v prohlížeči); jen adresy https |
+| **Spotify** (volitelné) | Zařízení Spotify Connect, případně tvůj prohlížeč | Spotify Premium a vlastní aplikaci Spotify ([SPOTIFY.md](SPOTIFY.md)) |
 
-- přehrávat zvuk v prohlížeči nebo na tabletu, na kterém běží (Home Assistant pro to nemá entitu),
-- přihlašovat se ke streamovacím službám. To dělá integrace přehrávače nebo Music Assistant.
+U HA přehrávače určuje nabídku dlaždice (přehrát a pozastavit, hlasitost, výstup, procházení, hledání, seskupení) přehrávač sám přes `supported_features`. U rádia v prohlížeči:
+
+- **Stanice:** majitel zadá v panelu až 50 stanic. Tlačítko „Test“ ověří, že stream hraje.
+- **Soubory z Home Assistantu:** po zapnutí přepínače se dají přehrávat i soubory ze složky media.
+- **Vlastní adresa:** v listu přehrávače (Zdroje) lze zadat libovolný https stream.
+- **Autoplay:** když prohlížeč nedovolí spustit zvuk sám, dlaždice ukáže „Klepnutím povolíš zvuk“.
+- **iPhone:** hlasitost zvuku z webu řídí tlačítka telefonu, proto dash posuvník nenabízí.
+
+**Music Assistant, MPD a Snapcast** jsou dál k dispozici jako **volitelné** rozšíření pro víc reproduktorů, multiroom a knihovny streamovacích služeb. Pro samotné přehrávání je nepotřebuješ.
+
+Hosté dostanou rádio v prohlížeči jen s oprávněním „Rádio v telefonu hosta“ a Spotify jen s „Ovládat Spotify“. Obojí je ve výchozím stavu vypnuté ([GUEST_PASSES.md](GUEST_PASSES.md)).
 
 Zdroje v tomto návodu: dokumentace na home-assistant.io (integrace Music Assistant, MPD, Snapcast a Bluetooth) a music-assistant.io (podporované přehrávače), staženo 7. 11. 2026. Co v nich není, je označené **neověřeno**.
 
-## Music Assistant (doporučeno)
+## Volitelně: Music Assistant
 
 Music Assistant je hudební server. Integrace Music Assistant v Home Assistantu se k němu připojí.
 
@@ -65,8 +78,12 @@ Bluetooth reproduktor proto potřebuje zařízení nebo server, které se k něm
 
 ## English summary
 
-- dash plays music only through Home Assistant `media_player` entities. It never plays audio in the browser and never logs in to streaming services.
-- **Music Assistant:**
+- dash plays music without add-ons in three ways, chosen per tile ("Zdroj"):
+  - a Home Assistant `media_player`;
+  - radio in the browser: the owner's https stations, files from HA's media folder, or a direct https address;
+  - optional Spotify (Premium and the owner's own Spotify app; see [SPOTIFY.md](SPOTIFY.md)).
+- Music Assistant, MPD and Snapcast remain optional extras.
+- **Music Assistant (optional):**
   - On Home Assistant OS the integration can install the Music Assistant app; elsewhere run the server first (version 2.4 or later).
   - All its players and groups become `media_player` entities.
   - It has a `music_assistant.get_queue` action, which dash does not use yet, so there is no queue tab.

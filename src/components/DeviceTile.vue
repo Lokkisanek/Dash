@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, provide, watch, onUnmounted } from 'vue'
-import { resolveTile } from '@/lib/tileStyles'
+import { resolveTile, TILE_TYPES } from '@/lib/tileStyles'
 import { useHomeAssistant, registerLightGroup, unregisterLightGroup } from '@/composables/useHomeAssistant'
 import { useGuestConfig } from '@/composables/useGuestConfig'
 import { useI18n } from '@/composables/useI18n'
@@ -24,17 +24,53 @@ import MediaTile from './tiles/MediaTile.vue'
 import DividerTile from './tiles/DividerTile.vue'
 import InfoTile from './tiles/InfoTile.vue'
 import WifiTile from './tiles/WifiTile.vue'
+import LibraryTile from './library/LibraryTile.vue'
+import { ENGINE_IDS } from '@/lib/player/playerState'
+import { getEngine } from '@/lib/player/engines'
 
 const INFO_KINDS = ['header', 'clock', 'greeting', 'weather']
 
 const props = defineProps({
   device: { type: Object, required: true },
+  /** Position from packTiles() (shared/layout.mjs): { id, col, row, w, h } */
+  place: { type: Object, required: true },
 })
 
+/**
+ * dash's own player (type `player`): the browser or Spotify engine shown as a
+ * virtual media_player, so every media style works with it (lib/player).
+ */
+const engineKey = computed(() => (props.device.type === 'player' ? (props.device.source === 'spotify' ? 'spotify' : 'browser') : ''))
+const mediaDevice = computed(() =>
+  engineKey.value ? { ...props.device, type: 'media_player', id: ENGINE_IDS[engineKey.value] } : props.device,
+)
 const tile = computed(() => resolveTile(props.device))
 const { getEntityState } = useHomeAssistant()
 const { capabilities } = useGuestConfig()
 const { t } = useI18n()
+
+const cellStyle = computed(() => {
+  const p = props.place
+  return { gridColumn: `${p.col} / span ${p.w}`, gridRow: `${p.row} / span ${p.h}` }
+})
+
+/**
+ * One "Nedostupné" look for every tile with an entity: the entity has no state
+ * (deleted, renamed, not shared with this guest) or HA reports it unavailable.
+ * A scene's "unknown" is normal (never activated), so only media players,
+ * whose "unknown" means no connection, count it.
+ */
+const unavailable = computed(() => {
+  const d = props.device
+  if (!TILE_TYPES[d.type]?.needsEntity || !d.id) return false
+  const s = getEntityState(d.id)
+  if (!s || s.state === 'unavailable') return true
+  return d.type === 'media_player' && s.state === 'unknown'
+})
+/** Tiles that already print "Nedostupné" in their own text get no extra label. */
+const unavailableLabel = computed(
+  () => unavailable.value && !['media_player', 'fan'].includes(props.device.type) && !(props.device.type === 'scene' && tile.value.style === 'row'),
+)
 
 /** dash light group: a virtual light entity built from the members (lib/lightGroup.js). */
 const groupId = ref('')
@@ -47,6 +83,22 @@ watch(
   { immediate: true },
 )
 onUnmounted(() => groupId.value && unregisterLightGroup(groupId.value))
+
+/** Spotify state is polled only while a tile shows it. */
+let detachEngine = null
+watch(
+  engineKey,
+  (key) => {
+    detachEngine?.()
+    detachEngine = key === 'spotify' ? getEngine('spotify')?.attach?.() || null : null
+  },
+  { immediate: true },
+)
+onUnmounted(() => detachEngine?.())
+const engineState = computed(() => (engineKey.value ? getEntityState(ENGINE_IDS[engineKey.value])?.attributes?.dash_state : ''))
+function unlockSound() {
+  getEngine(engineKey.value)?.unlock?.()
+}
 
 /** Light tiles (and groups) get long-press controls when they can do more than on/off. */
 const lightId = computed(() => (props.device.type === 'light' ? props.device.id : groupId.value))
@@ -64,7 +116,7 @@ provide('dashLongPress', longPress)
 const lpHandlers = computed(() => (sheetCaps.value?.hasSheet ? longPress.handlers : {}))
 /** Media tiles (all styles but the 1×1 button) open the player sheet on a tap. */
 const playerOpen = ref(false)
-const hasPlayer = computed(() => props.device.type === 'media_player' && tile.value.style !== 'button')
+const hasPlayer = computed(() => mediaDevice.value.type === 'media_player' && tile.value.style !== 'button')
 function onMediaTap(e) {
   if (!hasPlayer.value) return
   // composedPath, not target.closest: a control may already be re-rendered (and
@@ -82,7 +134,7 @@ const sheetLabel = computed(() => {
 })
 
 const view = computed(() => {
-  const d = props.device
+  const d = mediaDevice.value
   const { style, cols, rows } = tile.value
   const base = { entityId: d.id, label: d.label || d.id }
   if (INFO_KINDS.includes(d.type)) return [InfoTile, { device: d, kind: d.type, variant: style, cols, rows }]
@@ -116,6 +168,10 @@ const view = computed(() => {
       return [MediaStage, { ...base, variant: 'vinyl', compact: cols < 4 }]
     case 'wifi:button':
       return [WifiTile, {}]
+    case 'library:trending':
+    case 'library:search':
+    case 'library:activity':
+      return [LibraryTile, { variant: style, label: d.label || '' }]
     case 'divider:line':
       return [DividerTile, { label: d.label || '' }]
     case 'light:slider':
@@ -157,14 +213,26 @@ const view = computed(() => {
 <template>
   <div
     class="device-cell"
-    :class="{ 'has-sheet': sheetCaps?.hasSheet }"
+    :class="{ 'has-sheet': sheetCaps?.hasSheet, 'is-unavailable': unavailable }"
     :data-entity="device.id"
     :data-type="device.type"
-    :style="{ gridColumn: `span ${tile.cols}`, gridRow: `span ${tile.rows}` }"
+    :data-tile-id="place.id"
+    :data-col="place.col"
+    :data-row="place.row"
+    :data-w="place.w"
+    :data-h="place.h"
+    :data-unavailable="unavailable ? '' : undefined"
+    :style="cellStyle"
     v-bind="lpHandlers"
     @click="onMediaTap"
   >
-    <component :is="view[0]" v-bind="view[1]" />
+    <component :is="view[0]" v-bind="view[1]" class="cell-body" />
+    <!-- browser radio: autoplay needs a tap; a dead stream says so -->
+    <button v-if="engineState === 'blocked'" type="button" class="unlock-sound" data-unlock-sound @click.stop="unlockSound">
+      {{ t('tapToPlay') }}
+    </button>
+    <span v-else-if="engineState === 'error'" class="stream-error" data-stream-error>{{ t('streamUnavailable') }}</span>
+    <span v-if="unavailableLabel" class="unavailable-label">{{ t('unavailable') }}</span>
     <!-- keyboard users: the long-press controls without a long press -->
     <button
       v-if="sheetCaps?.hasSheet"
@@ -180,7 +248,7 @@ const view = computed(() => {
       v-if="hasPlayer"
       type="button"
       class="lp-more"
-      :aria-label="`${device.label || device.id}: ${t('openPlayer')}`"
+      :aria-label="`${device.label || mediaDevice.id}: ${t('openPlayer')}`"
       @click.stop="playerOpen = true"
     >
       …
@@ -188,8 +256,8 @@ const view = computed(() => {
     <PlayerSheet
       v-if="hasPlayer"
       :open="playerOpen"
-      :entity-id="device.id"
-      :label="device.label || device.id"
+      :entity-id="mediaDevice.id"
+      :label="device.label || mediaDevice.id"
       :variant="tile.style"
       :outputs="device.outputs || []"
       @close="playerOpen = false"
@@ -216,6 +284,65 @@ const view = computed(() => {
   -webkit-touch-callout: none;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Same quiet look for every unavailable tile (the label stays readable). */
+.device-cell.is-unavailable > .cell-body {
+  opacity: 0.45;
+  filter: grayscale(1);
+  pointer-events: none;
+}
+
+.unlock-sound {
+  position: absolute;
+  inset: auto 8px 8px;
+  z-index: 2;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-base-content);
+  color: var(--color-base-100);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.stream-error {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-error);
+  pointer-events: none;
+}
+
+/* a solid chip: on a 1-wide tile it sits on the name, on wider ones on the state pill */
+.unavailable-label {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--color-base-100);
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1;
+  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  pointer-events: none;
+}
+
+.device-cell:not([data-w='1']) > .unavailable-label {
+  left: auto;
+  right: 10px;
+  bottom: auto;
+  top: 10px;
+  transform: none;
 }
 
 .lp-more {

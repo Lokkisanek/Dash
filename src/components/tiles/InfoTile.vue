@@ -87,10 +87,14 @@ const wxDetail = computed(() => {
   return parts.join(' · ')
 })
 
-/** One line for the compact style. */
+/**
+ * Compact style: the time always leads (it is what the line is for; the
+ * showTime switch applies to the other styles only), then date, greeting and
+ * weather. On a narrow tile the rest is cut with an ellipsis, never the time.
+ */
+const compactTime = computed(() => (isHeader.value || props.kind === 'clock' ? time.value : ''))
 const compactLine = computed(() => {
   const parts = []
-  if (showTime.value) parts.push(time.value)
   if (showDate.value) parts.push(date.value)
   if (props.kind === 'greeting') parts.push(greeting.value)
   if (showWeather.value) {
@@ -127,6 +131,8 @@ function openWifi() {
   >
     <!-- compact: one line, no surface -->
     <p v-if="variant === 'compact'" class="compact-line tabular-nums">
+      <span v-if="compactTime" class="compact-time" data-compact-time>{{ compactTime }}</span>
+      <span v-if="compactTime && compactLine" class="compact-sep" aria-hidden="true">·</span>
       <span class="compact-text">{{ compactLine }}</span>
       <button v-if="showWifi" type="button" class="wifi-btn" :aria-label="t('wifi')" :title="t('wifi')" @click="openWifi">
         <Wifi :size="18" />
@@ -419,7 +425,25 @@ function openWifi() {
   font-weight: 550;
 }
 
+.compact-line {
+  gap: 0;
+}
+
+.compact-time {
+  flex: none;
+}
+
+.compact-sep {
+  flex: none;
+  padding: 0 0.4em;
+}
+
+.compact-line .wifi-btn {
+  margin-left: 10px;
+}
+
 .compact-text {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -11,8 +11,11 @@ qrcode.stringToBytes = utf8Bytes;
 const WS = "guest_ha_dashboard";
 
 /** Same defaults as GUEST_CAPABILITY_DEFAULTS in const.py (checked by tests/pure). */
-const CAPABILITY_DEFAULTS = { allow_color: false, allow_color_temp: true, allow_effects: false, max_transition: 5, media_browse: false, media_group: false, max_volume: 0.7 };
-const CAPABILITY_TOGGLES = ["allow_color", "allow_color_temp", "allow_effects", "media_browse", "media_group"];
+const CAPABILITY_DEFAULTS = { allow_color: false, allow_color_temp: true, allow_effects: false, max_transition: 5, media_browse: false, media_group: false, max_volume: 0.7, allow_local_player: false, spotify_control: false, spotify_search: false, library_browse: false, library_request: false, library_pick_release: false, library_activity: false, library_max_per_day: 3, library_allow_tv: true };
+const CAPABILITY_TOGGLES = ["allow_color", "allow_color_temp", "allow_effects", "media_browse", "media_group", "allow_local_player", "spotify_control", "spotify_search", "library_browse", "library_request", "library_allow_tv", "library_activity", "library_pick_release"];
+/** Toggles that get a visible warning under them when switched on. */
+const CAPABILITY_WARN = { library_pick_release: "warn_library_pick_release" };
+const LIBRARY_DAY_STEPS = [1, 3, 5, 10];
 const MAX_VOLUME_STEPS = [0.3, 0.5, 0.7, 0.85, 1];
 
 const I18N = {
@@ -76,6 +79,16 @@ const I18N = {
     cap_allow_effects: "Efekty světel",
     cap_media_browse: "Procházet a pouštět hudbu",
     cap_media_group: "Seskupovat reproduktory",
+    cap_allow_local_player: "Rádio v telefonu hosta (stanice jen ke čtení)",
+    cap_spotify_control: "Ovládat Spotify (přes Home Assistant, bez přístupu k účtu)",
+    cap_spotify_search: "Hledat ve Spotify a pouštět nalezené",
+    cap_library_browse: "Videotéka: procházet a hledat filmy a seriály",
+    cap_library_request: "Videotéka: požádat o film nebo seriál (schvaluješ ty)",
+    cap_library_allow_tv: "Videotéka: i seriály",
+    cap_library_activity: "Videotéka: vidět, co se stahuje",
+    cap_library_pick_release: "Videotéka: host si sám vybere release",
+    warn_library_pick_release: "Host si může sám vybrat, co se stáhne. Nedoporučeno.",
+    library_per_day: "Žádostí za den",
     maxVolume: "Nejvyšší hlasitost",
     mediaCapsHint: "Procházení ukáže hostovi knihovnu přehrávače z jeho šablony a dovolí pustit jen to, co v ní našel. Odkazy na proudy a soubory se nepustí nikdy.",
     capsHint: "Platí pro všechna světla v profilu a jen tam, kde to světlo umí. Jas omezíš u každého světla zvlášť.",
@@ -177,6 +190,16 @@ const I18N = {
     cap_allow_effects: "Light effects",
     cap_media_browse: "Browse and play music",
     cap_media_group: "Group speakers",
+    cap_allow_local_player: "Radio on the guest's phone (stations read-only)",
+    cap_spotify_control: "Control Spotify (through Home Assistant, no account access)",
+    cap_spotify_search: "Search Spotify and play what was found",
+    cap_library_browse: "Video library: browse and search films and series",
+    cap_library_request: "Video library: request a film or series (you approve)",
+    cap_library_allow_tv: "Video library: series too",
+    cap_library_activity: "Video library: see what is downloading",
+    cap_library_pick_release: "Video library: the guest picks the release",
+    warn_library_pick_release: "The guest can choose what gets downloaded. Not recommended.",
+    library_per_day: "Requests per day",
     maxVolume: "Maximum volume",
     mediaCapsHint: "Browsing shows the guest the library of the players in their profile and plays only what they found there. Stream and file links are never played.",
     capsHint: "Applies to every light in the profile, and only where the light supports it. Limit brightness per light.",
@@ -246,6 +269,7 @@ const CSS = `
   .g-prof { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
   @media (max-width: 720px) { .g-prof { grid-template-columns: 1fr; } }
   .g-caps { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 2px 18px; align-items: center; }
+  .g-warn { grid-column: 1 / -1; margin: -4px 0 4px; font-size: 0.8rem; font-weight: 600; color: var(--danger-text, #b42318); }
   .g-caps-title { grid-column: 1 / -1; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
   .g-caps .hint { grid-column: 1 / -1; margin: 2px 0 0; }
   .g-prof input.g-name { border-color: transparent; background: transparent !important; padding-left: 0; font-weight: 600; }
@@ -610,7 +634,11 @@ export class GuestsTab {
     return `
       <div class="g-caps" role="group" aria-label="${this.esc(this.t("capsTitle"))}">
         <span class="g-caps-title">${this.t("capsTitle")}</span>
-        ${CAPABILITY_TOGGLES.map((key) => this.panel._toggle(`data-gprof-cap="${p.id}" data-cap="${key}"`, caps[key] === true, this.t(`cap_${key}`))).join("")}
+        ${CAPABILITY_TOGGLES.map((key) => `${this.panel._toggle(`data-gprof-cap="${p.id}" data-cap="${key}"`, caps[key] === true, this.t(`cap_${key}`))}${
+          CAPABILITY_WARN[key] && caps[key] === true ? `<p class="g-warn" role="note" data-cap-warn="${key}">${this.t(CAPABILITY_WARN[key])}</p>` : ""}`).join("")}
+        <label class="g-cap-vol">${this.t("library_per_day")}
+          <select data-gprof-libday="${p.id}">${LIBRARY_DAY_STEPS.map((v) => `<option value="${v}" ${(caps.library_max_per_day ?? 3) === v ? "selected" : ""}>${v}</option>`).join("")}</select>
+        </label>
         <label class="g-cap-vol">${this.t("maxVolume")}
           <select data-gprof-vol="${p.id}">${MAX_VOLUME_STEPS.map((v) => `<option value="${v}" ${Math.abs((caps.max_volume ?? 0.7) - v) < 0.001 ? "selected" : ""}>${Math.round(v * 100)} %</option>`).join("")}</select>
         </label>
@@ -803,6 +831,11 @@ export class GuestsTab {
       const p = this.profiles.find((x) => x.id === id);
       const caps = { ...CAPABILITY_DEFAULTS, ...(p?.capabilities || {}), [e.currentTarget.dataset.cap]: e.currentTarget.checked };
       this.saveProfile(id, { capabilities: caps });
+    });
+    on("[data-gprof-libday]", "change", (e) => {
+      const id = e.currentTarget.dataset.gprofLibday;
+      const p = this.profiles.find((x) => x.id === id);
+      this.saveProfile(id, { capabilities: { ...CAPABILITY_DEFAULTS, ...(p?.capabilities || {}), library_max_per_day: Number(e.currentTarget.value) } });
     });
     on("[data-gprof-vol]", "change", (e) => {
       const id = e.currentTarget.dataset.gprofVol;

@@ -82,6 +82,30 @@ try {
     }
   }
 
+  // Compact: the time always leads (also for a header migrated with showTime off)
+  // and a narrow screen cuts the weather, never the time
+  for (const [width, query] of [[390, ''], [320, '&headerShowTime=0']]) {
+    const context = await browser.newContext({ viewport: { width, height: 700 }, locale: 'cs-CZ' })
+    const page = await context.newPage()
+    await page.goto(`${BASE_URL}/?lang=cs&safe=59,34&headerStyle=compact${query}`)
+    const line = page.locator('[data-info="header"][data-variant="compact"] .compact-line')
+    await line.waitFor({ state: 'visible', timeout: 15_000 })
+    const r = await line.evaluate((el) => {
+      const time = el.querySelector('[data-compact-time]')
+      const rest = el.querySelector('.compact-text')
+      return {
+        text: el.innerText.replace(/\s+/g, ' ').trim(),
+        timeWhole: time ? time.scrollWidth <= time.clientWidth + 0.5 : false,
+        lineFits: el.scrollWidth <= el.clientWidth + 0.5,
+        restCut: rest ? rest.scrollWidth > rest.clientWidth + 0.5 : false,
+      }
+    })
+    console.log(`compact ${width}px${query}: "${r.text}"${r.restCut ? ' (weather cut)' : ''}`)
+    if (!/^\d{1,2}:\d{2} · /.test(r.text)) problems.push(`[compact ${width}] line does not start with the time: "${r.text}"`)
+    if (!r.timeWhole || !r.lineFits) problems.push(`[compact ${width}] time clipped or line overflows`)
+    await context.close()
+  }
+
   // Guest pass: header tile without entity reaches the guest, Wi-Fi button works
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'cs-CZ' })
   const page = await context.newPage()

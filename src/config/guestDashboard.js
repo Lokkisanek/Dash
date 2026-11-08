@@ -24,6 +24,10 @@ export const guestDashboard = {
     use24h: true,
     /** Installed iPhone app: dark strip behind the white status bar (off = wallpaper runs under it) */
     statusBarStrip: false,
+    /** auto = pages side by side on wide screens, single = one column */
+    layoutMode: 'auto',
+    /** auto = right on a phone in landscape, bottom elsewhere */
+    dockPosition: 'auto',
   },
 
   /** Idle screen: big clock or a cross-fading photo frame */
@@ -295,6 +299,12 @@ export const guestDashboard = {
           outputs: ['media_player.kuchyn'],
         },
         { id: 'media_player.kuchyn', type: 'media_player', label: 'Kuchyň', style: 'nowplaying', size: '4x3' },
+        { id: 'media_player.obyvak', type: 'media_player', label: 'Obývák', style: 'vinyl', size: '2x2' },
+        // dash's own player: radio in this browser (demo: a silent test tone)
+        { id: 'player-radio', type: 'player', label: 'Rádio', style: 'vinyl', size: '2x2', source: 'browser' },
+        { id: 'divider-videoteka', type: 'divider', label: 'Videotéka', style: 'line', size: '4x1' },
+        { id: 'library-trending', type: 'library', label: 'Videotéka', style: 'trending', size: '4x2' },
+        { id: 'library-activity', type: 'library', label: 'Stahování', style: 'activity', size: '4x2' },
       ],
     },
   ],

@@ -8,6 +8,7 @@ from pathlib import Path
 from homeassistant.components import frontend, panel_custom
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -23,7 +24,13 @@ from .guest_http import GuestPairView
 from .guest_runtime import GuestRuntime
 from .guest_store import GuestStore
 from .guest_ws import GuestWebSocketView
+from .library.service import LibraryService
+from .library_ws import ActivityHub, async_register_library_ws, async_setup_cleanup
+from .music_ws import async_register_music_ws
+from .radio_directory import RadioDirectory
+from .spotify import SpotifyService
 from .store import GuestDashboardStore
+from .vault import Vault
 from .websocket_api import async_register_ws
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,13 +52,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     guest_store = GuestStore(hass)
     await guest_store.async_load()
 
+    vault = Vault(hass)
+    await vault.async_load()
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN]["store"] = store
+    hass.data[DOMAIN]["vault"] = vault
+    hass.data[DOMAIN]["spotify"] = SpotifyService(
+        vault.data["spotify"],
+        vault.schedule_save,
+        lambda: async_get_clientsession(hass),
+    )
+    hass.data[DOMAIN]["radio_directory"] = RadioDirectory(
+        lambda: async_get_clientsession(hass), f"dash-ha/{VERSION}"
+    )
+    hass.data[DOMAIN]["library"] = LibraryService(
+        vault.data["library"],
+        vault.schedule_save,
+        lambda: async_get_clientsession(hass),
+    )
+    hass.data[DOMAIN]["library_activity"] = ActivityHub(hass)
+    async_setup_cleanup(hass, entry)
     hass.data[DOMAIN]["entry_id"] = entry.entry_id
     hass.data[DOMAIN]["guests"] = GuestRuntime(hass, guest_store, store)
 
     async_register_ws(hass)
     async_register_admin_ws(hass)
+    async_register_music_ws(hass)
+    async_register_library_ws(hass)
     _register_guest_views(hass)
 
     # Serve panel module: /guest_ha_dashboard_static/panel.js
@@ -91,6 +119,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data = hass.data.pop(DOMAIN, None) or {}
     if runtime := data.get("guests"):
         runtime.shutdown()
+    if hub := data.get("library_activity"):
+        hub.stop()
+    if vault := data.get("vault"):
+        vault.unload()
     return True
 
 

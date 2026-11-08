@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  The HA panel (custom_components/guest_ha_dashboard/www/panel.js) outside Home
+  Assistant, for browser tests: a fake `hass` answers the panel's websocket
+  commands from memory. ?app=<url> is the dashboard shown in the live preview
+  (a mock-mode build). Served by scripts/serve-harness.mjs; never shipped.
+-->
+<html lang="cs"><head><meta charset="utf-8"><title>panel harness</title>
+<style>html,body{margin:0;height:100%}</style></head>
+<body>
+<script type="module">
+import "/custom_components/guest_ha_dashboard/www/panel.js";
+
+const params = new URLSearchParams(location.search);
+const app = params.get("app") || "http://localhost:4173/?lang=cs";
+const tile = (id, type, style, size, extra = {}) => ({ id, type, style, size, ...extra });
+/** The owner's page from the stage-3 screenshots (tests/js/layout.test.js has the same order). */
+const fixturePage = {
+  id: "obyvak", label: "Obývák", icon: "Sofa",
+  devices: [
+    { type: "divider", label: "Scény" },
+    tile("scene.vecer", "scene", "button", "1x1", { label: "Obyvák Chill", icon: "Martini" }),
+    tile("scene.kino", "scene", "button", "1x1", { label: "Kino" }),
+    tile("scene.film", "scene", "button", "1x1", { label: "Film" }),
+    tile("switch.obyvak_tv", "switch", "button", "1x1"),
+    { type: "divider", label: "Kuchyň" },
+    tile("switch.kava", "switch", "button", "2x1", { label: "Switch Jídelna" }),
+    tile("scene.kino", "scene", "button", "1x1"),
+    tile("switch.koupelna_boiler", "switch", "button", "1x1"),
+    { type: "divider", label: "Hudba" },
+    tile("media_player.obyvak", "media_player", "tile", "4x2", { label: "Obývák" }),
+    tile("media_player.kuchyn", "media_player", "nowplaying", "4x3", { label: "Kuchyň" }),
+    tile("switch.kava", "switch", "button", "2x1"),
+    tile("switch.obyvak_tv", "switch", "button", "2x1"),
+  ],
+};
+/** Tiles without an entity: the editor must name them by type, never by id. */
+const infoPage = {
+  id: "info", label: "Info", icon: "Info",
+  devices: [
+    { id: "header-0e313dab", type: "header", style: "card", size: "4x2" },
+    { id: "clock-1a2b3c4d", type: "clock", size: "2x1" },
+    { id: "greeting-5e6f7a8b", type: "greeting", size: "2x1" },
+    { id: "weather-9c0d1e2f", type: "weather", size: "2x1" },
+    { id: "wifi-3a4b5c6d", type: "wifi", size: "2x1" },
+    { id: "divider-7e8f9a0b", type: "divider" },
+    { id: "light_group-1f2e3d4c", type: "light_group", entities: [], size: "2x1" },
+  ],
+};
+const config = {
+  configVersion: 3,
+  guestInfo: { wifiSsid: "Demo Wi-Fi", wifiPassword: "demo-password", wifiSecurity: "WPA" },
+  general: {}, standby: {}, hosting: "self", dashboardUrl: app, appearance: { mode: params.get("theme") === "dark" ? "dark" : "light" },
+  pages: [fixturePage, infoPage], dock: [{ pageId: "obyvak", label: "Obývák", icon: "Sofa", showLabel: true }, { pageId: "info", label: "Info", icon: "Info", showLabel: true }],
+};
+const readSaved = () => { try { return JSON.parse(localStorage.getItem("harness_saved") || "null"); } catch { return null; } };
+const responses = {
+  "guest_ha_dashboard/get_config": () => readSaved() || structuredClone(config),
+  "guest_ha_dashboard/set_config": (m) => { localStorage.setItem("harness_saved", JSON.stringify(m.config)); return structuredClone(m.config); },
+  "guest_ha_dashboard/photo_list": () => ({ photos: [] }),
+  "guest_ha_dashboard/guests/info": () => ({ defaults: { checkin: "14:00", checkout: "11:00", nights: 2 }, required_limits: {} }),
+  "guest_ha_dashboard/guests/entities": () => ({ entities: [] }),
+  "guest_ha_dashboard/profile/list": () => ({ profiles: [] }),
+  "guest_ha_dashboard/pass/list": () => ({ passes: [] }),
+  "guest_ha_dashboard/audit/list": () => ({ entries: [] }),
+};
+window.__calls = [];
+const hass = {
+  language: "cs", locale: { language: "cs" }, themes: { darkMode: params.get("theme") === "dark" },
+  config: { external_url: location.origin },
+  areas: {}, states: {}, auth: { data: { hassUrl: location.origin } },
+  connection: {
+    sendMessagePromise: async (m) => {
+      window.__calls.push(m.type);
+      const r = responses[m.type];
+      if (r) return r(m);
+      return {};
+    },
+    subscribeMessage: async () => () => {},
+  },
+};
+const el = document.createElement("guest-ha-dashboard-panel");
+document.body.append(el);
+el.hass = hass;
+window.__panel = el;
+</script>
+</body></html>

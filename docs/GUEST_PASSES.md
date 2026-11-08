@@ -163,6 +163,23 @@ Every message re-checks that the pass exists, is not revoked and is within its v
 - `play_media` accepts only issued ids.
 Calls are made with the player entity's own `async_browse_media` and `async_internal_search_media`, the same methods Home Assistant's `media_player/browse_media` and `media_player/search_media` websocket commands use (2026.10.4).
 
+**Music engines and Videotéka (phase 2).** Every new capability is off by default, checked on the server for every message, rate-limited by the same token bucket and logged in the audit on refusal. The hard-deny list is unchanged.
+
+| Profile capability (default) | Guest kinds / effect |
+|---|---|
+| `allow_local_player` (off) | `player` tiles with source *browser*; `get_config` gets `radio.stations` read-only |
+| `allow_local_player` + `media_browse` (off) | `local_media_browse`, `local_media_resolve`: HA media folder in the guest's browser; only ids this pass got from its own browse (10 min); signed path valid 5 min |
+| `spotify_control` (off) | `spotify_state`, `spotify_control` (play, pause, next, previous, seek, volume capped by `max_volume`); `player` tiles with source *spotify*. Never a token; no transfer, no Web Playback SDK |
+| `spotify_search` (off) | `spotify_search` (≤ 10 results); `spotify_control` play with a `uri` only if this pass found it in the last 10 minutes |
+| `library_browse` (off) | `library_discover`, `library_search`, `library_detail`, `library_poster`; Videotéka tiles except *Stahování* |
+| `library_request` (off), `library_max_per_day` (3), `library_allow_tv` (on) | `library_request` (pending request for the owner; the daily counter is stored with the pass), `library_requests` (own requests only) |
+| `library_pick_release` (off; the Guests tab warns: *Host si může sám vybrat, co se stáhne. Nedoporučeno.*) | `library_releases` only for a title this pass opened in the last 10 minutes; `library_grab` only with a `(guid, indexerId)` pair listed to this pass for that title (per-pass LRU, 10 min) |
+| `library_activity` (off) | `library_activity` (read-only subscription; no torrent hashes, no release names, no controls) |
+
+- Spotify also needs the owner's `spotify.enabled`; the library needs `library.enabled`; the HA media folder needs `radio.mediaLibrary`. Without them a guest gets `spotify_disabled` / `library_disabled` / `library_disabled`.
+- Audit entries for library requests and grabs carry the pass, the TMDB id, the title and the result, never a secret.
+- Guests never receive API keys, passwords, tokens or upstream URLs. Posters are fetched by the integration and sent as bytes; Spotify image URLs are removed for guests.
+
 **Section dividers (2.1).** A divider tile (`type: "divider"`) has no entity, so it is not part of a profile and never an allowed or denied entity. `filter_config` keeps dividers on the pages it sends, but a page is sent only if it still contains at least one tile the guest may use. Without that rule, a page that consists only of dividers after filtering would reveal its name, icon and section names to guests of other rooms. A divider id (`divider-…`) is not an entity id, so a `call_service` aimed at it fails validation like any other id outside the profile.
 
 **Photos (2.1).** The guest socket already sent the photo id as `photo_id`. The owner API used `id`, which collides with the websocket message id; it now uses `photo_id` too (see [DIAGNOSTICS.md](DIAGNOSTICS.md)). Nothing about what guests receive changed.

@@ -3,6 +3,57 @@
 All notable changes to dash are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 08.11.2026
+
+### Fixed
+
+- The app now shows exactly the layout the editor shows. Both pack tiles with one function (`shared/layout.mjs`, in array order, no dense backfill). Before, the editor packed one dense grid and the app one per divider section, so tiles moved between sections.
+- The live preview follows the editor draft at once, before **Uložit**.
+- Unavailable tiles: one quiet dimmed look with "Nedostupné" for every tile type.
+- Record-player style rewritten:
+  - no tonearm;
+  - the record is sized to the tile and never overflows;
+  - 2×2 without controls, 4×3 with controls;
+  - it turns at 33⅓ rpm while playing and keeps its angle when paused.
+  - The panel shows it turning.
+- The panel names tiles without an entity by type, never by an internal id.
+- The compact header always starts with the time; a narrow tile cuts the weather, never the time.
+- Flat tonal placeholders instead of gradients (media artwork, editor decorations, preview backdrop).
+- Editor tiles use the app's corner radius.
+- The dock stays legible over content: blur and a solid translucent fill always; refraction only as an addition and never in the preview iframe; dark-mode ink.
+
+### Added
+
+- Wide and tablet layouts:
+  - several pages side by side (`general.layoutMode`), paging by one page with swipe or ← →;
+  - a side dock on a phone in landscape (`general.dockPosition`);
+  - left/right safe areas.
+- Panel live preview:
+  - phone, tablet and wall-display presets (generated from Playwright's device list);
+  - rotate, fit or 100 %;
+  - a custom size with a safe area;
+  - remembered per browser.
+- Player engines (`docs/PLAYER_ENGINES.md`):
+  - a `player` tile with radio in the browser: the owner's https stations, the HA media folder, a direct address, autoplay unlock, retries, Media Session;
+  - an optional radio directory proxy;
+  - an optional **Spotify** engine: PKCE sign-in kept in the integration, Connect control, search, playlists, owner-only Web Playback SDK, a setup wizard;
+  - the panel **Hudba** tab.
+- **Videotéka** (`docs/LIBRARY.md`):
+  - discover and search (TMDB or the Arr lookup);
+  - automatic request or "Vybrat release" with a ghost-add and a release picker, safe ghost cleanup;
+  - downloads merged from Radarr/Sonarr and qBittorrent;
+  - a requests inbox with an HA event and a notification;
+  - posters through the integration;
+  - the panel **Videotéka** tab.
+- Guest capabilities, all off by default: `allow_local_player`, `spotify_control`, `spotify_search`, `library_browse`, `library_request`, `library_pick_release`, `library_activity`, `library_max_per_day`, `library_allow_tv`.
+- A secrets vault (`guest_ha_dashboard.vault`) with log redaction.
+- Docs: `SPOTIFY.md`, `LIBRARY.md`, `PLAYER_ENGINES.md`; `SPEAKERS.md` rewritten ("bez doplňků"); `COMMERCIAL.md` third-party addendum.
+
+### Changed
+
+- Tile packing (see Fixed): a gap in a row stays empty until you move a tile into it.
+- CSP: `https://sdk.scdn.co` allowed in `script-src` and `frame-src` (only used once the owner turns on the Spotify browser player).
+
 ## [2.1.0-beta.3] - 07.11.2026
 
 ### Added
@@ -127,6 +178,7 @@ First public release under the name **dash**.
 - The bundled demo Wi-Fi password in the default config. The mock/demo build shows `demo-password` instead.
 - The old React liquid-glass demo page and its unused dependencies.
 
+[2.1.0]: https://github.com/Lokkisanek/Dash/releases/tag/v2.1.0
 [2.1.0-beta.3]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.3
 [2.1.0-beta.2]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.2
 [2.1.0-beta.1]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.1

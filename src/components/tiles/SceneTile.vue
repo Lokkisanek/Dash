@@ -146,10 +146,8 @@ onUnmounted(() => clearTimeout(timer))
 }
 
 .is-off {
-  opacity: 0.5;
   cursor: default;
 }
-
 @media (prefers-reduced-motion: reduce) {
   .scene-tile,
   .scene-icon {

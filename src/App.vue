@@ -7,6 +7,8 @@ import { useGuestConfig } from '@/composables/useGuestConfig'
 import { useI18n } from '@/composables/useI18n'
 import { useWakeLock } from '@/composables/useWakeLock'
 import { unlockAudio } from '@/composables/useSound'
+import { onPreviewMessage } from '@/lib/previewBridge'
+import { useLayoutMode, SIDE_DOCK_SPACE } from '@/composables/useLayoutMode'
 
 import HaLogin from '@/components/HaLogin.vue'
 import PairingScreen from '@/components/PairingScreen.vue'
@@ -14,8 +16,7 @@ import GuestPassStatus from '@/components/GuestPassStatus.vue'
 import GuestToast from '@/components/GuestToast.vue'
 import ConnectionBadge from '@/components/ConnectionBadge.vue'
 import StatusBarStrip from '@/components/StatusBarStrip.vue'
-import DeviceTile from '@/components/DeviceTile.vue'
-import DividerTile from '@/components/tiles/DividerTile.vue'
+import PageGrid from '@/components/PageGrid.vue'
 import LiquidGlassDock from '@/components/LiquidGlassDock.vue'
 import BackgroundOrbs from '@/components/BackgroundOrbs.vue'
 
@@ -24,6 +25,10 @@ const { status } = useHomeAssistant()
 const { pages, dock, appearance, themeMode, general, standby } = useGuestConfig()
 const { t } = useI18n()
 useWakeLock()
+const { mode: layoutMode, dockSide, pagesPerView } = useLayoutMode()
+/** Wide modes: N pages side by side on a track that moves by one page. */
+const wide = computed(() => pagesPerView.value > 1)
+const single = computed(() => general.value.layoutMode === 'single')
 
 const forceStandby = new URLSearchParams(window.location.search).get('standby') === '1'
 const { idle, wake, sleep } = useIdle(
@@ -32,13 +37,11 @@ const { idle, wake, sleep } = useIdle(
 )
 if (forceStandby) onMounted(sleep)
 
-/** The HA config panel can show the standby screen in its preview. */
-function onPanelMessage(e) {
-  if (e.source !== window.parent || window.parent === window) return
-  if (e.data?.type === 'guest-ha:standby') e.data.on ? sleep() : wake()
-}
-onMounted(() => window.addEventListener('message', onPanelMessage))
-onUnmounted(() => window.removeEventListener('message', onPanelMessage))
+/** The HA config panel can show the standby screen in its preview (lib/previewBridge.js). */
+const stopPreview = onPreviewMessage((data) => {
+  if (typeof data?.standby === 'boolean') data.standby ? sleep() : wake()
+})
+onUnmounted(stopPreview)
 
 const DOCK_MAX = 6
 const activePageId = ref(pages.value[0]?.id)
@@ -94,6 +97,55 @@ function selectPage(id, fromX = 0) {
   activePageId.value = id
 }
 
+/** First page shown on the wide track; the active page is always inside the visible range. */
+const startIdx = ref(0)
+const maxStart = computed(() => Math.max(0, pages.value.length - pagesPerView.value))
+watch(
+  [activePageId, pagesPerView, () => pages.value.length],
+  () => {
+    const idx = Math.max(0, indexOf(activePageId.value))
+    let start = Math.min(startIdx.value, maxStart.value)
+    if (idx < start) start = idx
+    if (idx >= start + pagesPerView.value) start = idx - pagesPerView.value + 1
+    startIdx.value = Math.max(0, Math.min(maxStart.value, start))
+  },
+  { immediate: true },
+)
+const visibleIds = computed(() =>
+  wide.value ? pages.value.slice(startIdx.value, startIdx.value + pagesPerView.value).map((p) => p.id) : [activePageId.value],
+)
+
+/** Move the view by one page (wide: the track; single: the next page). */
+function stepPage(delta) {
+  if (wide.value) {
+    const next = Math.max(0, Math.min(maxStart.value, startIdx.value + delta))
+    if (next === startIdx.value) return false
+    unlockAudio()
+    startIdx.value = next
+    activePageId.value = pages.value[delta > 0 ? next + pagesPerView.value - 1 : next]?.id || activePageId.value
+    return true
+  }
+  const target = neighbour(delta)
+  if (target) selectPage(target.id)
+  return Boolean(target)
+}
+
+function onKeydown(e) {
+  if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return
+  if (e.target?.closest?.('input, select, textarea, dialog, [role="dialog"], [contenteditable="true"]')) return
+  if (e.key === 'ArrowRight' && stepPage(1)) e.preventDefault()
+  if (e.key === 'ArrowLeft' && stepPage(-1)) e.preventDefault()
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+
+/** Space the content keeps free for the dock (bottom or side). */
+const dockSpace = computed(() => ({
+  '--dock-space-bottom': dockSide.value === 'bottom' ? 'calc(var(--dock-h) + var(--dock-gap) + 16px)' : '16px',
+  '--dock-space-left': dockSide.value === 'left' ? `${SIDE_DOCK_SPACE}px` : '0px',
+  '--dock-space-right': dockSide.value === 'right' ? `${SIDE_DOCK_SPACE}px` : '0px',
+}))
+
 function neighbour(delta) {
   const list = pages.value
   let idx = indexOf(activePageId.value)
@@ -131,7 +183,10 @@ function onPointerMove(e) {
       return
     }
   }
-  const blocked = (dx > 0 && !neighbour(1)) || (dx < 0 && !neighbour(-1))
+  // wide: natural direction (next page is to the right); single: swipe right = next
+  const blocked = wide.value
+    ? (dx < 0 && startIdx.value >= maxStart.value) || (dx > 0 && startIdx.value <= 0)
+    : (dx > 0 && !neighbour(1)) || (dx < 0 && !neighbour(-1))
   dragX.value = blocked ? dx / 3 : dx
 }
 
@@ -151,6 +206,10 @@ function onPointerUp(e) {
   const target = commit ? neighbour(dx > 0 ? 1 : -1) : null
   const offset = dragX.value
   dragX.value = 0
+  if (wide.value) {
+    if (commit) stepPage(dx < 0 ? 1 : -1)
+    return
+  }
   if (target) selectPage(target.id, offset)
 }
 
@@ -199,19 +258,6 @@ const activePage = computed(
   () => pages.value.find((r) => r.id === activePageId.value) || pages.value[0],
 )
 
-/**
- * Dividers split a page into sections. Each section gets its own grid, so the
- * dense packing never moves a tile above the heading it belongs under.
- */
-const sections = computed(() => {
-  const out = [{ key: 'top', divider: null, devices: [] }]
-  ;(activePage.value?.devices || []).forEach((device, i) => {
-    if (device?.type === 'divider') out.push({ key: device.id || `divider-${i}`, divider: device, devices: [] })
-    else out[out.length - 1].devices.push({ device, key: `${i}:${device?.id || device?.label}` })
-  })
-  return out.filter((s) => s.divider || s.devices.length)
-})
-
 const showLogin = computed(() => {
   if (status.value === 'login') return true
   if (status.value === 'need_url') return true
@@ -248,7 +294,11 @@ onMounted(() => {
   <div
     v-else
     class="dashboard-shell relative h-full w-full overflow-hidden text-base-content"
-    :class="{ 'is-dark': themeMode === 'dark' }"
+    :class="[{ 'is-dark': themeMode === 'dark', 'is-wide': wide }, `dock-${dockSide}`]"
+    :style="dockSpace"
+    :data-layout-mode="layoutMode"
+    :data-pages-per-view="pagesPerView"
+    :data-dock-side="dockSide"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
@@ -264,10 +314,36 @@ onMounted(() => {
     <ConnectionBadge />
 
     <div
-      class="relative z-10 flex flex-col h-full px-4 max-w-lg mx-auto"
-      :class="status === 'connected' ? 'pt-4' : 'pt-9'"
+      class="content-column relative z-10 flex flex-col h-full px-4 mx-auto"
+      :class="[status === 'connected' ? 'pt-4' : 'pt-9', wide ? 'is-wide' : 'max-w-lg', { 'is-single': single }]"
     >
-      <div class="pages-viewport -mx-4" :style="{ '--release': `${releaseX}px` }">
+      <!-- wide: every page on one track, N visible, moved by one page -->
+      <div v-if="wide" class="pages-viewport -mx-4" data-pages-track>
+        <div
+          class="pages-track"
+          :class="{ 'is-dragging': dragging }"
+          :style="{ '--n': pagesPerView, '--start': startIdx, '--drag': `${dragX}px` }"
+        >
+          <div
+            v-for="(p, i) in pages"
+            :key="p.id"
+            data-dashboard-scroll
+            :data-page-id="p.id"
+            class="page wide-page no-scrollbar overscroll-contain"
+            :class="{ 'is-visible': i >= startIdx && i < startIdx + pagesPerView }"
+            :aria-hidden="i >= startIdx && i < startIdx + pagesPerView ? undefined : 'true'"
+            :inert="i >= startIdx && i < startIdx + pagesPerView ? undefined : true"
+          >
+            <div class="page-content">
+              <PageGrid :page="p" />
+            </div>
+          </div>
+        </div>
+        <p class="sr-only" aria-live="polite" data-page-range>
+          {{ startIdx + 1 }}–{{ Math.min(pages.length, startIdx + pagesPerView) }} / {{ pages.length }}
+        </p>
+      </div>
+      <div v-else class="pages-viewport -mx-4" :style="{ '--release': `${releaseX}px` }">
         <Transition :name="pageTransition">
           <div
             :key="activePage?.id || 'empty'"
@@ -277,12 +353,7 @@ onMounted(() => {
             :style="{ '--drag': `${dragX}px` }"
           >
             <div class="page-content">
-              <template v-for="section in sections" :key="section.key">
-                <DividerTile v-if="section.divider" class="section-divider" :label="section.divider.label || ''" />
-                <div v-if="section.devices.length" class="tile-grid">
-                  <DeviceTile v-for="item in section.devices" :key="item.key" :device="item.device" />
-                </div>
-              </template>
+              <PageGrid :page="activePage" />
             </div>
           </div>
         </Transition>
@@ -292,8 +363,10 @@ onMounted(() => {
     <LiquidGlassDock
       data-no-swipe
       :model-value="activePageId"
+      :active-ids="visibleIds"
       :items="dockItems"
       :dark="themeMode === 'dark'"
+      :side="dockSide"
       @update:model-value="selectPage"
     />
 
@@ -330,9 +403,53 @@ onMounted(() => {
   pointer-events: none;
 }
 
-/* Last row of tiles clears the dock: dock height + gap + home indicator. */
+/* Last row of tiles clears the dock (bottom dock: its height + gap) and the home indicator. */
 .page-content {
-  padding-bottom: calc(var(--dock-h) + var(--dock-gap) + var(--safe-bottom, 0px) + 16px);
+  padding-bottom: calc(var(--dock-space-bottom, calc(var(--dock-h) + var(--dock-gap) + 16px)) + var(--safe-bottom, 0px));
+}
+
+/* Side dock: the content column keeps the dock's width free on that side. */
+.content-column {
+  padding-left: calc(1rem + var(--dock-space-left, 0px));
+  padding-right: calc(1rem + var(--dock-space-right, 0px));
+  box-sizing: border-box;
+}
+
+.content-column.max-w-lg {
+  max-width: calc(32rem + var(--dock-space-left, 0px) + var(--dock-space-right, 0px));
+}
+
+.content-column.is-wide {
+  max-width: none;
+  width: 100%;
+}
+
+/* layoutMode "single": one centred column of at most ~520 px */
+.content-column.is-single {
+  max-width: calc(520px + var(--dock-space-left, 0px) + var(--dock-space-right, 0px));
+}
+
+.pages-track {
+  --page-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex;
+  height: 100%;
+  transform: translate3d(calc(var(--start) * -100% / var(--n) + var(--drag, 0px)), 0, 0);
+  transition: transform 0.45s var(--page-ease);
+  will-change: transform;
+}
+
+.pages-track.is-dragging {
+  transition: none;
+}
+
+/* .page.wide-page: must beat the absolutely positioned single .page below */
+.page.wide-page {
+  position: relative;
+  inset: auto;
+  flex: 0 0 calc(100% / var(--n));
+  height: 100%;
+  transform: none;
+  transition: none;
 }
 
 .dashboard-shell.is-dark {
@@ -346,30 +463,9 @@ onMounted(() => {
   overflow: hidden;
 }
 
-/*
- * Control Center grid: 4 square columns; tiles span "<cols>x<rows>".
- * cqw keeps rows exactly as tall as columns are wide.
- */
+/* The tile grid (PageGrid.vue) sizes its square cells from this container. */
 .page {
   container-type: inline-size;
-}
-
-.section-divider {
-  height: auto;
-  padding-top: 22px;
-}
-
-.tile-grid + .tile-grid {
-  margin-top: 12px;
-}
-
-.tile-grid {
-  --gap: 12px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: calc((100cqw - 2rem - 3 * var(--gap)) / 4);
-  grid-auto-flow: row dense;
-  gap: var(--gap);
 }
 
 .page {
@@ -423,6 +519,9 @@ onMounted(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .pages-track {
+    transition: none;
+  }
   .page,
   .page-next-enter-active,
   .page-next-leave-active,

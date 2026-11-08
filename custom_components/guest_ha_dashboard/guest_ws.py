@@ -35,6 +35,7 @@ from .const import (
     CLOSE_REVOKED,
     CLOSE_TOO_MANY,
     DOMAIN,
+    LOCAL_MEDIA_SIGN_SECONDS,
     MEDIA_FEATURE_BROWSE,
     MEDIA_FEATURE_SEARCH,
     MEDIA_IMAGE_MAX_BYTES,
@@ -56,6 +57,7 @@ from .guest_model import (
     GuestData,
     parse_time,
 )
+from .guest_music import MUSIC_KINDS, decide, signable_media_path
 from .guest_policy import (
     domain_access,
     entity_domain,
@@ -67,6 +69,12 @@ from .guest_policy import (
 )
 from .guest_ratelimit import TokenBucket
 from .guest_runtime import GuestRuntime, get_runtime
+from .library.guest_rules import (
+    LIBRARY_KINDS,
+    PassIssues,
+    day_count,
+    decide as library_decide,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -116,6 +124,7 @@ class GuestSession:
         self._outbox: asyncio.Queue[bytes] = asyncio.Queue(_OUTBOX_MAX)
         self._close: tuple[int, str] | None = None
         self._unsub_states: CALLBACK_TYPE | None = None
+        self._library_unsub: CALLBACK_TYPE | None = None
         self._unsub_expiry: CALLBACK_TYPE | None = None
         self._bucket = TokenBucket()
         self._last_rate_audit = 0.0
@@ -161,6 +170,9 @@ class GuestSession:
             self._task.cancel()
 
     async def _cleanup(self) -> None:
+        if self._library_unsub:
+            self._library_unsub()
+            self._library_unsub = None
         if self._unsub_states:
             self._unsub_states()
             self._unsub_states = None
@@ -370,6 +382,10 @@ class GuestSession:
             await self._photo_get(data, msg_id)
         elif kind in ("browse_media", "search_media"):
             await self._browse(kind, data, msg_id, profile)
+        elif kind in MUSIC_KINDS:
+            await self._music(kind, data, msg_id, profile)
+        elif kind in LIBRARY_KINDS:
+            await self._library(kind, data, msg_id, profile)
         else:
             self._error(msg_id, "unknown_command")
 
@@ -564,6 +580,259 @@ class GuestSession:
         result = sanitize_browse(raw)
         self._issue(result)
         self._result(msg_id, result)
+
+    # ─── music engines: Spotify proxy, HA media files (guest_music.py) ───────
+
+    async def _music(self, kind: str, data: dict, msg_id: Any, profile: dict) -> None:
+        """Default deny (guest_music.decide); Spotify only through the integration."""
+        from .spotify import SpotifyError
+
+        if not self._bucket.take():
+            self._error(msg_id, "rate_limited")
+            return
+        caps = profile_capabilities(profile)
+        decision = decide(
+            kind, data, caps, self.runtime.config_store.data, self._issued_ok
+        )
+        if not decision.allowed:
+            if decision.code not in ("bad_request", "unknown_command"):
+                self.model.audit(
+                    self.runtime.now(),
+                    "call_denied",
+                    pass_id=self.pass_id,
+                    service=kind,
+                    reason=decision.code,
+                )
+                self.runtime.store.schedule_save()
+            self._error(msg_id, decision.code)
+            return
+        p = decision.params
+        try:
+            if kind.startswith("spotify_"):
+                service = self.hass.data[DOMAIN]["spotify"]
+                if kind == "spotify_state":
+                    self._result(msg_id, await service.player_state(guest=True))
+                elif kind == "spotify_search":
+                    items = await service.search(p["query"], guest=True)
+                    self._issue_ids(item["uri"] for item in items)
+                    self._result(msg_id, {"items": items})
+                else:
+                    await service.control(
+                        p["action"],
+                        value=p.get("value"),
+                        uri=p.get("uri"),
+                        max_volume=p["max_volume"],
+                        allowed=("play", "pause", "next", "previous", "seek", "volume"),
+                    )
+                    self.model.audit(
+                        self.runtime.now(),
+                        "call_ok",
+                        pass_id=self.pass_id,
+                        service=f"spotify.{p['action']}",
+                    )
+                    self.runtime.store.schedule_save()
+                    self._result(msg_id, {})
+            elif kind == "local_media_browse":
+                await self._local_browse(p["media_content_id"], msg_id)
+            else:
+                await self._local_resolve(p["media_content_id"], msg_id)
+        except SpotifyError as err:
+            self._error(msg_id, err.code)
+
+    # ─── Videotéka (library/guest_rules.py; all off by default) ──────────────
+
+    def _library_issues(self) -> PassIssues:
+        store = self.hass.data.setdefault(f"{DOMAIN}_library_issues", {})
+        if self.pass_id not in store:
+            store[self.pass_id] = PassIssues()
+        return store[self.pass_id]
+
+    async def _library(self, kind: str, data: dict, msg_id: Any, profile: dict) -> None:
+        from .library.client import ServiceError
+        from .library.config import defaults_for, normalize_library
+        from .library_ws import fire_request
+
+        if not self._bucket.take():
+            self._error(msg_id, "rate_limited")
+            return
+        config = self.runtime.config_store.data
+        if not normalize_library(config.get("library"))["enabled"]:
+            self._error(msg_id, "library_disabled")
+            return
+        caps = profile_capabilities(profile)
+        mono = time.monotonic()
+        pass_ = self.model.data["passes"].get(self.pass_id) or {}
+        today = self.runtime.now().date().isoformat()
+        issues = self._library_issues()
+        decision = library_decide(
+            kind,
+            data,
+            caps,
+            issues,
+            mono,
+            requests_today=day_count(pass_.get("library_requests"), today),
+        )
+        if not decision.allowed:
+            if decision.code not in ("bad_request", "unknown_command"):
+                self.model.audit(
+                    self.runtime.now(),
+                    "call_denied",
+                    pass_id=self.pass_id,
+                    service=kind,
+                    reason=decision.code,
+                )
+                self.runtime.store.schedule_save()
+            self._error(msg_id, decision.code)
+            return
+        p = decision.params
+        service = self.hass.data[DOMAIN]["library"]
+        try:
+            if kind == "library_discover":
+                self._result(msg_id, {"items": await service.discover(p["media"])})
+            elif kind == "library_search":
+                self._result(msg_id, {"items": await service.search(p["query"])})
+            elif kind == "library_detail":
+                item = await service.detail(p["media_type"], p["tmdb_id"])
+                issues.open_item(p["media_type"], p["tmdb_id"], mono)
+                self._result(msg_id, item)
+            elif kind == "library_poster":
+                body, mime = await service.posters.fetch(p["poster"])
+                self._result(
+                    msg_id,
+                    {"mime": mime, "data": base64.b64encode(body).decode("ascii")},
+                )
+            elif kind == "library_requests":
+                own = [
+                    service.inbox.public(r, guest=True)
+                    for r in service.inbox.list(self.pass_id)
+                ]
+                self._result(msg_id, {"items": own})
+            elif kind == "library_request":
+                seen = service.seen(p["media_type"], p["tmdb_id"])
+                if seen is None:
+                    self._error(msg_id, "not_found")
+                    return
+                rec = service.inbox.create(
+                    tmdb_id=p["tmdb_id"],
+                    media_type=p["media_type"],
+                    title=seen["title"],
+                    year=seen.get("year"),
+                    poster=seen.get("poster") or "",
+                    requester=pass_.get("label") or "",
+                    pass_id=self.pass_id,
+                    created=self.runtime.now().isoformat(),
+                )
+                pass_["library_requests"] = {
+                    "day": today,
+                    "count": day_count(pass_.get("library_requests"), today) + 1,
+                }
+                self.model.audit(
+                    self.runtime.now(),
+                    "library_request",
+                    pass_id=self.pass_id,
+                    tmdb_id=p["tmdb_id"],
+                    title=seen["title"][:80],
+                    result="pending",
+                )
+                self.runtime.store.schedule_save()
+                fire_request(self.hass, rec)
+                service.invalidate()
+                self._result(msg_id, service.inbox.public(rec, guest=True))
+            elif kind == "library_releases":
+                profile_id, root = defaults_for(config, p["media_type"])
+                res = await service.releases(
+                    p["media_type"],
+                    p["tmdb_id"],
+                    profile_id,
+                    root,
+                    season=p.get("season"),
+                )
+                issues.list_releases(
+                    p["media_type"],
+                    p["tmdb_id"],
+                    [(r["guid"], r["indexerId"]) for r in res["releases"]],
+                    mono,
+                )
+                self._result(msg_id, {"releases": res["releases"]})
+            elif kind == "library_grab":
+                result = await service.grab(
+                    p["media_type"], p["tmdb_id"], p["guid"], p["indexer_id"]
+                )
+                self.model.audit(
+                    self.runtime.now(),
+                    "library_grab",
+                    pass_id=self.pass_id,
+                    tmdb_id=p["tmdb_id"],
+                    result="ok",
+                )
+                self.runtime.store.schedule_save()
+                self._result(msg_id, result)
+            elif kind == "library_activity":
+                if self._library_unsub:
+                    self._error(msg_id, "already_subscribed")
+                    return
+
+                @callback
+                def _push(items: Any) -> None:
+                    self._enqueue({"type": "library_activity", "items": items})
+
+                self._library_unsub = self.hass.data[DOMAIN][
+                    "library_activity"
+                ].subscribe(True, _push)
+                self._result(msg_id, {})
+        except ServiceError as err:
+            self._error(msg_id, err.code)
+
+    def _issue_ids(self, ids) -> None:
+        issued = self._issued()
+        until = time.monotonic() + MEDIA_ISSUED_TTL_SECONDS
+        for cid in ids:
+            if isinstance(cid, str) and cid:
+                issued[cid] = until
+                issued.move_to_end(cid)
+        while len(issued) > MEDIA_ISSUED_MAX:
+            issued.popitem(last=False)
+
+    async def _local_browse(self, content_id: str, msg_id: Any) -> None:
+        """HA's media folder for the guest's own browser player."""
+        from homeassistant.components import media_source
+        from homeassistant.components.media_player import BrowseError
+
+        try:
+            async with asyncio.timeout(SERVICE_CALL_TIMEOUT_SECONDS):
+                payload = await media_source.async_browse_media(
+                    self.hass, content_id or None
+                )
+        except (TimeoutError, BrowseError, HomeAssistantError):
+            self._error(msg_id, "service_failed")
+            return
+        result = sanitize_browse(payload.as_dict())
+        self._issue(result)
+        self._result(msg_id, result)
+
+    async def _local_resolve(self, content_id: str, msg_id: Any) -> None:
+        """A signed path to an issued file, valid for 5 minutes."""
+        from datetime import timedelta
+
+        from homeassistant.components import media_source
+        from homeassistant.components.http.auth import async_sign_path
+
+        try:
+            async with asyncio.timeout(SERVICE_CALL_TIMEOUT_SECONDS):
+                media = await media_source.async_resolve_media(
+                    self.hass, content_id, None
+                )
+        except (TimeoutError, HomeAssistantError):
+            self._error(msg_id, "service_failed")
+            return
+        path = signable_media_path(media.url)
+        if path is None:
+            self._error(msg_id, "not_playable")
+            return
+        signed = async_sign_path(
+            self.hass, path, timedelta(seconds=LOCAL_MEDIA_SIGN_SECONDS)
+        )
+        self._result(msg_id, {"url": signed, "mime_type": media.mime_type})
 
     def _attributes(self, entity_id: str) -> dict | None:
         """Current state attributes (colour modes, feature bits, lists) or None."""

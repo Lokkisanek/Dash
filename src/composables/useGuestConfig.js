@@ -1,6 +1,7 @@
 import { reactive, computed } from 'vue'
 import { guestDashboard as fallbackConfig } from '@/config/guestDashboard'
 import { migrateConfig } from '@/lib/configMigrate'
+import { onPreviewMessage } from '@/lib/previewBridge'
 
 const state = reactive({
   loaded: false,
@@ -73,8 +74,22 @@ export function useGuestConfig() {
   }
 }
 
+/**
+ * Live preview: the HA panel pushes its unsaved draft (lib/previewBridge.js).
+ * Once a draft arrived it wins over the saved config from the subscription,
+ * which only catches up after Uložit.
+ */
+let previewDraft = false
+onPreviewMessage((data) => {
+  if (data?.config && typeof data.config === 'object') {
+    previewDraft = true
+    applyGuestConfig(data.config, 'preview')
+  }
+})
+
 export function applyGuestConfig(raw, source = 'ha') {
   if (!raw || typeof raw !== 'object') return
+  if (previewDraft && source !== 'preview') return
   // An older integration may still send the header switches in `general` (v2):
   // convert them like config_schema.migrate_config does on the server.
   const config = migrateConfig(raw)
@@ -102,6 +117,9 @@ export function applyGuestConfig(raw, source = 'ha') {
     // guest passes only: what the profile allows beyond on/off (null = owner, everything)
     capabilities: config.capabilities && typeof config.capabilities === 'object' ? { ...config.capabilities } : null,
     dashboardUrl: config.dashboardUrl || '',
+    // browser radio (owner, or a guest with allow_local_player) and the Spotify switch
+    radio: config.radio && typeof config.radio === 'object' ? { ...config.radio } : { stations: [] },
+    spotify: config.spotify && typeof config.spotify === 'object' ? { ...config.spotify } : { enabled: false },
   }
   state.source = source
   state.loaded = true

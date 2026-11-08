@@ -185,6 +185,12 @@ TILE_TYPES: dict[str, dict] = {
             "showTime": {
                 "type": "bool",
                 "default": True,
+                "styles": [
+                    "card",
+                    "plain",
+                    "lockscreen",
+                    "glass",
+                ],
             },
             "showDate": {
                 "type": "bool",
@@ -400,6 +406,64 @@ TILE_TYPES: dict[str, dict] = {
                 "4x1",
             ],
         },
+    },
+    "player": {
+        "label": "type_player",
+        "group": "devices",
+        "icon": "Radio",
+        "needsEntity": False,
+        "domains": [],
+        "styles": {
+            "nowplaying": [
+                "4x3",
+                "4x4",
+            ],
+            "vinyl": [
+                "2x2",
+                "4x3",
+            ],
+            "tile": [
+                "4x2",
+                "2x2",
+            ],
+            "mini": [
+                "4x1",
+                "2x1",
+            ],
+            "button": [
+                "1x1",
+            ],
+        },
+        "fields": {
+            "source": {
+                "type": "enum",
+                "values": [
+                    "browser",
+                    "spotify",
+                ],
+                "default": "browser",
+            },
+        },
+    },
+    "library": {
+        "label": "type_library",
+        "group": "info",
+        "icon": "Clapperboard",
+        "needsEntity": False,
+        "domains": [],
+        "styles": {
+            "trending": [
+                "4x2",
+            ],
+            "search": [
+                "4x1",
+            ],
+            "activity": [
+                "4x2",
+                "4x3",
+            ],
+        },
+        "fields": {},
     },
     "light_group": {
         "label": "type_light_group",

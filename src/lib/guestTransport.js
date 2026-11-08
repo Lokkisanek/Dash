@@ -86,6 +86,8 @@ export class GuestPassTransport {
         /* alive */
       } else if (msg.type === 'state') {
         this.onEvent({ type: 'state', entityId: msg.entity_id, state: msg.state })
+      } else if (msg.type === 'library_activity') {
+        this.onEvent({ type: 'library_activity', items: msg.items })
       } else if (msg.type === 'config') {
         this.onEvent({ type: 'config', config: msg.config })
       } else if (msg.type === 'closing') {

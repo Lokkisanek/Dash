@@ -33,6 +33,7 @@ from .const import (
     PROFILE_MAX_ENTITIES,
     PROFILE_NAME_MAX,
 )
+from .music import guest_radio
 from .tile_registry import TILE_TYPES
 
 # Tile types without a Home Assistant entity of their own: section dividers and
@@ -306,6 +307,8 @@ def normalize_capabilities(raw: Any) -> dict[str, Any]:
             out[key] = min(60, max(0, value)) if _is_number(value) else default
         elif key == "max_volume":
             out[key] = min(1, max(0, value)) if _is_number(value) else default
+        elif key == "library_max_per_day":
+            out[key] = int(min(20, max(0, value))) if _is_number(value) else default
         else:
             out[key] = default
     return out
@@ -863,11 +866,26 @@ def _strip_foreign_refs(item: dict, allowed: set[str]) -> dict:
     return out
 
 
-def _guest_visible(device: dict, allowed: set[str], show_wifi: bool) -> bool:
+def _guest_visible(
+    device: dict, allowed: set[str], show_wifi: bool, caps: dict | None = None
+) -> bool:
     """Does a (already stripped) tile reach the guest at all?"""
     kind = device.get("type")
     if kind == "wifi" and not show_wifi:
         return False
+    if kind == "library":
+        # Videotéka tiles: only with a library capability (all off by default)
+        caps = caps or {}
+        if device.get("style") == "activity":
+            return bool(caps.get("library_activity"))
+        return bool(caps.get("library_browse"))
+    if kind == "player":
+        # dash's own players: browser radio needs allow_local_player, Spotify
+        # needs spotify_control (both off by default)
+        caps = caps or {}
+        if device.get("source") == "spotify":
+            return bool(caps.get("spotify_control"))
+        return bool(caps.get("allow_local_player"))
     if kind in LIST_TILE_TYPES:
         # light groups: only the members in the profile remain; none = no tile
         return any(
@@ -898,6 +916,7 @@ def filter_config(config: Any, profile: Any) -> dict[str, Any]:
     profile = profile if isinstance(profile, dict) else {}
     allowed = set(profile.get("entities") or {})
     show_wifi = bool(profile.get("show_wifi", True))
+    caps = profile_capabilities(profile)
 
     pages = []
     for page in config.get("pages") or []:
@@ -908,7 +927,7 @@ def filter_config(config: Any, profile: Any) -> dict[str, Any]:
             for d in page.get("devices") or []
             if isinstance(d, dict)
             and _guest_visible(
-                tile := _strip_foreign_refs(d, allowed), allowed, show_wifi
+                tile := _strip_foreign_refs(d, allowed), allowed, show_wifi, caps
             )
         ]
         # A page is shown only if it still has a tile the guest may use, so the
@@ -934,10 +953,10 @@ def filter_config(config: Any, profile: Any) -> dict[str, Any]:
         else {"wifiSsid": "", "wifiPassword": "", "wifiSecurity": "nopass"}
     )
 
-    return {
+    out = {
         "configVersion": config.get("configVersion"),
         # what this guest may do beyond on/off; the app hides other controls
-        "capabilities": profile_capabilities(profile),
+        "capabilities": caps,
         "guestInfo": guest_info,
         "general": general,
         "standby": deepcopy(config.get("standby") or {}),
@@ -945,3 +964,23 @@ def filter_config(config: Any, profile: Any) -> dict[str, Any]:
         "pages": pages,
         "dock": dock,
     }
+    # browser radio: the station list, read-only, only with allow_local_player;
+    # Spotify: the switch only (never a token), only with spotify_control
+    radio = guest_radio(config, caps)
+    if radio is not None:
+        out["radio"] = radio
+    spotify = config.get("spotify") if isinstance(config.get("spotify"), dict) else {}
+    out["spotify"] = {
+        "enabled": spotify.get("enabled") is True and bool(caps.get("spotify_control")),
+        "webPlayer": False,
+    }
+    # Videotéka: only whether it is on; defaults and services stay with the owner
+    library = config.get("library") if isinstance(config.get("library"), dict) else {}
+    out["library"] = {
+        "enabled": library.get("enabled") is True
+        and any(
+            caps.get(k)
+            for k in ("library_browse", "library_request", "library_activity")
+        )
+    }
+    return out

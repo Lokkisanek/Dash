@@ -37,7 +37,18 @@ STATUS_PENDING = "pending"
 STATUS_EXPIRED = "expired"
 STATUS_REVOKED = "revoked"
 
-_AUDIT_KEYS = ("pass_id", "profile_id", "entity_id", "service", "reason", "ip")
+# library requests/grabs also log the TMDB id, the title and the result (never secrets)
+_AUDIT_KEYS = (
+    "pass_id",
+    "profile_id",
+    "entity_id",
+    "service",
+    "reason",
+    "ip",
+    "tmdb_id",
+    "title",
+    "result",
+)
 
 
 class GuestError(ValueError):

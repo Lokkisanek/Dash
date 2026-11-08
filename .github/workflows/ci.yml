@@ -103,6 +103,36 @@ jobs:
         env:
           BASE_URL: http://localhost:4173
 
+      - name: Run layout parity test (panel editor vs preview)
+        run: node scripts/layout-parity.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run dock glass test
+        run: node scripts/dock-glass.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run wide layout test
+        run: node scripts/wide-layout.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run preview device test
+        run: node scripts/preview-devices.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run music test
+        run: node scripts/music.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
+      - name: Run Videotéka test
+        run: node scripts/library.mjs
+        env:
+          BASE_URL: http://localhost:4173
+
       - name: Preview server log
         if: failure()
         run: cat preview.log

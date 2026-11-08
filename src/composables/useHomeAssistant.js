@@ -1,3 +1,4 @@
+import { trustParentOrigin } from '@/lib/previewBridge'
 import { reactive, computed } from 'vue'
 import {
   createConnection,
@@ -40,6 +41,9 @@ import { MOCK_PHOTO_IDS, mockPhotoUrl, mockPhotosFlag } from '@/lib/mockPhotos'
 import { TILE_TYPES } from '@/lib/tileRegistry.generated.js'
 import { mockBrowse, mockSearch, mockItem } from '@/lib/mockMedia'
 import { aggregateLightGroup, groupToggleService, lightGroupEntityId } from '@/lib/lightGroup'
+import { configureEngines, engineEntity, engineCommand, engineBrowser } from '@/lib/player/engines'
+import { mockStations, mockLibrary, mockSpotifyApi } from '@/lib/player/mockPlayers'
+import { mockLibraryApi } from '@/lib/library/mockLibrary'
 import {
   MOCK_GUEST_PASS,
   MOCK_GUEST_PROFILE,
@@ -405,6 +409,8 @@ function startMockMode() {
     for (const page of cfg.pages || []) {
       for (const d of page.devices || []) {
         if (d.type === 'header') Object.assign(d, { style: headerStyle, size: headerSizes[0] })
+        // ?headerShowTime=0: a header migrated from a v2 top bar with "Čas" off
+        if (d.type === 'header' && new URLSearchParams(window.location.search).get('headerShowTime') === '0') d.showTime = false
       }
     }
   }
@@ -526,6 +532,9 @@ function onGuestEvent(ev) {
     case 'config':
       applyGuestConfig(ev.config || {}, 'guest')
       break
+    case 'library_activity':
+      for (const fn of guestActivityListeners) fn(ev.items)
+      break
     case 'states':
       serverStates = clone(ev.states)
       state.entities = clone(ev.states)
@@ -626,6 +635,8 @@ async function connectLive(hassUrl) {
     try {
       let auth
       const parent = state.isPreview ? await requestParentAuth() : null
+      // requestParentAuth checked that the token came from this HA's origin
+      if (parent) trustParentOrigin(new URL(parent.hassUrl).origin)
 
       if (parent) {
         auth = createParentAuth(parent)
@@ -761,6 +772,8 @@ export function unregisterLightGroup(id) {
 }
 
 export function getEntityState(entityId) {
+  const engine = engineEntity(entityId)
+  if (engine) return engine
   const group = lightGroups[entityId]
   if (group) {
     const agg = aggregateLightGroup(entityId, group.members.map((m) => state.entities[m] || null))
@@ -861,8 +874,9 @@ function transport() {
  * the profile and returns a filtered result (no thumbnails).
  */
 export const mediaBrowser = {
-  browse: (entityId, contentType, contentId) => transport().browseMedia(entityId, contentType, contentId),
-  search: (entityId, query) => transport().searchMedia(entityId, query),
+  browse: (entityId, contentType, contentId) =>
+    engineBrowser(entityId)?.browse(contentType, contentId) ?? transport().browseMedia(entityId, contentType, contentId),
+  search: (entityId, query) => engineBrowser(entityId)?.search(query) ?? transport().searchMedia(entityId, query),
 }
 
 /** Photo calls that throw on failure (the StandBy photo cache shows the reason). */
@@ -1120,8 +1134,174 @@ export async function setCoverPosition(entityId, position) {
 
 /** media_player services: media_play_pause, media_next_track, volume_set, … */
 export async function mediaCommand(entityId, service, data = {}) {
+  // dash's own engines (browser radio, Spotify) never go to Home Assistant
+  if (await engineCommand(entityId, service, data)) return
   await callService('media_player', service, { entity_id: entityId, ...data })
 }
+
+/* ─── Videotéka (docs/LIBRARY.md): owner websocket, guest socket or demo ──── */
+
+const guestActivityListeners = new Set()
+const W = 'guest_ha_dashboard/library'
+
+const ownerLibrary = {
+  discover: async (media = 'all') => (await connection.sendMessagePromise({ type: `${W}/discover`, media })).items,
+  search: async (query) => (await connection.sendMessagePromise({ type: `${W}/search`, query })).items,
+  detail: (mt, id) => connection.sendMessagePromise({ type: `${W}/detail`, media_type: mt, tmdb_id: id }),
+  request: (mt, id) => connection.sendMessagePromise({ type: `${W}/request`, media_type: mt, tmdb_id: id }),
+  releases: (mt, id, o = {}) =>
+    connection.sendMessagePromise({
+      type: `${W}/releases`,
+      media_type: mt,
+      tmdb_id: id,
+      ...(o.profileId ? { quality_profile_id: o.profileId } : {}),
+      ...(o.root ? { root_folder: o.root } : {}),
+      ...(Number.isInteger(o.season) ? { season: o.season } : {}),
+    }),
+  grab: (mt, id, guid, indexerId, requestId) =>
+    connection.sendMessagePromise({ type: `${W}/grab`, media_type: mt, tmdb_id: id, guid, indexer_id: indexerId, ...(requestId ? { request_id: requestId } : {}) }),
+  closePicker: (mt, id) => connection.sendMessagePromise({ type: `${W}/close_picker`, media_type: mt, tmdb_id: id }),
+  options: (service) => connection.sendMessagePromise({ type: `${W}/options`, service }),
+  activity(cb) {
+    let unsub = null
+    let stopped = false
+    connection
+      .subscribeMessage((ev) => cb(ev.items || []), { type: `${W}/activity` })
+      .then((u) => (stopped ? u() : (unsub = u)))
+      .catch(() => cb([]))
+    return () => {
+      stopped = true
+      unsub?.()
+    }
+  },
+  torrent: (action, hash) => connection.sendMessagePromise({ type: `${W}/torrent`, action, hash }),
+  requests: () => connection.sendMessagePromise({ type: `${W}/requests` }),
+  requestUpdate: (id, action, note = '') => connection.sendMessagePromise({ type: `${W}/request_update`, request_id: id, action, note }),
+  async poster(token) {
+    const res = await connection.sendMessagePromise({ type: `${W}/poster`, poster: token })
+    return `data:${res.mime};base64,${res.data}`
+  },
+}
+
+const guestLibrary = {
+  discover: async (media = 'all') => (await guestTransport.request({ type: 'library_discover', media })).items,
+  search: async (query) => (await guestTransport.request({ type: 'library_search', query })).items,
+  detail: (mt, id) => guestTransport.request({ type: 'library_detail', media_type: mt, tmdb_id: id }),
+  request: (mt, id) => guestTransport.request({ type: 'library_request', media_type: mt, tmdb_id: id }),
+  releases: (mt, id, o = {}) =>
+    guestTransport.request({ type: 'library_releases', media_type: mt, tmdb_id: id, ...(Number.isInteger(o.season) ? { season: o.season } : {}) }),
+  grab: (mt, id, guid, indexerId) => guestTransport.request({ type: 'library_grab', media_type: mt, tmdb_id: id, guid, indexer_id: indexerId }),
+  closePicker: async () => {},
+  options: async () => ({ qualityProfiles: [], rootFolders: [] }),
+  activity(cb) {
+    guestActivityListeners.add(cb)
+    guestTransport.request({ type: 'library_activity' }).catch(() => cb([]))
+    return () => guestActivityListeners.delete(cb)
+  },
+  torrent: async () => {
+    throw new GuestError('capability_disabled')
+  },
+  requests: async () => ({ items: (await guestTransport.request({ type: 'library_requests' })).items, pending: 0 }),
+  requestUpdate: async () => {
+    throw new GuestError('capability_disabled')
+  },
+  async poster(token) {
+    const res = await guestTransport.request({ type: 'library_poster', poster: token })
+    return `data:${res.mime};base64,${res.data}`
+  },
+}
+
+/** The Videotéka calls for the current mode (owner, guest pass or demo). */
+export function libraryApi() {
+  if (state.isMock) {
+    const guest = state.mode === 'guest'
+    return { ...mockLibraryApi, request: (mt, id) => mockLibraryApi.request(mt, id, { guest }) }
+  }
+  if (state.mode === 'guest' && guestTransport) return guestLibrary
+  return ownerLibrary
+}
+
+/* ─── Player engines (lib/player): radio in the browser, Spotify ─────────── */
+
+function hassAbsolute(path) {
+  return /^https?:\/\//.test(path) ? path : `${(state.hassUrl || '').replace(/\/$/, '')}${path}`
+}
+
+const ownerMusic = {
+  library: {
+    browse: (id) => connection.sendMessagePromise({ type: 'media_source/browse_media', media_content_id: id || '' }),
+    async resolve(id) {
+      // HA signs the path (media_source/resolve_media, installed 2026.10.4)
+      const res = await connection.sendMessagePromise({ type: 'media_source/resolve_media', media_content_id: id, expires: 300 })
+      return { url: hassAbsolute(res.url) }
+    },
+  },
+  spotify: {
+    state: () => connection.sendMessagePromise({ type: 'guest_ha_dashboard/spotify/state' }),
+    control: (action, args = {}) => connection.sendMessagePromise({ type: 'guest_ha_dashboard/spotify/control', action, ...args }),
+    search: async (query) => (await connection.sendMessagePromise({ type: 'guest_ha_dashboard/spotify/search', query })).items,
+    browse: async (kind) => (await connection.sendMessagePromise({ type: 'guest_ha_dashboard/spotify/browse', kind })).items,
+    devices: async () => (await connection.sendMessagePromise({ type: 'guest_ha_dashboard/spotify/devices' })).devices,
+    token: () => connection.sendMessagePromise({ type: 'guest_ha_dashboard/spotify/token' }),
+  },
+}
+
+const guestMusic = {
+  library: {
+    browse: (id) => guestTransport.request({ type: 'local_media_browse', media_content_id: id || '' }),
+    async resolve(id) {
+      const res = await guestTransport.request({ type: 'local_media_resolve', media_content_id: id })
+      return { url: hassAbsolute(res.url) }
+    },
+  },
+  spotify: {
+    state: () => guestTransport.request({ type: 'spotify_state' }),
+    control: (action, args = {}) => guestTransport.request({ type: 'spotify_control', action, value: args.value, uri: args.uri }),
+    search: async (query) => (await guestTransport.request({ type: 'spotify_search', query })).items,
+    browse: async () => [],
+  },
+}
+
+function music() {
+  if (state.isMock) return { library: mockLibrary, spotify: mockSpotifyApi }
+  if (state.mode === 'guest' && guestTransport) return guestMusic
+  return ownerMusic
+}
+
+configureEngines({
+  labels: {
+    radio: translate(detectUiLang(), 'radio'),
+    library: translate(detectUiLang(), 'radioLibrary'),
+    playlists: translate(detectUiLang(), 'spotifyPlaylists'),
+    saved: translate(detectUiLang(), 'spotifySaved'),
+  },
+  stations: () => {
+    const list = getGuestConfig().radio?.stations
+    if (state.isMock && !list?.length) return mockStations()
+    return Array.isArray(list) ? list : []
+  },
+  libraryEnabled: () => getGuestConfig().radio?.mediaLibrary === true || state.isMock,
+  library: {
+    browse: (id) => music().library.browse(id),
+    resolve: (id) => music().library.resolve(id),
+  },
+  spotifyEnabled: () => getGuestConfig().spotify?.enabled === true,
+  canSpotifyBrowse: () => state.mode !== 'guest',
+  canSpotifySearch: () => state.mode !== 'guest' || getGuestConfig().capabilities?.spotify_search === true,
+  spotifyApi: {
+    state: () => music().spotify.state(),
+    control: (action, args) => music().spotify.control(action, args),
+    search: (q) => music().spotify.search(q),
+    browse: (kind) => music().spotify.browse(kind),
+    devices: () => (music().spotify.devices ? music().spotify.devices() : Promise.resolve([])),
+    get token() {
+      const api = music().spotify
+      return state.mode === 'guest' || !api.token || getGuestConfig().spotify?.webPlayer !== true ? undefined : api.token
+    },
+  },
+  // demo: fail fast so the "Stream nedostupný" state shows within a second
+  retryDelays: wantsMock() ? [150, 300] : undefined,
+})
 
 /** HA serves entity pictures as relative URLs; make them absolute for the PWA origin. */
 export function haAssetUrl(path) {

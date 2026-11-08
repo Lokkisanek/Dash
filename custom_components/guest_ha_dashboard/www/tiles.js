@@ -183,7 +183,13 @@ export const TILE_TYPES = {
     "fields": {
       "showTime": {
         "type": "bool",
-        "default": true
+        "default": true,
+        "styles": [
+          "card",
+          "plain",
+          "lockscreen",
+          "glass"
+        ]
       },
       "showDate": {
         "type": "bool",
@@ -399,6 +405,64 @@ export const TILE_TYPES = {
         "4x1"
       ]
     }
+  },
+  "player": {
+    "label": "type_player",
+    "group": "devices",
+    "icon": "Radio",
+    "needsEntity": false,
+    "domains": [],
+    "styles": {
+      "nowplaying": [
+        "4x3",
+        "4x4"
+      ],
+      "vinyl": [
+        "2x2",
+        "4x3"
+      ],
+      "tile": [
+        "4x2",
+        "2x2"
+      ],
+      "mini": [
+        "4x1",
+        "2x1"
+      ],
+      "button": [
+        "1x1"
+      ]
+    },
+    "fields": {
+      "source": {
+        "type": "enum",
+        "values": [
+          "browser",
+          "spotify"
+        ],
+        "default": "browser"
+      }
+    }
+  },
+  "library": {
+    "label": "type_library",
+    "group": "info",
+    "icon": "Clapperboard",
+    "needsEntity": false,
+    "domains": [],
+    "styles": {
+      "trending": [
+        "4x2"
+      ],
+      "search": [
+        "4x1"
+      ],
+      "activity": [
+        "4x2",
+        "4x3"
+      ]
+    },
+    "fields": {}
   },
   "light_group": {
     "label": "type_light_group",

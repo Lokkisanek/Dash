@@ -246,10 +246,6 @@ async function pickOutput(source) {
   user-select: none;
 }
 
-.media-tile.phase-unavailable {
-  opacity: 0.55;
-}
-
 .spin {
   animation: media-spin 1s linear infinite;
 }
@@ -280,8 +276,9 @@ async function pickOutput(source) {
   place-items: center;
   overflow: hidden;
   border-radius: 22px;
-  background: linear-gradient(140deg, color-mix(in srgb, var(--color-primary) 55%, #ff8ad0), #8f6bff);
-  color: white;
+  /* flat tonal placeholder behind the note; album art covers it */
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-base-200));
+  color: var(--color-primary);
   transition: transform 400ms cubic-bezier(0.3, 1.3, 0.5, 1);
 }
 
@@ -514,8 +511,8 @@ async function pickOutput(source) {
   display: grid;
   place-items: center;
   cursor: pointer;
-  background: linear-gradient(140deg, color-mix(in srgb, var(--color-primary) 55%, #ff8ad0), #8f6bff);
-  color: #fff;
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-base-200));
+  color: var(--color-primary);
   transition: transform 160ms cubic-bezier(0.3, 1.4, 0.5, 1);
 }
 

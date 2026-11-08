@@ -6,6 +6,8 @@ import { useGuestConfig } from '@/composables/useGuestConfig'
 import { useI18n } from '@/composables/useI18n'
 import { mediaCaps, mediaVolume, MEDIA_ENQUEUE } from '@/lib/mediaCaps'
 import MediaStage from './tiles/MediaStage.vue'
+import { engineKeyFor, getEngine } from '@/lib/player/engines'
+import { isHttpsUrl } from '@/lib/player/browserEngine'
 
 /**
  * Full-screen player sheet of a media tile. Tabs appear only when they make
@@ -14,6 +16,8 @@ import MediaStage from './tiles/MediaStage.vue'
  *   Přehrávače  when the tile offers more than one player
  *   Procházet   BROWSE_MEDIA (and, for a guest, the profile's media_browse)
  *   Hledat      SEARCH_MEDIA (same rule)
+ *   Zdroje      dash's own players (lib/player): a stream address for the
+ *               browser radio; Spotify devices and "Spustit přehrávání zde"
  * No queue tab: Home Assistant has no standard queue API (docs/SPEAKERS.md).
  * Same rules as the light sheet: dialog, focus trap, Esc, swipe down, no
  * scrolling or swiping of the page behind it.
@@ -34,7 +38,10 @@ const { capabilities } = useGuestConfig()
 const { t } = useI18n()
 
 /** Players of this tile: its own and the configured outputs, else every player we can see. */
+/** browser | spotify for dash's own engines, '' for a Home Assistant player */
+const engineKey = computed(() => engineKeyFor(props.entityId))
 const players = computed(() => {
+  if (engineKey.value) return [props.entityId]
   const list = props.outputs?.length ? [props.entityId, ...props.outputs] : [props.entityId, ...Object.keys(entities.value || {}).filter((id) => id.startsWith('media_player.'))]
   return [...new Set(list)].filter((id) => getEntityState(id))
 })
@@ -43,14 +50,16 @@ watch(() => props.entityId, (id) => (active.value = id))
 const activeEntity = computed(() => getEntityState(active.value))
 const caps = computed(() => mediaCaps(activeEntity.value))
 const guest = computed(() => mode.value === 'guest')
-const canBrowse = computed(() => caps.value.browseMedia && (!guest.value || capabilities.value?.media_browse === true))
-const canSearch = computed(() => caps.value.searchMedia && (!guest.value || capabilities.value?.media_browse === true))
+// an engine decides itself what a guest may browse (stations vs. the HA media folder)
+const canBrowse = computed(() => caps.value.browseMedia && (Boolean(engineKey.value) || !guest.value || capabilities.value?.media_browse === true))
+const canSearch = computed(() => caps.value.searchMedia && (Boolean(engineKey.value) || !guest.value || capabilities.value?.media_browse === true))
 const canGroup = computed(() => caps.value.grouping && (!guest.value || capabilities.value?.media_group === true))
 const canPlayMedia = computed(() => caps.value.playMedia)
 
 const tabs = computed(() => [
   ['now', t('tabNow')],
   ...(players.value.length > 1 ? [['players', t('tabPlayers')]] : []),
+  ...(engineKey.value ? [['sources', t('tabSources')]] : []),
   ...(canBrowse.value ? [['browse', t('tabBrowse')]] : []),
   ...(canSearch.value ? [['search', t('tabSearch')]] : []),
 ])
@@ -146,7 +155,41 @@ const grouped = computed(() => {
 
 watch(tab, (k) => {
   if (k === 'browse' && !listing.value) load()
+  if (k === 'sources' && engineKey.value === 'spotify') loadDevices()
 })
+
+// ── sources (dash engines) ───────────────────────────────────────────────────
+const streamUrl = ref('')
+const streamError = ref('')
+async function playStream() {
+  streamError.value = ''
+  if (!isHttpsUrl(streamUrl.value.trim())) {
+    streamError.value = t('httpsOnly')
+    return
+  }
+  try {
+    await getEngine('browser').playUrl(streamUrl.value.trim())
+    tab.value = 'now'
+  } catch {
+    streamError.value = t('streamUnavailable')
+  }
+}
+const devices = ref([])
+async function loadDevices() {
+  try {
+    devices.value = (await getEngine('spotify').devices()) || []
+  } catch {
+    devices.value = []
+  }
+}
+const canPlayHere = computed(() => engineKey.value === 'spotify' && !guest.value && Boolean(getEngine('spotify')))
+async function playHereBrowser() {
+  try {
+    await getEngine('spotify').playHere(navigator.platform || 'web')
+  } catch (err) {
+    failed.value = err?.message || 'error'
+  }
+}
 watch(active, () => {
   listing.value = null
   crumbs.value = []
@@ -277,6 +320,31 @@ onUnmounted(() => {
                 {{ t('noBrowseHint') }}
                 <a :href="SPEAKER_GUIDE" target="_blank" rel="noopener">{{ t('speakerGuide') }}</a>
               </p>
+            </div>
+
+            <!-- sources: dash's own players -->
+            <div v-else-if="tab === 'sources'" class="ps-sources" data-sources>
+              <form v-if="engineKey === 'browser'" class="ps-stream" @submit.prevent="playStream">
+                <label class="ps-label" for="ps-stream-url">{{ t('streamUrl') }}</label>
+                <div class="ps-stream-row">
+                  <input id="ps-stream-url" v-model="streamUrl" type="url" inputmode="url" class="ps-input" placeholder="https://" />
+                  <button type="submit" class="pp-btn">{{ t('streamPlay') }}</button>
+                </div>
+                <p v-if="streamError" class="ps-hint" role="alert">{{ streamError }}</p>
+              </form>
+              <template v-else>
+                <button v-if="canPlayHere" type="button" class="pp-btn ps-here" data-play-here @click="playHereBrowser">{{ t('playHereBrowser') }}</button>
+                <h3 class="ps-label">{{ t('spotifyDevices') }}</h3>
+                <p v-if="!devices.length" class="ps-hint">{{ t('noDevices') }}</p>
+                <ul class="ps-players">
+                  <li v-for="d in devices" :key="d.id" class="ps-player" :class="{ active: d.is_active }">
+                    <div class="pp-row">
+                      <div class="pp-name"><strong>{{ d.name }}</strong><span>{{ d.type }}</span></div>
+                      <button v-if="!d.is_active && !guest" type="button" class="pp-btn" @click="getEngine('spotify').transfer(d.id)">{{ t('playHere') }}</button>
+                    </div>
+                  </li>
+                </ul>
+              </template>
             </div>
 
             <!-- players -->
@@ -500,6 +568,36 @@ onUnmounted(() => {
 .ps-hint a {
   color: var(--color-primary);
   text-decoration: underline;
+}
+
+.ps-sources {
+  display: grid;
+  gap: 12px;
+}
+
+.ps-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+}
+
+.ps-stream {
+  display: grid;
+  gap: 6px;
+}
+
+.ps-stream-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ps-stream-row .ps-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ps-here {
+  justify-self: start;
 }
 
 .ps-players,
