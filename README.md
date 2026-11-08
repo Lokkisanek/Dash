@@ -14,7 +14,17 @@
 - StandBy: after a period of inactivity the phone shows a big clock (portrait and landscape) or a slowly fading photo frame that starts with the first photo loaded and keeps the photos between sessions.
 - Header, clock, greeting, weather and Wi-Fi are tiles in five styles (card, no background, lock screen, one line, glass); guest Wi-Fi card with a QR code; light and dark mode; Czech and English.
 - Scenes, sensors, binary sensors, fans, any entity (read only), dash light groups and long-press light controls (brightness, white temperature, colour, effects; only what the light supports).
-- Music: a player sheet with players, browse and search where the player supports them, "now playing" and record-player styles. [How to connect a speaker](docs/SPEAKERS.md).
+- Music without add-ons ([Speakers](docs/SPEAKERS.md)):
+  - Home Assistant players;
+  - radio in the browser: your https stations and files from HA's media folder;
+  - **optional** Spotify: Premium and your own Spotify app, off by default ([Spotify](docs/SPOTIFY.md)).
+  - A player sheet with sources, browse and search; "now playing" and record-player styles.
+- **Videotéka** (optional, off by default; [Library](docs/LIBRARY.md)):
+  - discover and search films and series (TMDB with your own key);
+  - request one, or pick the exact release in the same place, through your own Radarr / Sonarr / qBittorrent;
+  - watch the downloads; a requests inbox for guests.
+- Phones, tablets and wall displays: several pages side by side on wide screens, a side dock on a phone in landscape. The panel preview can show any device size.
+- The editor, the preview and the app place tiles with one function, so the app always matches the editor.
 - The wallpaper runs under the iPhone status bar and to the bottom edge.
 - A playful `hello.dash` intro on first setup.
 - **Guest passes** (Přístupy pro hosty): give a guest or a wall tablet a QR code that unlocks only the devices of one room, within limits (e.g. heating 18–25 °C) and only until check-out. Enforced by the integration on the server; the guest never gets a Home Assistant account or token.
@@ -94,7 +104,10 @@ Pick the mode in the panel under **General → Dashboard**. Hosted mode shows yo
 
 - [Configuration](docs/CONFIGURATION.md): header, pages, dividers, icons, tile styles, dock, media, StandBy, photos, config versions.
 - [Diagnostics](docs/DIAGNOSTICS.md): photo frame and music player, with a checklist for a real Home Assistant.
-- [Speakers](docs/SPEAKERS.md): Music Assistant, MPD, Snapcast and Bluetooth speakers.
+- [Speakers](docs/SPEAKERS.md): music without add-ons (HA players, browser radio, Spotify) and Music Assistant, MPD, Snapcast and Bluetooth as extras.
+- [Spotify](docs/SPOTIFY.md): optional engine, requirements, setup, terms.
+- [Player engines](docs/PLAYER_ENGINES.md): the verified design behind radio and Spotify.
+- [Videotéka](docs/LIBRARY.md): native video library with Radarr, Sonarr, qBittorrent and TMDB.
 - [Self-hosting](docs/SELF_HOSTING.md): Docker, Coolify, nginx, reverse proxies.
 - [Security & privacy](docs/SECURITY.md): what is stored where, what the host can and can't see, owner mode vs. guest passes, logging.
 - [Guest passes](docs/GUEST_PASSES.md): design, threat model and protocol.
@@ -116,16 +129,16 @@ Other scripts:
 - `npm run screenshots`: rebuilds `docs/img/*.png` from the demo build (needs `npx playwright install chromium` once).
 - `npm run brand`: renders the integration icon (`custom_components/guest_ha_dashboard/brand/`) from `public/favicon.svg`.
 - `npm test`: unit tests (vitest) for the photo cache, media helpers, tile registry and icons.
-- `npm run gen:tiles` / `npm run gen:icons`: regenerate the tile registry (`shared/tiles.json`) and the icon files (`scripts/icon-catalog.json`); `npm run check:generated` fails if a generated file is stale.
-- `node scripts/smoke.mjs`, `standby-photos.mjs`, `layout-edges.mjs`, `header-tiles.mjs`, `stage2-tiles.mjs` and `player.mjs`: browser tests against a running mock preview (see `.github/workflows/ci.yml`).
+- `npm run gen:tiles` / `npm run gen:icons` / `npm run gen:layout` / `npm run gen:devices`: regenerate the tile registry (`shared/tiles.json`), the icon files (`scripts/icon-catalog.json`), the panel's copy of the tile packing (`shared/layout.mjs`) and the preview device presets; `npm run check:generated` fails if a generated file is stale.
+- `node scripts/smoke.mjs`, `standby-photos.mjs`, `layout-edges.mjs`, `header-tiles.mjs`, `stage2-tiles.mjs`, `player.mjs`, `layout-parity.mjs`, `dock-glass.mjs`, `wide-layout.mjs`, `preview-devices.mjs`, `music.mjs` and `library.mjs`: browser tests against a running mock preview (see `.github/workflows/ci.yml`). The panel tests use `scripts/panel-harness/` (the panel with a fake `hass`).
 - `pytest`: integration tests (`pip install -r requirements_test.txt`; Linux/macOS, Python 3.14). `pytest tests/pure -p no:homeassistant` runs the policy tests anywhere, also on Windows.
 
 Useful URL flags:
 
 - `?standby=1` forces StandBy.
 - `?lang=en` or `?lang=cs` forces the UI language.
-- Demo build only: `?guest=1` shows the restricted guest dashboard, `?guest=ended` the ended-pass screen, `#pair=XXXX-XXXX-XXXX` the pairing screen, `?theme=dark` the dark theme, `?mockPhotos=1` (or `empty`, `fail`) the StandBy photo frame with demo photos, `?headerStyle=lockscreen` (card, plain, lockscreen, compact, glass) the demo header tile's style, `?safe=59,34` simulated iPhone insets (top, bottom; dev and demo builds only).
-- `?glass=lens` forces the WebKit liquid-glass path in Chrome.
+- Demo build only: `?guest=1` shows the restricted guest dashboard, `?guest=ended` the ended-pass screen, `#pair=XXXX-XXXX-XXXX` the pairing screen, `?theme=dark` the dark theme, `?mockPhotos=1` (or `empty`, `fail`) the StandBy photo frame with demo photos, `?headerStyle=lockscreen` (card, plain, lockscreen, compact, glass) the demo header tile's style, `?safe=59,34` (top, bottom) or `?safe=0,59,21,59` (top, right, bottom, left) simulated insets (dev and demo builds only), `?mockRequest=1` a pending guest request in the demo Videotéka, `?headerShowTime=0` a header migrated with the time switched off.
+- `?glass=lens` forces the WebKit liquid-glass path in Chrome; `?glass=flat` turns refraction off (plain blur).
 
 The integration lives in `custom_components/guest_ha_dashboard/`. The panel is a single web component (`www/panel.js`) with no build step.
 

@@ -7,6 +7,13 @@ dash is dual-licensed.
 
 Using an unmodified dash, or publishing your changes under the AGPL, does not need a commercial license.
 
+## Third-party services (Spotify, TMDB, Videotéka)
+
+- The commercial license covers dash's own code only. It grants **no rights to Spotify or TMDB services**.
+- **Spotify:** Spotify's Web Playback SDK "must not be used in commercial projects without Spotify's prior written approval". Hotel, rental and other business deployments must leave the Spotify engine off (`spotify.enabled: false`, the default). See [docs/SPOTIFY.md](docs/SPOTIFY.md).
+- **TMDB:** the free TMDB API is for non-commercial use with attribution. Commercial use needs the customer's own TMDB license.
+- **Videotéka** (Radarr, Sonarr, qBittorrent) is meant for the owner's own household. It is not intended for hotel or business guest use, and its guest flags stay off by default. See [docs/LIBRARY.md](docs/LIBRARY.md).
+
 ## Contact
 
 TODO(owner): contact e-mail
