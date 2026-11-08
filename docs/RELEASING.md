@@ -1,6 +1,6 @@
 # Releasing dash
 
-A release is a `vX.Y.Z` tag. Pushing it runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds the web app, creates the GitHub Release with notes from `CHANGELOG.md` and a `dash-web-X.Y.Z.zip`, and pushes a Docker image to `ghcr.io/lokkisanek/guest-ha-dashboard` (`X.Y.Z` and `latest`).
+A release is a `vX.Y.Z` tag. Pushing it runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), which builds the web app, creates the GitHub Release with notes from `CHANGELOG.md` and a `dash-web-X.Y.Z.zip`, and pushes a Docker image to `ghcr.io/lokkisanek/dash` (the name comes from `github.repository`) (`X.Y.Z` and `latest`).
 
 HACS installs the integration from the latest GitHub Release, so a tag alone is not enough: the release must exist.
 

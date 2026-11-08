@@ -4,9 +4,9 @@
   "codeowners": ["@Lokkisanek"],
   "config_flow": true,
   "dependencies": ["http"],
-  "documentation": "https://github.com/Lokkisanek/Guest-HA-Dashboard",
+  "documentation": "https://github.com/Lokkisanek/Dash",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/Lokkisanek/Guest-HA-Dashboard/issues",
+  "issue_tracker": "https://github.com/Lokkisanek/Dash/issues",
   "requirements": [],
   "version": "2.1.1"
 }

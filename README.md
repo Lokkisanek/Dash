@@ -1,9 +1,25 @@
 # dash
 
-[![CI](https://github.com/Lokkisanek/Guest-HA-Dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Lokkisanek/Guest-HA-Dashboard/actions/workflows/ci.yml)
-[![Validate](https://github.com/Lokkisanek/Guest-HA-Dashboard/actions/workflows/validate.yml/badge.svg)](https://github.com/Lokkisanek/Guest-HA-Dashboard/actions/workflows/validate.yml)
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+An iOS-style wall and guest dashboard for Home Assistant, installable as a web app.
+
+[![CI](https://github.com/Lokkisanek/Dash/actions/workflows/ci.yml/badge.svg)](https://github.com/Lokkisanek/Dash/actions/workflows/ci.yml)
 [![HACS: Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/docs/faq/custom_repositories/)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/Lokkisanek/Dash)](https://github.com/Lokkisanek/Dash/releases/latest)
+
+<p align="center">
+  <img src="docs/img/hero.gif" width="300" alt="dash on a phone with demo data: switching rooms in the dock, turning the thermostat dial, then light and dark mode">
+</p>
+
+**[Live demo](https://dash.matyas.online/)** (best on a phone) · **[Install with HACS](#install)** · **[Docs](docs/)**
+
+- **What it is:** an open-source dashboard app plus a Home Assistant integration. You design the pages in a sidebar panel with a live phone preview.
+- **Who it is for:** wall tablets and phones, guests on a locked-down pass, and home owners who want a clean iOS-like interface.
+- **How it works:** 1. install the dash integration with HACS; 2. build your pages in the **dash** panel; 3. open your link on the phone, sign in and add it to the home screen.
+
+Built with AI assistance (Claude by Anthropic) - see [How this was built](#how-this-was-built).
+
+## Features
 
 **dash** is an open-source, iOS-style dashboard for Home Assistant, built for wall-mounted phones, MagSafe stands and guests. You design it in a Home Assistant sidebar panel with a live iPhone preview. The phone runs it as a PWA.
 
@@ -28,8 +44,6 @@
 - The wallpaper runs under the iPhone status bar and to the bottom edge.
 - A playful `hello.dash` intro on first setup.
 - **Guest passes** (Přístupy pro hosty): give a guest or a wall tablet a QR code that unlocks only the devices of one room, within limits (e.g. heating 18–25 °C) and only until check-out. Enforced by the integration on the server; the guest never gets a Home Assistant account or token.
-
-**Demo:**: [demo URL](https://dash.matyas.online/) best experience on mobile with add to homescreen option
 
 ## Screenshots
 
@@ -88,7 +102,7 @@ Pick the mode in the panel under **General → Dashboard**. Hosted mode shows yo
 ### 1. Home Assistant integration (HACS)
 
 1. HACS → Integrations → ⋮ → **Custom repositories**.
-2. Add `https://github.com/Lokkisanek/Guest-HA-Dashboard` with category **Integration**.
+2. Add `https://github.com/Lokkisanek/Dash` with category **Integration**.
 3. Install **dash** and restart Home Assistant.
 4. Go to Settings → Devices & services → **Add integration** → **dash**.
 5. Open **dash** in the sidebar, build your pages and press **Save**.
@@ -127,6 +141,9 @@ Other scripts:
 
 - `npm run check:versions`: the version in `package.json`, `manifest.json` and `const.py` must match.
 - `npm run screenshots`: rebuilds `docs/img/*.png` from the demo build (needs `npx playwright install chromium` once).
+- `npm run og`: renders the share images `public/og.png` (Open Graph) and `docs/img/social-preview.png` (GitHub social preview).
+- `npm run showcase`: records the demo build and composes the showcase video and `docs/img/hero.gif` (see `scripts/showcase/record.mjs`; encoding needs ffmpeg).
+- `npm run check:placeholders`: fails while owner placeholders (the contact e-mail token, owner TODOs) are left; run it before publishing.
 - `npm run brand`: renders the integration icon (`custom_components/guest_ha_dashboard/brand/`) from `public/favicon.svg`.
 - `npm test`: unit tests (vitest) for the photo cache, media helpers, tile registry and icons.
 - `npm run gen:tiles` / `npm run gen:icons` / `npm run gen:layout` / `npm run gen:devices`: regenerate the tile registry (`shared/tiles.json`), the icon files (`scripts/icon-catalog.json`), the panel's copy of the tile packing (`shared/layout.mjs`) and the preview device presets; `npm run check:generated` fails if a generated file is stale.
@@ -142,6 +159,16 @@ Useful URL flags:
 
 The integration lives in `custom_components/guest_ha_dashboard/`. The panel is a single web component (`www/panel.js`) with no build step.
 
+## How this was built
+
+dash is developed with AI assistance: Claude (by Anthropic) works on code, tests and docs from the maintainer's direction. 49 of the 85 commits on `main` (as of 8 November 2026) carry a `Co-Authored-By: Claude` trailer.
+
+- The maintainer decides the roadmap, the licenses and what is merged, and is the accountable author.
+- Automated checks run on every pull request and every push to `main` ([CI](.github/workflows/ci.yml), [Validate](.github/workflows/validate.yml)): version and generated-file checks, unit tests (vitest), the production build, 12 Playwright browser tests against the demo build, ruff and pytest for the integration (also inside Home Assistant's test harness), hassfest and the HACS validation.
+- What has not been checked against real services is listed in [Status and limits](#status-and-limits).
+
+<!-- OWNER: confirm or delete: dash runs every day on the maintainer's own Home Assistant and phones. -->
+
 ## Stack
 
 Vue 3 · Vite · Tailwind 4 · daisyUI 5 · home-assistant-js-websocket · nginx · Home Assistant custom integration.
@@ -155,3 +182,13 @@ In plain words: you can use, change and share dash for free, including commercia
 Commercial use (e.g. hotels, rental companies or businesses that do not want to publish their changes) needs a separate commercial license, see [COMMERCIAL.md](COMMERCIAL.md).
 
 Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Status and limits
+
+From [docs/PROGRESS.md](docs/PROGRESS.md):
+
+- **Spotify** (optional, off by default): the Spotify parts are UNVERIFIED without a Spotify Premium account.
+- **Videotéka** (optional, off by default): tested only against fake Radarr, Sonarr, qBittorrent and TMDB servers; real services are UNVERIFIED.
+- The safe areas of the panel's preview devices are approximate.
+
+dash is an independent project and is not affiliated with Home Assistant, Nabu Casa, Apple or Samsung.

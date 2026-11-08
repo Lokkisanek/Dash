@@ -8,6 +8,16 @@ Issues and pull requests are welcome on GitHub.
 
 ## Contributor License Agreement
 
-dash is also offered under a commercial license (see [COMMERCIAL.md](COMMERCIAL.md)). To keep that possible, the owner may ask you to sign a Contributor License Agreement (CLA) before a larger contribution is merged.
+dash is also offered under a commercial license (see [COMMERCIAL.md](COMMERCIAL.md)). To keep that possible, every contributor agrees to the [Contributor License Agreement](CLA.md) (CLA). You keep the copyright in your work and give the maintainer a license to use it, including under the commercial license.
 
-TODO(owner): CLA text and how to sign it.
+**How to sign:** the description of your pull request must contain this checked line (it is in the pull request template):
+
+```
+- [x] I have read CLA.md and I agree to it
+```
+
+Pull requests without it are not merged. The CLA is a draft and may change after a legal review.
+
+## AI-assisted contributions
+
+AI-assisted contributions are welcome. Say so in the pull request; you remain responsible for the code, for testing it and for its license.
