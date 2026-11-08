@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <meta name="referrer" content="no-referrer" />
+  <title>dash · Spotify</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f3f0f7; --fg: #1b1820; --muted: #6b6573; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0e1014; --fg: #f1eff4; --muted: #a29dab; } }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg);
+      font: 16px/1.5 system-ui, -apple-system, sans-serif; padding: 24px; box-sizing: border-box; }
+    main { max-width: 420px; display: grid; gap: 12px; }
+    h1 { font-size: 1.2rem; margin: 0; }
+    p { margin: 0; color: var(--muted); }
+    code { display: block; word-break: break-all; font-size: 0.85rem; color: var(--fg); user-select: all; }
+    button { justify-self: start; padding: 8px 16px; border-radius: 999px; border: 0; background: var(--fg); color: var(--bg); font: inherit; }
+    [hidden] { display: none; }
+  </style>
+  <script src="./spotify-callback.js" defer></script>
+</head>
+<body>
+  <!--
+    Spotify returns here (redirect URI) with ?code=…&state=… The page never
+    talks to Spotify or Home Assistant: it hands both values back to the dash
+    panel that opened it, or shows them for "Vložit kód". The PKCE verifier
+    never left Home Assistant, so the code alone cannot get a token.
+  -->
+  <main>
+    <h1 id="title">Spotify</h1>
+    <p id="msg">Vracím se do Home Assistantu…</p>
+    <code id="code" hidden></code>
+    <button id="copy" type="button" hidden>Zkopírovat kód</button>
+  </main>
+</body>
+</html>

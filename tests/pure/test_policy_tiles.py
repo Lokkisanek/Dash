@@ -329,6 +329,15 @@ def test_capabilities_are_normalized() -> None:
         "media_browse": False,
         "media_group": False,
         "max_volume": 0.7,
+        "allow_local_player": False,
+        "spotify_control": False,
+        "spotify_search": False,
+        "library_browse": False,
+        "library_request": False,
+        "library_pick_release": False,
+        "library_activity": False,
+        "library_max_per_day": 3,
+        "library_allow_tv": True,
     }
 
 
