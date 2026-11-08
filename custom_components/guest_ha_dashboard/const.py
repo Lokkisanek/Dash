@@ -27,6 +27,16 @@ DEFAULT_GENERAL: dict = {
     "use24h": True,
     # Installed iPhone app: solid dark strip behind the white status bar (opt-in)
     "statusBarStrip": False,
+    # auto = several pages side by side on wide screens; single = one column
+    "layoutMode": "auto",
+    # auto = on the right on a phone in landscape, at the bottom elsewhere
+    "dockPosition": "auto",
+}
+
+# `general` keys that take one of a fixed set of values (first = default)
+GENERAL_ENUMS: dict[str, tuple[str, ...]] = {
+    "layoutMode": ("auto", "single"),
+    "dockPosition": ("auto", "bottom", "right", "left"),
 }
 
 DEFAULT_STANDBY: dict = {
@@ -58,12 +68,29 @@ DEFAULT_CONFIG: dict = {
         "mode": "light",  # light | dark
         "accent": "#ff6b00",
     },
+    # browser radio stations, HA media folder, optional station directory (music.py)
+    "radio": {"stations": [], "mediaLibrary": False, "directory": False},
+    # opt-in Spotify engine: switches only, secrets live in the vault
+    "spotify": {"enabled": False, "webPlayer": False},
+    # Videotéka switches and default pickers; service credentials live in the vault
+    "library": {
+        "enabled": False,
+        "movieProfileId": None,
+        "movieRootFolder": "",
+        "tvProfileId": None,
+        "tvRootFolder": "",
+        "interval": 3,
+    },
 }
 
 
 # ─── Guest passes ────────────────────────────────────────────────────────────
 # Design and threat model: docs/GUEST_PASSES.md. Everything below is plain data
 # so the policy modules stay free of Home Assistant imports and easy to test.
+
+# Secrets (Spotify tokens, library credentials): never in the config (vault.py)
+VAULT_STORAGE_KEY = f"{DOMAIN}.vault"
+VAULT_STORAGE_VERSION = 1
 
 GUEST_STORAGE_KEY = f"{DOMAIN}.guests"
 GUEST_STORAGE_VERSION = 1
@@ -218,6 +245,18 @@ GUEST_CAPABILITY_DEFAULTS: dict = {
     "media_browse": False,
     "media_group": False,
     "max_volume": 0.7,
+    # browser radio / HA media files on the guest's own device (read-only stations)
+    "allow_local_player": False,
+    # Spotify through the integration (never a token): playback control, search
+    "spotify_control": False,
+    "spotify_search": False,
+    # Videotéka (docs/LIBRARY.md): browse, request, pick a release, watch downloads
+    "library_browse": False,
+    "library_request": False,
+    "library_pick_release": False,
+    "library_activity": False,
+    "library_max_per_day": 3,
+    "library_allow_tv": True,
 }
 
 # supported_features bit an entity must have for a guest call (HA 2026.10.4:
@@ -254,6 +293,8 @@ MEDIA_FEATURE_SEARCH = 4194304
 
 # Browse/search for guests: what is sent, how much, how long a found id stays playable
 MEDIA_BROWSE_MAX_CHILDREN = 100
+# HA media files played in a guest's browser: signed path lifetime
+LOCAL_MEDIA_SIGN_SECONDS = 5 * 60
 MEDIA_ISSUED_TTL_SECONDS = 10 * 60
 MEDIA_ISSUED_MAX = 500
 MEDIA_SEARCH_MAX_LEN = 100

@@ -69,7 +69,12 @@ async def test_v1_is_migrated_on_load(
         {"pageId": "obyvak", "label": "", "showLabel": True, "icon": "Sofa"}
     ]
     # missing sections come back with defaults; header switches are gone
-    assert data["general"] == {"use24h": True, "statusBarStrip": False}
+    assert data["general"] == {
+        "use24h": True,
+        "statusBarStrip": False,
+        "layoutMode": "auto",
+        "dockPosition": "auto",
+    }
     assert data["standby"] == {
         "enabled": False,
         "idleMinutes": 2,
@@ -130,6 +135,32 @@ async def test_save_validates_and_round_trips(
     assert (await client.receive_json())["result"] == saved
 
 
+@pytest.mark.parametrize(
+    ("sent", "expected"),
+    [
+        ({"layoutMode": "single", "dockPosition": "left"}, ("single", "left")),
+        ({"layoutMode": "grid", "dockPosition": "top"}, ("auto", "auto")),
+        ({"layoutMode": 3, "dockPosition": None}, ("auto", "auto")),
+        ({}, ("auto", "auto")),
+    ],
+)
+async def test_layout_settings_are_validated(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+    hass_ws_client: Any,
+    sent: dict,
+    expected: tuple[str, str],
+) -> None:
+    client = await hass_ws_client(hass)
+    config = {"configVersion": 3, "general": sent, "pages": []}
+    await client.send_json_auto_id({"type": f"{DOMAIN}/set_config", "config": config})
+    saved = (await client.receive_json())["result"]
+    assert (
+        saved["general"]["layoutMode"],
+        saved["general"]["dockPosition"],
+    ) == expected
+
+
 async def test_fresh_install_has_current_version(
     hass: HomeAssistant, setup_integration: MockConfigEntry
 ) -> None:
@@ -161,7 +192,12 @@ async def test_v2_header_settings_become_a_tile_on_save(
     await client.send_json_auto_id({"type": f"{DOMAIN}/set_config", "config": config})
     saved = (await client.receive_json())["result"]
     assert saved["configVersion"] == 3
-    assert saved["general"] == {"use24h": False, "statusBarStrip": False}
+    assert saved["general"] == {
+        "use24h": False,
+        "statusBarStrip": False,
+        "layoutMode": "auto",
+        "dockPosition": "auto",
+    }
     header, light = saved["pages"][0]["devices"]
     assert light["id"] == "light.a"
     assert header["type"] == "header"

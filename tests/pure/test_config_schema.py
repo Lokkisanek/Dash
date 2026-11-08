@@ -36,7 +36,14 @@ def test_config_version_constant() -> None:
     assert const.CONFIG_VERSION == 3
     assert const.DEFAULT_CONFIG["configVersion"] == 3
     # the header switches left `general` with version 3
-    assert set(const.DEFAULT_GENERAL) == {"use24h", "statusBarStrip"}
+    assert set(const.DEFAULT_GENERAL) == {
+        "use24h",
+        "statusBarStrip",
+        "layoutMode",
+        "dockPosition",
+    }
+    for key, values in const.GENERAL_ENUMS.items():
+        assert const.DEFAULT_GENERAL[key] == values[0]
 
 
 @pytest.mark.parametrize(

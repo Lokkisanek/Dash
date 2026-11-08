@@ -16,9 +16,12 @@ from .const import (
     DEFAULT_GENERAL,
     DEFAULT_STANDBY,
     DOCK_MAX,
+    GENERAL_ENUMS,
     STORAGE_KEY,
     STORAGE_VERSION,
 )
+from .library.config import normalize_library
+from .music import normalize_radio, normalize_spotify
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,7 +61,10 @@ def _normalize_general(raw: Any) -> dict:
     out = {}
     for key, default in DEFAULT_GENERAL.items():
         value = src.get(key, default)
-        out[key] = str(value or "") if isinstance(default, str) else bool(value)
+        if key in GENERAL_ENUMS:
+            out[key] = value if value in GENERAL_ENUMS[key] else default
+        else:
+            out[key] = str(value or "") if isinstance(default, str) else bool(value)
     return out
 
 
@@ -167,6 +173,9 @@ class GuestDashboardStore:
             merged["general"] = _normalize_general(merged.get("general"))
             merged["guestInfo"] = _normalize_guest_info(merged.get("guestInfo"))
             merged["standby"] = _normalize_standby(merged.get("standby"))
+            merged["radio"] = normalize_radio(merged.get("radio"))
+            merged["spotify"] = normalize_spotify(merged.get("spotify"))
+            merged["library"] = normalize_library(merged.get("library"))
             if merged.get("hosting") not in ("hosted", "self"):
                 # Installs from before 2.0 already point at their own URL
                 merged["hosting"] = "self" if merged.get("dashboardUrl") else "hosted"
@@ -197,6 +206,9 @@ class GuestDashboardStore:
             "guestInfo": _normalize_guest_info(merged.get("guestInfo")),
             "general": _normalize_general(merged.get("general")),
             "standby": _normalize_standby(merged.get("standby")),
+            "radio": normalize_radio(merged.get("radio")),
+            "spotify": normalize_spotify(merged.get("spotify")),
+            "library": normalize_library(merged.get("library")),
             "pages": pages if isinstance(pages, list) else [],
             "dock": dock,
             "hosting": merged.get("hosting")
