@@ -21,3 +21,9 @@ playwright/.cache/
 *.zip
 release-notes.md
 preview.log
+
+# Internal notes and business material (never public)
+Claude outputs/
+
+# Showcase recordings (scripts/showcase); only docs/img/hero.gif is committed
+showcase/out/
