@@ -43,4 +43,4 @@ The agreement then applies to that pull request and to your later Contributions 
 
 ## 7. Contact
 
-Questions about this agreement: CONTACT_EMAIL
+Questions about this agreement: matoslav6@gmail.com

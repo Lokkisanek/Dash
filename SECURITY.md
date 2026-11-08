@@ -9,7 +9,7 @@ Only the [latest release](https://github.com/Lokkisanek/Dash/releases/latest) ge
 Please do **not** open a public issue for a security problem.
 
 1. Preferred: open the repository's **Security** tab and choose **Report a vulnerability** ([direct link](https://github.com/Lokkisanek/Dash/security/advisories/new)). The report stays private between you and the maintainer.
-2. If that is not possible: e-mail CONTACT_EMAIL.
+2. If that is not possible: e-mail matoslav6@gmail.com.
 
 Include the dash version, how you run it (hosted, self-hosted, Home Assistant version) and the steps to reproduce.
 
