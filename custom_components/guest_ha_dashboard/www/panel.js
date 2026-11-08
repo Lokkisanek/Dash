@@ -374,6 +374,11 @@ const PANEL_I18N = {
     libApiKey: "API klíč",
     libUser: "Uživatel",
     libPassword: "Heslo",
+    libQbitAuth: "Přihlášení do qBittorrentu",
+    libQbitAuth_api_key: "API klíč",
+    libQbitAuth_password: "Jméno a heslo",
+    libQbitKeyHint: "qBittorrent 5.2 a novější: klíč najdeš v Nastavení → WebUI → API klíč (začíná na qbt_). Nepotřebuje heslo ani přihlašovací cookie.",
+    libQbitPasswordHint: "Uživatel a heslo z Nastavení → WebUI. Funguje i se staršími verzemi qBittorrentu.",
     libKeepKey: "•••••• (beze změny)",
     libSave: "Uložit",
     libChange: "Změnit",
@@ -666,6 +671,11 @@ const PANEL_I18N = {
     libApiKey: "API key",
     libUser: "User",
     libPassword: "Password",
+    libQbitAuth: "qBittorrent sign-in",
+    libQbitAuth_api_key: "API key",
+    libQbitAuth_password: "Username and password",
+    libQbitKeyHint: "qBittorrent 5.2 or later: the key is in Preferences → WebUI → API key (it starts with qbt_). No password or login cookie needed.",
+    libQbitPasswordHint: "The username and password from Preferences → WebUI. Works with older qBittorrent versions too.",
     libKeepKey: "•••••• (unchanged)",
     libSave: "Save",
     libChange: "Change",
@@ -3006,7 +3016,11 @@ class GuestHaDashboardPanel extends HTMLElement {
     const tests = this._libTests || {};
     const opts = this._libOptions || {};
     const editing = this._libEditing || "";
-    const fields = { tmdb: ["api_key"], radarr: ["url", "api_key"], sonarr: ["url", "api_key"], qbittorrent: ["url", "username", "password"] };
+    // qBittorrent: API key (5.2+) or username + password; a mode the owner has
+    // not saved yet shows empty fields, not "unchanged"
+    const qbitSaved = svc.qbittorrent?.configured ? svc.qbittorrent.auth || "password" : "";
+    const qbitAuth = this._libQbitAuth || qbitSaved || "api_key";
+    const fields = { tmdb: ["api_key"], radarr: ["url", "api_key"], sonarr: ["url", "api_key"], qbittorrent: qbitAuth === "api_key" ? ["url", "api_key"] : ["url", "username", "password"] };
     const label = { url: "libUrl", api_key: "libApiKey", username: "libUser", password: "libPassword" };
     const select = (key, list, value, text) => `
       <select data-lib-default="${key}">
@@ -3027,11 +3041,14 @@ class GuestHaDashboardPanel extends HTMLElement {
         <div class="lib-svc" data-lib-svc="${s}">
           <div class="lib-svc-head">
             <strong>${this._t(`libSvc_${s}`)}</strong>
-            <span class="muted" data-lib-state="${s}">${st.configured ? this._escape(this._t("libConfigured", st.url || "")) : this._t("libNotConfigured")}</span>
+            <span class="muted" data-lib-state="${s}">${st.configured ? this._escape(this._t("libConfigured", st.url || "")) + (s === "qbittorrent" ? ` · ${this._t(`libQbitAuth_${qbitSaved}`)}` : "") : this._t("libNotConfigured")}</span>
           </div>
           ${editing === s || !st.configured ? `
+            ${s === "qbittorrent" ? `
+            <div class="seg" role="group" aria-label="${this._t("libQbitAuth")}">${["api_key", "password"].map((m) => `<button type="button" data-lib-qbit-auth="${m}" class="${qbitAuth === m ? "active" : ""}" aria-pressed="${qbitAuth === m}">${this._t(`libQbitAuth_${m}`)}</button>`).join("")}</div>
+            <p class="hint" data-lib-qbit-hint>${this._t(qbitAuth === "api_key" ? "libQbitKeyHint" : "libQbitPasswordHint")}</p>` : ""}
             <div class="station-add">
-              ${fields[s].map((f) => `<input data-lib-field="${f}" ${f === "url" ? `inputmode="url" placeholder="http://192.168.1.10:${s === "radarr" ? 7878 : s === "sonarr" ? 8989 : 8080}" value="${this._escape(st.url || "")}"` : `type="${f === "username" ? "text" : "password"}" autocomplete="off" placeholder="${st.configured ? this._t("libKeepKey") : this._t(label[f])}"`} aria-label="${this._t(label[f])}" />`).join("")}
+              ${fields[s].map((f) => `<input data-lib-field="${f}" ${f === "url" ? `inputmode="url" placeholder="http://192.168.1.10:${s === "radarr" ? 7878 : s === "sonarr" ? 8989 : 8080}" value="${this._escape(st.url || "")}"` : `type="${f === "username" ? "text" : "password"}" autocomplete="off" placeholder="${st.configured && (s !== "qbittorrent" || qbitAuth === qbitSaved) ? this._t("libKeepKey") : s === "qbittorrent" && f === "api_key" ? "qbt_…" : this._t(label[f])}"`} aria-label="${this._t(label[f])}" />`).join("")}
               <button type="button" class="btn primary" data-lib-save="${s}">${this._t("libSave")}</button>
             </div>` : `
             <div class="station-add">
@@ -3067,7 +3084,16 @@ class GuestHaDashboardPanel extends HTMLElement {
     });
     this._on("[data-lib-edit]", "click", (e) => {
       this._libEditing = e.currentTarget.dataset.libEdit;
+      this._libQbitAuth = "";
       this._render();
+    });
+    this._on("[data-lib-qbit-auth]", "click", (e) => {
+      // keep a typed address when the mode changes
+      const url = this.shadowRoot.querySelector('[data-lib-svc="qbittorrent"] [data-lib-field="url"]')?.value;
+      this._libQbitAuth = e.currentTarget.dataset.libQbitAuth;
+      this._render();
+      const input = this.shadowRoot.querySelector('[data-lib-svc="qbittorrent"] [data-lib-field="url"]');
+      if (input && url !== undefined) input.value = url;
     });
     this._on("[data-lib-save]", "click", async (e) => {
       const s = e.currentTarget.dataset.libSave;
@@ -3076,11 +3102,13 @@ class GuestHaDashboardPanel extends HTMLElement {
       box.querySelectorAll("[data-lib-field]").forEach((input) => {
         if (input.value.trim()) msg[input.dataset.libField] = input.value.trim();
       });
+      if (s === "qbittorrent") msg.auth = box.querySelector("[data-lib-qbit-auth].active")?.dataset.libQbitAuth || "api_key";
       const res = await this._libCall(msg);
       this._libTests = { ...(this._libTests || {}), [s]: res.error ? { ok: false, error: res.error } : undefined };
       if (res.ok) {
         this._libServices = res.ok;
         this._libEditing = "";
+        if (s === "qbittorrent") this._libQbitAuth = "";
       }
       this._render();
     });

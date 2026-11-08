@@ -1,5 +1,11 @@
 """qBittorrent WebUI API v2: login, version, torrents, pause/resume/delete/recheck.
 
+Two ways in: the cookie login (username + password, `/api/v2/auth/login`) or,
+from qBittorrent 5.2.0 / WebAPI 2.14.1, an API key sent as
+`Authorization: Bearer <key>` on every request ("API Key Authentication" wiki
+page). A key is stateless and cannot call the auth endpoints, so there is no
+login and no SID with it.
+
 Newer qBittorrent names pause/resume `stop`/`start` (the 5.0 API page); the
 4.1 page has `pause`/`resume`. The version where the rename happened is not
 documented (UNVERIFIED), so the client reads `webapiVersion`, picks a name and
@@ -26,10 +32,19 @@ def parse_version(text: Any) -> tuple[int, ...]:
 class QBittorrent(HttpService):
     name = "qbittorrent"
 
-    def __init__(self, session, base_url: str, username: str, password: str) -> None:
+    def __init__(
+        self,
+        session,
+        base_url: str,
+        username: str = "",
+        password: str = "",
+        *,
+        api_key: str = "",
+    ) -> None:
         super().__init__(session, base_url)
         self._user = username
         self._password = password
+        self._api_key = api_key
         self._sid = ""
         self._version: tuple[int, ...] | None = None
         host = urlsplit(base_url)
@@ -37,7 +52,9 @@ class QBittorrent(HttpService):
 
     def _headers(self) -> dict:
         headers = {"Referer": self._origin, "Origin": self._origin}
-        if self._sid:
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        elif self._sid:
             headers["Cookie"] = f"SID={self._sid}"
         return headers
 
@@ -62,6 +79,9 @@ class QBittorrent(HttpService):
             raise ServiceError("unavailable") from err
 
     async def call(self, method: str, path: str, **kw: Any) -> Any:
+        if self._api_key:
+            # stateless: a refused key is final, there is nothing to log in to
+            return await self.request(method, path, **kw)
         if not self._sid:
             await self.login()
         try:

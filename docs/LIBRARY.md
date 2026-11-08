@@ -14,7 +14,7 @@ Everything is optional: Radarr only, Sonarr only, no qBittorrent (then the queue
 
 ## Verified API surface (read 2026-11-08)
 
-Sources: Omniseerr `SPECIFICATION.md` (raw GitHub), Radarr and Sonarr `openapi.json` (`src/*.Api.V3/openapi.json` on the `develop` branch), TMDB developer reference pages, qBittorrent WebUI API wiki (4.1 and 5.0 pages).
+Sources: Omniseerr `SPECIFICATION.md` (raw GitHub), Radarr and Sonarr `openapi.json` (`src/*.Api.V3/openapi.json` on the `develop` branch), TMDB developer reference pages, qBittorrent WebUI API wiki (4.1 and 5.0 pages) and its "API Key Authentication (≥v5.2.0)" page.
 
 ### Radarr v3 (header `X-Api-Key`)
 | Use | Request | Fields relied on |
@@ -52,7 +52,10 @@ Sources: Omniseerr `SPECIFICATION.md` (raw GitHub), Radarr and Sonarr `openapi.j
 - The detail view uses the fields already returned by trending/search (no extra TMDB call).
 
 ### qBittorrent WebUI API v2
-- `POST /api/v2/auth/login` (`username`, `password`) → cookie `SID`; send `Referer`/`Origin` equal to the host.
+- Sign-in, one of two (the owner picks in the panel; **API klíč** is the default for a new setup):
+  - **API key** (qBittorrent 5.2.0 / WebAPI 2.14.1 and later): `Authorization: Bearer <key>` on every request. The key is created in Preferences → WebUI → API Key, starts with `qbt_`, is stateless (no cookie) and cannot call `auth/login` or `auth/logout`. A refused key is final: no login retry.
+  - **Username and password**: `POST /api/v2/auth/login` (`username`, `password`) → cookie `SID`; send `Referer`/`Origin` equal to the host. An expired session logs in once more.
+  - Switching modes forgets the other mode's secrets. Entries saved by 2.1.0 have no mode and keep using the password.
 - `GET /api/v2/app/webapiVersion` → e.g. `2.11.4`.
 - `GET /api/v2/torrents/info` → `hash, name, progress, dlspeed, upspeed, eta, state, num_seeds`.
 - State changes use POST (405 for the wrong method since v4.4.4).
@@ -66,7 +69,7 @@ Sources: Omniseerr `SPECIFICATION.md` (raw GitHub), Radarr and Sonarr `openapi.j
 - **Activity**: polled only while someone watches (owner subscription or guest `library_activity`), every 3 s by default, then stops. Pause/resume/delete/recheck are owner only.
 - **Requests inbox**: a guest "Požádat" creates a pending request (max 200 kept; the oldest resolved ones are pruned), fires the HA event `guest_ha_dashboard_library_request` and a persistent notification. The owner can approve (automatic), pick a release, or decline with a note. A guest sees only their own requests.
 - **Posters**: fetched by the integration, from the TMDB image host given by `/3/configuration` or from the configured Arr host's MediaCover path only. Path pattern `^/[A-Za-z0-9_./-]+\.(jpg|jpeg|png|webp)$` (no `..`), sizes w185/w342/w500, 2 MB cap, in-memory LRU. The browser gets an opaque id, never an upstream URL.
-- **Secrets** (API keys, qBittorrent login) live only in the vault. Admin commands return `{configured, url}`, never a key.
+- **Secrets** (API keys, qBittorrent login) live only in the vault. Admin commands return `{configured, url}` (plus `auth` for qBittorrent: `api_key` or `password`), never a key.
 
 ## Guests (all off by default; profile capabilities)
 
@@ -79,6 +82,7 @@ Sources: Omniseerr `SPECIFICATION.md` (raw GitHub), Radarr and Sonarr `openapi.j
 
 ## UNVERIFIED
 
+- The qBittorrent API key was tested against a fake server built from the wiki page, not a real qBittorrent 5.2. The wiki does not say whether `Referer`/`Origin` checks still apply with a key; dash keeps sending them.
 - In which WebAPI version qBittorrent renamed pause/resume to stop/start. dash reads `webapiVersion` (≥ 2.11.0 → stop/start) and falls back to the other name on 404.
 - Whether `GET /api/v3/series/lookup` results always carry `tmdbId`. dash matches on it and refuses a series it cannot match.
 - The Sonarr season/episode release search was not run against a real indexer setup. Neither was any part of this against real Radarr/Sonarr/qBittorrent: the tests use fake servers built from the OpenAPI files.
