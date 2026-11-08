@@ -5,7 +5,7 @@ The dashboard is a static PWA served by nginx on port **86**.
 ## Docker Compose
 
 ```bash
-git clone https://github.com/Lokkisanek/Guest-HA-Dashboard dash
+git clone https://github.com/Lokkisanek/Dash dash
 cd dash
 docker compose up -d --build
 # → http://SERVER:86/<your-ha-host>
