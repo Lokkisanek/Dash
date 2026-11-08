@@ -16,6 +16,11 @@ Using an unmodified dash, or publishing your changes under the AGPL, does not ne
 
 ## Contact
 
-TODO(owner): contact e-mail
+<!-- OWNER: replace CONTACT_EMAIL in all files before publishing; `grep -rn CONTACT_EMAIL .` lists them -->
+
+- Licensor: Matyas Odehnal, maintainer of dash.
+- Commercial licensing: CONTACT_EMAIL
 
 Terms and prices are agreed individually.
+
+Contributions from others can be offered under the commercial license because contributors grant the maintainer that right in the [Contributor License Agreement](CLA.md).

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/Lokkisanek/Dash/discussions
+    about: Ask a question or share an idea in GitHub Discussions.
+  - name: Security vulnerability
+    url: https://github.com/Lokkisanek/Dash/security/advisories/new
+    about: Report a vulnerability privately. Please do not open a public issue.

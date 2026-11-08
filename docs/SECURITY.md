@@ -108,10 +108,11 @@ Anything in front of it, such as Coolify's Traefik, Cloudflare, another reverse 
 
 ### Hosted instance (`dash.matyas.online`)
 
-TODO(owner): confirm Coolify/Traefik and Cloudflare logging for dash.matyas.online
+<!-- OWNER: confirm Coolify/Traefik and Cloudflare logging for dash.matyas.online, then replace this paragraph with the facts -->
+Not documented yet. Until it is, assume the proxies in front of the hosted instance may log requests, and self-host if that matters to you.
 
 ## Recommendations
 
 - Give guests a **guest pass**, not a Home Assistant account. Keep passes short and revoke them at check-out.
 - Expose Home Assistant only over HTTPS.
-- Report vulnerabilities privately via GitHub Security Advisories on the repository.
+- Report vulnerabilities privately via GitHub Security Advisories on the repository (see [SECURITY.md](../SECURITY.md)).
