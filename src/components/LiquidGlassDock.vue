@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { mountSvgLiquidGlass, supportsSvgBackdrop, DOCK_GLASS } from '@/lib/liquidGlassSvg'
+import { mountSvgLiquidGlass, supportsSvgBackdrop, allowRefraction, DOCK_GLASS } from '@/lib/liquidGlassSvg'
 import { resolveIcon } from '@/lib/icons'
 import { unlockAudio } from '@/composables/useSound'
 import BackgroundOrbs from './BackgroundOrbs.vue'
@@ -9,8 +9,15 @@ const props = defineProps({
   /** @type {{ id: string, label?: string, showLabel?: boolean, icon?: string }[]} */
   items: { type: Array, default: () => [] },
   modelValue: { type: String, default: '' },
+  /** Pages visible right now (wide modes show several): all of them are marked. */
+  activeIds: { type: Array, default: () => [] },
   dark: { type: Boolean, default: false },
+  /** bottom | right | left: a vertical dock on the side (useLayoutMode) */
+  side: { type: String, default: 'bottom' },
 })
+
+const vertical = computed(() => props.side === 'left' || props.side === 'right')
+const isActive = (id) => id === props.modelValue || props.activeIds.includes(id)
 
 const emit = defineEmits(['update:modelValue'])
 
@@ -23,7 +30,8 @@ let glass = null
  * dock carries its own copy of the background, aligned to the page, and bends
  * that with the same displacement filter.
  */
-const useLens = !supportsSvgBackdrop()
+const refract = allowRefraction()
+const useLens = refract && !supportsSvgBackdrop()
 const lensScene = ref({ left: 0, top: 0, width: 0, height: 0 })
 
 function alignLens() {
@@ -39,10 +47,15 @@ const DOCK_R = 44
 const DOCK_MAX = 6
 
 const visibleItems = computed(() => (props.items || []).filter((i) => i?.id).slice(0, DOCK_MAX))
+/** Length along the dock: its width at the bottom, its height on a side. */
 const dockWidth = ref(360)
+const box = computed(() =>
+  vertical.value ? { width: DOCK_H, height: dockWidth.value } : { width: dockWidth.value, height: DOCK_H },
+)
 
 function computeDockWidth() {
   const n = Math.max(1, visibleItems.value.length)
+  if (vertical.value) return Math.min(window.innerHeight - 24, Math.max(200, n * 72 + 16))
   return Math.min(window.innerWidth - 40, Math.max(280, n * 86 + 16))
 }
 
@@ -67,15 +80,17 @@ function mountGlass() {
   if (!glassEl || !defsHost || !visibleItems.value.length) return
 
   dockWidth.value = computeDockWidth()
-  glassEl.style.width = `${dockWidth.value}px`
-  glassEl.style.height = `${DOCK_H}px`
+  glassEl.style.width = `${box.value.width}px`
+  glassEl.style.height = `${box.value.height}px`
   glassEl.style.borderRadius = `${DOCK_R}px`
+  // embedded (HA preview) or ?glass=flat: plain blur only
+  if (!refract) return
 
   try {
     glass = mountSvgLiquidGlass(glassEl, defsHost, {
       ...DOCK_GLASS,
-      width: dockWidth.value,
-      height: DOCK_H,
+      width: box.value.width,
+      height: box.value.height,
       radius: DOCK_R,
       bezelWidth: 36,
       glassThickness: 70,
@@ -107,7 +122,7 @@ onMounted(async () => {
   window.addEventListener('resize', onResize)
 })
 
-watch(visibleItems, async () => {
+watch([visibleItems, () => props.side], async () => {
   await nextTick()
   mountGlass()
 })
@@ -121,7 +136,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="visibleItems.length" class="liquid-dock">
+  <div v-if="visibleItems.length" class="liquid-dock" :class="`is-${side}`" :data-dock-side="side">
     <svg
       ref="svgRef"
       xmlns="http://www.w3.org/2000/svg"
@@ -136,10 +151,11 @@ onUnmounted(() => {
     <div
       ref="glassRef"
       class="liquid-dock__glass"
-      :class="{ 'is-dense': visibleItems.length > 4 }"
+      :class="{ 'is-dense': visibleItems.length > 4, 'is-dark': dark }"
+      :data-glass="refract ? 'refract' : 'blur'"
       :style="{
-        width: `${dockWidth}px`,
-        height: `${DOCK_H}px`,
+        width: `${box.width}px`,
+        height: `${box.height}px`,
         borderRadius: `${DOCK_R}px`,
       }"
     >
@@ -157,17 +173,17 @@ onUnmounted(() => {
           <BackgroundOrbs :dark="dark" />
         </div>
       </div>
-      <nav class="liquid-dock__nav" aria-label="Rooms">
+      <nav class="liquid-dock__nav" :class="{ 'is-vertical': vertical }" aria-label="Rooms">
         <button
           v-for="item in visibleItems"
           :key="item.id"
           type="button"
           class="liquid-dock__tab"
           :class="{
-            'is-active': item.id === modelValue,
+            'is-active': isActive(item.id),
             'is-icon-only': !showName(item),
           }"
-          :aria-current="item.id === modelValue ? 'page' : undefined"
+          :aria-current="isActive(item.id) ? 'page' : undefined"
           :aria-label="item.label || item.id"
           @click="select(item.id)"
         >
@@ -194,6 +210,22 @@ onUnmounted(() => {
   background: transparent;
 }
 
+/* Side dock (phone in landscape, or dockPosition left/right): vertically centred. */
+.liquid-dock.is-right,
+.liquid-dock.is-left {
+  top: 0;
+  bottom: 0;
+  left: auto;
+  right: calc(var(--safe-right, 0px) + 12px);
+  align-items: center;
+  padding: 0;
+}
+
+.liquid-dock.is-left {
+  left: calc(var(--safe-left, 0px) + 12px);
+  right: auto;
+}
+
 .liquid-dock__defs {
   position: absolute;
   width: 0;
@@ -202,13 +234,31 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+/*
+ * Always legible: a solid translucent fill without backdrop-filter support,
+ * a lighter one over blur(18px) saturate(1.7) with it. Refraction (the SVG
+ * filter in --lg-filter) only adds to that blur, never replaces it.
+ */
 .liquid-dock__glass {
+  --dock-fill: rgba(255, 255, 255, 0.86);
+  --dock-tint: rgba(255, 255, 255, 0.5);
   position: relative;
   pointer-events: auto;
   isolation: isolate;
-  background: var(--glass-bg);
+  background: var(--dock-fill);
   border: var(--glass-border);
   box-shadow: var(--glass-shadow);
+}
+
+.liquid-dock__glass.is-dark {
+  --dock-fill: rgba(30, 31, 36, 0.88);
+  --dock-tint: rgba(30, 31, 36, 0.52);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .liquid-dock__glass {
+    background: var(--dock-tint);
+  }
 }
 
 .liquid-dock__glass::after {
@@ -218,10 +268,10 @@ onUnmounted(() => {
   z-index: -1;
   border-radius: inherit;
   isolation: isolate;
-  backdrop-filter: var(--glass-filter);
-  -webkit-backdrop-filter: var(--glass-filter);
-  backdrop-filter: var(--lg-filter, var(--glass-filter));
-  -webkit-backdrop-filter: var(--lg-filter, var(--glass-filter));
+  backdrop-filter: blur(18px) saturate(1.7);
+  -webkit-backdrop-filter: blur(18px) saturate(1.7);
+  backdrop-filter: var(--lg-filter, blur(18px) saturate(1.7));
+  -webkit-backdrop-filter: var(--lg-filter, blur(18px) saturate(1.7));
 }
 
 .liquid-dock__lens {
@@ -278,6 +328,21 @@ onUnmounted(() => {
   align-items: center;
   gap: 2px;
   padding: 6px;
+}
+
+.liquid-dock__nav.is-vertical {
+  grid-auto-flow: row;
+  grid-auto-rows: 1fr;
+  grid-auto-columns: auto;
+  align-items: stretch;
+}
+
+.is-vertical .liquid-dock__tab span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
 }
 
 .liquid-dock__tab {
@@ -338,5 +403,16 @@ onUnmounted(() => {
 
 .liquid-dock__tab:active {
   transform: scale(0.96);
+}
+
+.is-dark .liquid-dock__tab {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.is-dark .liquid-dock__tab.is-active {
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 </style>

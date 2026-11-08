@@ -167,6 +167,26 @@ export function supportsSvgBackdrop() {
   return /Chrome|Chromium|Edg\//.test(ua) && !/CriOS|EdgiOS|FxiOS/.test(ua)
 }
 
+/**
+ * Refraction is a progressive enhancement on top of the plain blur: only in a
+ * top-level page (inside the HA panel's scaled preview iframe Chromium samples
+ * the backdrop wrongly and paints a dark smear), only where backdrop-filter
+ * takes an SVG url(), and never with ?glass=flat.
+ */
+export function allowRefraction() {
+  if (typeof window === 'undefined') return false
+  if (new URLSearchParams(window.location.search).get('glass') === 'flat') return false
+  try {
+    if (window.parent !== window) return false
+  } catch {
+    return false
+  }
+  return true
+}
+
+/** The blur under every dock, refracting or not: the dock stays legible over any content. */
+export const DOCK_BLUR = 'blur(18px) saturate(1.7)'
+
 /** Pill defaults tuned for the room dock (no outer shadow). */
 export const DOCK_GLASS = {
   width: 360,
@@ -226,7 +246,8 @@ export function mountSvgLiquidGlass(glassEl, defsHost, options = {}) {
     // Chromium refracts the real backdrop. Elsewhere the same filter runs as a
     // plain `filter` on a lens layer (a copy of the background), masked to the rim.
     if (supportsSvgBackdrop()) {
-      glassEl.style.setProperty('--lg-filter', `url(#${filterId})`)
+      // refraction first, then the same blur as without it (a lone url() drops the blur)
+      glassEl.style.setProperty('--lg-filter', `url(#${filterId}) ${DOCK_BLUR}`)
       glassEl.style.removeProperty('--lg-lens-filter')
       glassEl.style.removeProperty('--lg-lens-mask')
     } else {
