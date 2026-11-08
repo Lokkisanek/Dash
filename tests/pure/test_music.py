@@ -15,6 +15,10 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 import pytest
 
+# Fake servers listen on 127.0.0.1; the Home Assistant pytest plugin (CI) blocks
+# sockets unless a test asks for them, as HA's own client fixtures do.
+pytestmark = pytest.mark.usefixtures("socket_enabled")
+
 music = load("music")
 spotify = load("spotify")
 guest_music = load("guest_music")
