@@ -44,6 +44,16 @@ export const MOCK_GUEST_PROFILE = {
     media_browse: true,
     media_group: false,
     max_volume: 0.7,
+    allow_local_player: false,
+    spotify_control: false,
+    spotify_search: false,
+    // the demo guest may browse the Videotéka and ask for a title
+    library_browse: true,
+    library_request: true,
+    library_pick_release: false,
+    library_activity: false,
+    library_max_per_day: 3,
+    library_allow_tv: true,
   },
 }
 
@@ -72,6 +82,9 @@ export function filterConfigForProfile(config, profile) {
       devices: (page.devices || [])
         .map((d) => stripForeign(d, allowed))
         .filter((d) => (Array.isArray(d.entities) ? d.entities.length > 0 : allowed.has(d?.id) || isLayout(d)))
+        // dash players and Videotéka tiles follow the profile (guest_policy._guest_visible)
+        .filter((d) => d?.type !== 'player' || (d.source === 'spotify' ? profile.capabilities?.spotify_control : profile.capabilities?.allow_local_player))
+        .filter((d) => d?.type !== 'library' || (d.style === 'activity' ? profile.capabilities?.library_activity : profile.capabilities?.library_browse))
         .filter((d) => !(d?.type === 'wifi' && !profile.show_wifi))
         .map((d) => (!profile.show_wifi && 'showWifi' in d ? { ...d, showWifi: false } : d)),
     }))
