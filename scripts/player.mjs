@@ -48,9 +48,21 @@ try {
   await vinyl.scrollIntoViewIfNeeded()
   await page.waitForTimeout(800)
 
-  // playing: the disc turns
+  // playing: the disc turns around a fixed centre (no orbiting) and there is no tonearm
   check((await playState(page)) === 'running', `vinyl should spin while playing, got ${await playState(page)}`)
-  check(await page.locator('[data-tonearm].on').count() === 1, 'tonearm should be on the record')
+  check((await page.locator('[data-tonearm]').count()) === 0, 'tonearm should be gone')
+  const centre = () =>
+    page.evaluate(() => {
+      const r = document.querySelector('[data-vinyl-disc]').getBoundingClientRect()
+      return [r.left + r.width / 2, r.top + r.height / 2]
+    })
+  const c1 = await centre()
+  const r1 = await angle(page)
+  await page.waitForTimeout(1000)
+  const c2 = await centre()
+  const r2 = await angle(page)
+  check(Math.hypot(c1[0] - c2[0], c1[1] - c2[1]) < 1, `record centre moved: ${c1} -> ${c2}`)
+  check(Math.abs(r1 - r2) > 1, `record angle did not change in 1 s (${r1.toFixed(1)} -> ${r2.toFixed(1)})`)
   await shot(page, 'vinyl-playing')
 
   // pause: stops at the current angle, keeps it, resumes from it
@@ -58,18 +70,37 @@ try {
   await page.waitForTimeout(300)
   check((await playState(page)) === 'paused', 'vinyl should pause')
   const a1 = await angle(page)
-  await page.waitForTimeout(700)
+  await page.waitForTimeout(500)
   const a2 = await angle(page)
   check(Math.abs(a1 - a2) < 0.5, `angle changed while paused: ${a1.toFixed(1)} -> ${a2.toFixed(1)}`)
-  check(await page.locator('[data-tonearm].on').count() === 0, 'tonearm should leave the record when paused')
   await shot(page, 'vinyl-paused')
+  const t0 = Date.now()
   await vinyl.locator('[data-play]').click()
-  await page.waitForTimeout(120)
   const a3 = await angle(page)
-  const diff = Math.min(Math.abs(a3 - a2), 360 - Math.abs(a3 - a2))
-  // 120 ms at 200°/s is ~24°; a restart from 0° would land far away unless a2 was near 0
-  check(diff < 60, `resume did not continue from the paused angle (${a2.toFixed(1)} -> ${a3.toFixed(1)})`)
-  console.log(`vinyl: paused at ${a2.toFixed(1)}°, resumed at ${a3.toFixed(1)}°`)
+  const dt = (Date.now() - t0) / 1000
+  const turned = (a3 - a2 + 360) % 360
+  // 200°/s while running: it may only have moved on by the time that passed (+15°)
+  check(turned <= 200 * dt + 15, `resume did not continue from the paused angle (${a2.toFixed(1)} -> ${a3.toFixed(1)} in ${dt.toFixed(2)} s)`)
+  console.log(`vinyl: paused at ${a2.toFixed(1)}°, resumed at ${a3.toFixed(1)}° after ${dt.toFixed(2)} s`)
+
+  // the record stays inside its tile, 4×3 and 2×2, light and dark
+  for (const theme of ['light', 'dark']) {
+    const p = await context.newPage()
+    await p.goto(`${BASE_URL}/?lang=cs&theme=${theme}&safe=59,34`)
+    await p.locator('nav.liquid-dock__nav button', { hasText: 'Přehled' }).click()
+    for (const size of ['4x3', '2x2']) {
+      const stage = p.locator(`.device-cell[data-w="${size[0]}"][data-h="${size[2]}"] [data-media-stage="vinyl"]`).first()
+      await stage.scrollIntoViewIfNeeded()
+      const inside = await stage.evaluate((el) => {
+        const t = el.getBoundingClientRect()
+        const r = el.querySelector('[data-vinyl-slot]').getBoundingClientRect()
+        return r.width > 20 && r.left >= t.left - 0.5 && r.top >= t.top - 0.5 && r.right <= t.right + 0.5 && r.bottom <= t.bottom + 0.5
+      })
+      check(inside, `${theme} ${size}: record outside its tile`)
+      if (SHOTS) await stage.screenshot({ path: join(SHOTS, `vinyl-${size}-${theme}.png`) })
+    }
+    await p.close()
+  }
 
   // nowplaying style renders its scrubber-less idle state (kitchen is paused, no duration)
   const np = page.locator('[data-media-stage="nowplaying"]').first()
