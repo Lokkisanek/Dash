@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { generateTiles } from './gen-tiles.mjs'
 import { generateIcons } from './gen-icons.mjs'
+import { generateLayout } from './gen-layout.mjs'
+import { generateDevicePresets } from './gen-device-presets.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const lf = (s) => s.replace(/\r\n/g, '\n')
@@ -19,6 +21,8 @@ const lf = (s) => s.replace(/\r\n/g, '\n')
 const generators = [
   ['gen:tiles', generateTiles],
   ['gen:icons', generateIcons],
+  ['gen:layout', generateLayout],
+  ['gen:devices', generateDevicePresets],
 ]
 
 const stale = []

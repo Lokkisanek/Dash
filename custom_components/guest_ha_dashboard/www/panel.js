@@ -8,11 +8,16 @@
 import { ICONS } from "./icons.js?v=2.1.0-beta.3";
 import { GuestsTab } from "./guests.js?v=2.1.0-beta.3";
 import { TILE_TYPES } from "./tiles.js?v=2.1.0-beta.3";
+import { packTiles, indexForCell } from "./layout.js?v=2.1.0-beta.3";
+import { DEVICE_PRESETS, DEFAULT_DEVICE } from "./devices.js?v=2.1.0-beta.3";
 
 const PANEL_VERSION = "2.1.0-beta.3";
 const UI_THEME_KEY = "guest_ha_panel_ui_theme";
 const UI_LANG_KEY = "guest_ha_panel_ui_lang"; // auto | cs | en — default auto = HA language
-const ORIENT_KEY = "guest_ha_panel_preview_orient";
+const ORIENT_KEY = "guest_ha_panel_preview_orient"; // before 2.1: orientation only
+const DEVICE_KEY = "guest_ha_panel_preview_device"; // { id, orient, scale, custom }
+const CUSTOM_MIN = 200;
+const CUSTOM_MAX = 4000;
 const PREVIEW_KEY = "guest_ha_panel_preview"; // on | off
 const DOCK_MAX = 6;
 /** base64 characters per photo upload (photo + thumbnail); HA's limit is 4 MiB per message. */
@@ -109,35 +114,76 @@ function pushRecentIcon(name) {
 }
 
 /** Inline lucide SVG (same set the PWA renders). */
+/**
+ * A small record for the vinyl style (flat circles, like the app's), turning
+ * continuously in the editor so the style can be seen without music.
+ * Reduced motion: it stands still.
+ */
+function vinylSvg(cls = "") {
+  const grooves = [17, 22, 27, 32, 37, 42].map((r, i) =>
+    `<circle cx="50" cy="50" r="${r}" fill="none" stroke="#9a9a9a" stroke-width="${i % 2 ? 0.8 : 1.4}" stroke-opacity="${i % 2 ? 0.25 : 0.45}"/>`).join("");
+  return `<svg class="vinyl-mini ${cls}" viewBox="0 0 100 100" aria-hidden="true" data-vinyl-preview>
+    <circle cx="50" cy="50" r="49" fill="#141414" stroke="currentColor" stroke-opacity="0.3" stroke-width="1.2"/>${grooves}
+    <circle cx="50" cy="50" r="13" fill="var(--accent)"/><circle cx="50" cy="50" r="2" fill="var(--card)"/></svg>`;
+}
+
 function iconSvg(name, size = 20) {
   const inner = ICONS[name] || ICON_CATALOG?.SVG[name] || ICONS.Sparkles || "";
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 }
 
 /**
- * iPhone 15 Pro — 6.1", 2556 × 1179 px @ 460 ppi (@3x → 393 × 852 pt).
- * Display corner radius ≈ 55 pt, Dynamic Island 126 × 37 pt, 11 pt from the edge,
- * status bar safe area 59 pt.
+ * Frame drawing per preset class (www/devices.js): bezel and screen corner
+ * radius in CSS px. Phones: rounded, Dynamic Island / notch / punch hole where
+ * the device has one; tablets: a thin bezel; wall displays: a square bezel.
  */
-const IPHONE_15_PRO = {
-  pxW: 1179,
-  pxH: 2556,
-  ppi: 460,
-  inches: 6.1,
-  w: 393,
-  h: 852,
-  radius: 55,
-  bezel: 10,
-  safeTop: 59,
-  safeSide: 59,
-  safeBottom: 34,
-  safeBottomLandscape: 21,
+const FRAME_METRICS = {
+  island: { bezel: 10, radius: 55 },
+  notch: { bezel: 10, radius: 44 },
+  home: { bezel: 10, radius: 30 },
+  punch: { bezel: 9, radius: 40 },
+  tablet: { bezel: 14, radius: 20 },
+  wall: { bezel: 16, radius: 4 },
+  custom: { bezel: 8, radius: 10 },
 };
+
+/** Remembered preview device, read defensively (private mode, bad JSON). */
+function loadDeviceState() {
+  const base = { id: DEFAULT_DEVICE, orient: "portrait", scale: "fit", custom: { w: 700, h: 500, safe: { t: 0, r: 0, b: 0, l: 0 } } };
+  try {
+    const raw = JSON.parse(localStorage.getItem(DEVICE_KEY) || "null");
+    if (raw && typeof raw === "object") {
+      const known = raw.id === "custom" || DEVICE_PRESETS.some((d) => d.id === raw.id);
+      const n = (v, lo, hi, d) => (Number.isInteger(v) && v >= lo && v <= hi ? v : d);
+      const cs = raw.custom?.safe || {};
+      return {
+        id: known ? raw.id : base.id,
+        orient: raw.orient === "landscape" ? "landscape" : "portrait",
+        scale: raw.scale === "100" ? "100" : "fit",
+        custom: {
+          w: n(raw.custom?.w, CUSTOM_MIN, CUSTOM_MAX, base.custom.w),
+          h: n(raw.custom?.h, CUSTOM_MIN, CUSTOM_MAX, base.custom.h),
+          safe: { t: n(cs.t, 0, 400, 0), r: n(cs.r, 0, 400, 0), b: n(cs.b, 0, 400, 0), l: n(cs.l, 0, 400, 0) },
+        },
+      };
+    }
+    if (localStorage.getItem(ORIENT_KEY) === "landscape") base.orient = "landscape";
+  } catch {
+    /* storage blocked: defaults */
+  }
+  return base;
+}
 
 /** Since config version 3 the header, clock, greeting, weather and Wi-Fi button are tiles. */
 const DEFAULT_GENERAL = {
   use24h: true,
   statusBarStrip: false,
+  layoutMode: "auto",
+  dockPosition: "auto",
+};
+const GENERAL_ENUMS = {
+  layoutMode: ["auto", "single"],
+  dockPosition: ["auto", "bottom", "right", "left"],
 };
 
 const PANEL_I18N = {
@@ -153,7 +199,28 @@ const PANEL_I18N = {
     tabGuest: "Wi-Fi",
     tabStyles: "Styly",
     previewTitle: "Live preview",
-    previewMeta: `iPhone 15 Pro · 6,1″ · ${IPHONE_15_PRO.pxH} × ${IPHONE_15_PRO.pxW} · ${IPHONE_15_PRO.ppi} ppi`,
+    previewMeta: (label, w, h) => `${label} · ${w} × ${h} px`,
+    previewApprox: "safe area přibližně",
+    previewTypical: "typické rozměry",
+    previewViewport: "viewport prohlížeče",
+    previewDevice: "Zařízení",
+    devGroup_phone: "Telefony",
+    devGroup_tablet: "Tablety",
+    devGroup_wall: "Nástěnné displeje",
+    devGroup_custom: "Vlastní",
+    devCustom: "Vlastní velikost",
+    previewScale: "Měřítko",
+    scaleFit: "Přizpůsobit",
+    scale100: "100 %",
+    customW: "Šířka",
+    customH: "Výška",
+    swapWH: "Prohodit",
+    customSafe: "Safe area (px)",
+    safeT: "Nahoře",
+    safeR: "Vpravo",
+    safeB: "Dole",
+    safeL: "Vlevo",
+    customInvalid: `Šířka a výška musí být ${CUSTOM_MIN}–${CUSTOM_MAX} px.`,
     previewEmpty: "Nastav v záložce Obecné, kde dashboard běží, a ulož.",
     rotateLandscape: "Na šířku",
     rotatePortrait: "Na výšku",
@@ -193,6 +260,17 @@ const PANEL_I18N = {
     iphoneSection: "iPhone",
     statusBarStrip: "Tmavý pruh pod stavovým řádkem",
     statusBarStripHint: "Pomůže, když je světlé pozadí a bílé hodiny iOS nejsou čitelné.",
+    layoutSection: "Rozložení",
+    layoutMode: "Stránky",
+    layoutMode_auto: "Automaticky",
+    layoutMode_single: "Jeden sloupec",
+    layoutModeHint: "Automaticky: na tabletu a širokém displeji je víc stránek vedle sebe. Jeden sloupec: vždy jedna stránka uprostřed.",
+    dockPosition: "Dok",
+    dockPosition_auto: "Automaticky",
+    dockPosition_bottom: "Dole",
+    dockPosition_right: "Vpravo",
+    dockPosition_left: "Vlevo",
+    dockPositionHint: "Automaticky: vpravo na telefonu na šířku, jinak dole.",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi heslo",
     wifiSecurity: "Zabezpečení",
@@ -239,6 +317,11 @@ const PANEL_I18N = {
     type_scene: "Scéna",
     type_fan: "Ventilátor",
     type_light_group: "Skupina světel",
+    type_player: "Přehrávač dash (rádio, Spotify)",
+    type_library: "Videotéka",
+    style_trending: "Trendy",
+    style_search: "Hledání",
+    style_activity: "Stahování",
     type_sensor: "Senzor",
     type_binary_sensor: "Binární senzor",
     type_entity: "Entita",
@@ -277,6 +360,88 @@ const PANEL_I18N = {
     style_cover: "Obal alba",
     resizeTile: "Táhni pro změnu velikosti a stylu",
     tabStandby: "Standby",
+    tabLibrary: "Videotéka",
+    libEnable: "Zapnout Videotéku",
+    libIntro: "Objevit, požádat a vybrat release na jednom místě. Ovládá tvůj Radarr, Sonarr a qBittorrent. Klíče a hesla zůstávají jen v Home Assistantu.",
+    libServices: "Služby",
+    libSvc_tmdb: "TMDB (objevování, plakáty)",
+    libSvc_radarr: "Radarr (filmy)",
+    libSvc_sonarr: "Sonarr (seriály)",
+    libSvc_qbittorrent: "qBittorrent (rychlost, pauza)",
+    libConfigured: (url) => (url ? `Nastaveno · ${url}` : "Nastaveno"),
+    libNotConfigured: "Nenastaveno",
+    libUrl: "Adresa",
+    libApiKey: "API klíč",
+    libUser: "Uživatel",
+    libPassword: "Heslo",
+    libKeepKey: "•••••• (beze změny)",
+    libSave: "Uložit",
+    libChange: "Změnit",
+    libRemove: "Odebrat",
+    libTest: "Otestovat připojení",
+    libTestOk: (v) => (v ? `Funguje (verze ${v})` : "Funguje"),
+    libTestFail: (code) => `Nefunguje: ${code}`,
+    libDefaults: "Výchozí nastavení",
+    libDefaultsHint: "Profil kvality a složka pro „Automaticky“ a „Vybrat release“. Nabídka se načte po úspěšném testu Radarru / Sonarru.",
+    libMovieProfile: "Filmy: profil",
+    libMovieRoot: "Filmy: složka",
+    libTvProfile: "Seriály: profil",
+    libTvRoot: "Seriály: složka",
+    libInterval: "Obnovení stahování",
+    libGuestsHint: "Hosté nemají do Videotéky přístup, dokud ho nezapneš v záložce Hosté u profilu.",
+    libTmdbAttribution: "Atribuce TMDB (zobrazuje se v aplikaci)",
+    tabMusic: "Hudba",
+    musicHaPlayers: "Přehrávače v Home Assistantu",
+    musicHaPlayersHint: "Dlaždice „Přehrávač médií“ ovládá tyto přehrávače. Žádné doplňky nejsou potřeba.",
+    musicNoPlayers: "Home Assistant teď nevidí žádný media_player.",
+    radioSection: "Rádio v prohlížeči",
+    radioHint: "Hraje přímo v telefonu nebo tabletu s dashboardem. Jen adresy https:// (stránka na https nepřehraje http stream).",
+    radioName: "Název",
+    radioUrl: "Adresa streamu",
+    radioAdd: "Přidat stanici",
+    radioTest: "Test",
+    radioTestStop: "Zastavit",
+    radioTesting: "Zkouším…",
+    radioTestOk: "Hraje",
+    radioTestFail: "Nehraje",
+    radioRemove: "Odebrat",
+    radioUp: "Výš",
+    radioDown: "Níž",
+    radioEmpty: "Zatím žádná stanice.",
+    radioErrName: "Zadej název (nejvýš 60 znaků).",
+    radioErrUrl: "Jen adresa https:// bez jména a hesla. Stream na http:// stránka na https nepřehraje.",
+    radioErrMax: "Nejvýš 50 stanic.",
+    radioErrDup: "Tahle adresa už v seznamu je.",
+    radioLibrary: "Soubory z Home Assistantu (složka media) v prohlížeči",
+    radioDirectory: "Hledat stanice v katalogu radio-browser.info",
+    radioDirectoryHint: "Hledá Home Assistant, ne prohlížeč. Vypnuto = žádné spojení s katalogem.",
+    radioSearch: "Hledat stanici",
+    radioSearchBtn: "Hledat",
+    radioSearchNone: "Nic nenalezeno.",
+    radioSearchFail: "Katalog teď neodpovídá.",
+    spotifySection: "Spotify (volitelné)",
+    spotifyEnable: "Zapnout Spotify",
+    spotifyNeeds: "Potřebuješ Spotify Premium a vlastní aplikaci na developer.spotify.com (nejvýš 5 uživatelů). Není určeno pro hotely a firmy: podmínky Spotify zakazují komerční použití bez jejich souhlasu.",
+    spotifyStep1: "Otevři developer.spotify.com/dashboard a vytvoř aplikaci. Zaškrtni „Web API“ a „Web Playback SDK“.",
+    spotifyStep2: "Jako Redirect URI zadej přesně tuto adresu:",
+    spotifyStep2Warn: "Dashboard neběží na https: Spotify takovou adresu nepřijme. Použij hostovaný dash nebo vlastní https adresu.",
+    spotifyStep3: "V User Management přidej e-mail svého účtu Spotify (a dalších, nejvýš 5).",
+    spotifyStep4: "Zkopíruj Client ID aplikace a vlož ho sem:",
+    spotifyClientId: "Client ID",
+    spotifySaveId: "Uložit",
+    spotifyStep5: "Připoj účet:",
+    spotifyConnect: "Připojit Spotify",
+    spotifyPaste: "Okno se nevrátilo? Vlož kód z něj:",
+    spotifyPasteBtn: "Vložit kód",
+    spotifyConnected: (name) => `Připojeno jako ${name || "účet Spotify"}`,
+    spotifyDisconnect: "Odpojit",
+    spotifyWebPlayer: "Přehrávat i v prohlížeči s dashboardem (jen tvoje zařízení)",
+    spotifyErr: (code) => `Spotify: ${code}`,
+    copy: "Zkopírovat",
+    tileSource: "Zdroj",
+    source_ha: "HA přehrávač",
+    source_browser: "Rádio v prohlížeči",
+    source_spotify: "Spotify",
     hosting: "Kde dashboard běží",
     hostingHosted: "Zdarma na dash.matyas.online",
     hostingSelf: "Vlastní hosting",
@@ -327,7 +492,28 @@ const PANEL_I18N = {
     tabGuest: "Wi-Fi",
     tabStyles: "Styles",
     previewTitle: "Live preview",
-    previewMeta: `iPhone 15 Pro · 6.1″ · ${IPHONE_15_PRO.pxH} × ${IPHONE_15_PRO.pxW} · ${IPHONE_15_PRO.ppi} ppi`,
+    previewMeta: (label, w, h) => `${label} · ${w} × ${h} px`,
+    previewApprox: "approximate safe area",
+    previewTypical: "typical size",
+    previewViewport: "browser viewport",
+    previewDevice: "Device",
+    devGroup_phone: "Phones",
+    devGroup_tablet: "Tablets",
+    devGroup_wall: "Wall displays",
+    devGroup_custom: "Custom",
+    devCustom: "Custom size",
+    previewScale: "Scale",
+    scaleFit: "Fit",
+    scale100: "100 %",
+    customW: "Width",
+    customH: "Height",
+    swapWH: "Swap",
+    customSafe: "Safe area (px)",
+    safeT: "Top",
+    safeR: "Right",
+    safeB: "Bottom",
+    safeL: "Left",
+    customInvalid: `Width and height must be ${CUSTOM_MIN}–${CUSTOM_MAX} px.`,
     previewEmpty: "Choose where the dashboard runs in General and save.",
     rotateLandscape: "Landscape",
     rotatePortrait: "Portrait",
@@ -367,6 +553,17 @@ const PANEL_I18N = {
     iphoneSection: "iPhone",
     statusBarStrip: "Dark strip behind the status bar",
     statusBarStripHint: "Helps when the background is light and the white iOS clock is hard to read.",
+    layoutSection: "Layout",
+    layoutMode: "Pages",
+    layoutMode_auto: "Automatic",
+    layoutMode_single: "One column",
+    layoutModeHint: "Automatic: tablets and wide screens show several pages side by side. One column: always one page in the middle.",
+    dockPosition: "Dock",
+    dockPosition_auto: "Automatic",
+    dockPosition_bottom: "Bottom",
+    dockPosition_right: "Right",
+    dockPosition_left: "Left",
+    dockPositionHint: "Automatic: on the right on a phone in landscape, at the bottom elsewhere.",
     wifiSsid: "Wi-Fi SSID",
     wifiPassword: "Wi-Fi password",
     wifiSecurity: "Security",
@@ -412,6 +609,11 @@ const PANEL_I18N = {
     type_scene: "Scene",
     type_fan: "Fan",
     type_light_group: "Light group",
+    type_player: "dash player (radio, Spotify)",
+    type_library: "Video library",
+    style_trending: "Trending",
+    style_search: "Search",
+    style_activity: "Downloads",
     type_sensor: "Sensor",
     type_binary_sensor: "Binary sensor",
     type_entity: "Entity",
@@ -450,6 +652,88 @@ const PANEL_I18N = {
     style_cover: "Album art",
     resizeTile: "Drag to change size and style",
     tabStandby: "Standby",
+    tabLibrary: "Video library",
+    libEnable: "Turn on the video library",
+    libIntro: "Discover, request and pick a release in one place. It drives your Radarr, Sonarr and qBittorrent. Keys and passwords stay in Home Assistant only.",
+    libServices: "Services",
+    libSvc_tmdb: "TMDB (discovery, posters)",
+    libSvc_radarr: "Radarr (films)",
+    libSvc_sonarr: "Sonarr (series)",
+    libSvc_qbittorrent: "qBittorrent (speed, pause)",
+    libConfigured: (url) => (url ? `Configured · ${url}` : "Configured"),
+    libNotConfigured: "Not configured",
+    libUrl: "Address",
+    libApiKey: "API key",
+    libUser: "User",
+    libPassword: "Password",
+    libKeepKey: "•••••• (unchanged)",
+    libSave: "Save",
+    libChange: "Change",
+    libRemove: "Remove",
+    libTest: "Test connection",
+    libTestOk: (v) => (v ? `Works (version ${v})` : "Works"),
+    libTestFail: (code) => `Does not work: ${code}`,
+    libDefaults: "Defaults",
+    libDefaultsHint: "Quality profile and folder for \"Automatic\" and \"Pick a release\". The choices load after a successful Radarr / Sonarr test.",
+    libMovieProfile: "Films: profile",
+    libMovieRoot: "Films: folder",
+    libTvProfile: "Series: profile",
+    libTvRoot: "Series: folder",
+    libInterval: "Download refresh",
+    libGuestsHint: "Guests have no access to the video library until you turn it on for a profile in the Guests tab.",
+    libTmdbAttribution: "TMDB attribution (shown in the app)",
+    tabMusic: "Music",
+    musicHaPlayers: "Home Assistant players",
+    musicHaPlayersHint: "A media player tile controls these players. No add-ons needed.",
+    musicNoPlayers: "Home Assistant has no media_player right now.",
+    radioSection: "Radio in the browser",
+    radioHint: "Plays on the phone or tablet showing the dashboard. https:// addresses only (an https page cannot play an http stream).",
+    radioName: "Name",
+    radioUrl: "Stream address",
+    radioAdd: "Add station",
+    radioTest: "Test",
+    radioTestStop: "Stop",
+    radioTesting: "Trying…",
+    radioTestOk: "Playing",
+    radioTestFail: "Not playing",
+    radioRemove: "Remove",
+    radioUp: "Up",
+    radioDown: "Down",
+    radioEmpty: "No station yet.",
+    radioErrName: "Enter a name (60 characters at most).",
+    radioErrUrl: "Only an https:// address without user and password. An https page cannot play an http:// stream.",
+    radioErrMax: "50 stations at most.",
+    radioErrDup: "This address is already in the list.",
+    radioLibrary: "Files from Home Assistant (media folder) in the browser",
+    radioDirectory: "Search stations in the radio-browser.info directory",
+    radioDirectoryHint: "Home Assistant searches, not the browser. Off = no connection to the directory.",
+    radioSearch: "Search a station",
+    radioSearchBtn: "Search",
+    radioSearchNone: "Nothing found.",
+    radioSearchFail: "The directory does not answer right now.",
+    spotifySection: "Spotify (optional)",
+    spotifyEnable: "Turn on Spotify",
+    spotifyNeeds: "You need Spotify Premium and your own app on developer.spotify.com (5 users at most). Not for hotels and businesses: Spotify's terms forbid commercial use without their consent.",
+    spotifyStep1: "Open developer.spotify.com/dashboard and create an app. Tick \"Web API\" and \"Web Playback SDK\".",
+    spotifyStep2: "Use exactly this Redirect URI:",
+    spotifyStep2Warn: "The dashboard does not run on https: Spotify will not accept this address. Use hosted dash or your own https address.",
+    spotifyStep3: "In User Management add the e-mail of your Spotify account (and others, 5 at most).",
+    spotifyStep4: "Copy the app's Client ID and paste it here:",
+    spotifyClientId: "Client ID",
+    spotifySaveId: "Save",
+    spotifyStep5: "Connect your account:",
+    spotifyConnect: "Connect Spotify",
+    spotifyPaste: "The window did not come back? Paste the code it shows:",
+    spotifyPasteBtn: "Use code",
+    spotifyConnected: (name) => `Connected as ${name || "your Spotify account"}`,
+    spotifyDisconnect: "Disconnect",
+    spotifyWebPlayer: "Also play in the dashboard's browser (your devices only)",
+    spotifyErr: (code) => `Spotify: ${code}`,
+    copy: "Copy",
+    tileSource: "Source",
+    source_ha: "HA player",
+    source_browser: "Radio in the browser",
+    source_spotify: "Spotify",
     hosting: "Where the dashboard runs",
     hostingHosted: "Free on dash.matyas.online",
     hostingSelf: "Self-hosted",
@@ -504,6 +788,9 @@ const emptyConfig = () => ({
   hosting: "hosted",
   dashboardUrl: "",
   appearance: { mode: "light", accent: "#ff6b00" },
+  radio: { stations: [], mediaLibrary: false, directory: false },
+  spotify: { enabled: false, webPlayer: false },
+  library: { enabled: false, movieProfileId: null, movieRootFolder: "", tvProfileId: null, tvRootFolder: "", interval: 3 },
 });
 
 function normalizeConfig(cfg = {}) {
@@ -571,7 +858,9 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._photos = null;
     this._thumbs = new Map();
     this._uploading = 0;
-    this._orient = localStorage.getItem(ORIENT_KEY) === "landscape" ? "landscape" : "portrait";
+    /** Live preview device: preset or custom size, orientation, scale (remembered) */
+    this._dev = loadDeviceState();
+    this._orient = this._dev.orient;
     this._rotating = false;
     /** Theme of the saved config — the phone screen chrome follows the live page, not the draft */
     this._liveMode = "light";
@@ -751,6 +1040,16 @@ class GuestHaDashboardPanel extends HTMLElement {
   }
   _friendly(id) {
     return this._hass?.states?.[id]?.attributes?.friendly_name || id;
+  }
+  /**
+   * Name of a tile in the editor: its own label, else the entity's friendly
+   * name (tiles with an entity), else the type name from the registry. Never
+   * an internal id such as "header-0e313dab".
+   */
+  _tileName(d) {
+    if (d?.label) return d.label;
+    if (TILE_TYPES[d?.type]?.needsEntity && d?.id) return this._friendly(d.id);
+    return this._t(`type_${d?.type}`);
   }
   _addEmptyPage() {
     this._config.pages.push({
@@ -1427,7 +1726,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       .cc-grid {
         --gap: 10px;
         display: grid; gap: var(--gap); grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-auto-rows: calc((100cqw - 3 * var(--gap)) / 4); grid-auto-flow: row dense;
+        grid-auto-rows: calc((100cqw - 3 * var(--gap)) / 4);
         padding: 14px; border-radius: 30px;
         background: color-mix(in srgb, var(--text) 6%, transparent);
         margin: 0 -14px;
@@ -1435,7 +1734,8 @@ class GuestHaDashboardPanel extends HTMLElement {
       .cc-tile {
         position: relative; overflow: hidden; min-width: 0; cursor: grab; user-select: none;
         display: flex; flex-direction: column; justify-content: space-between; gap: 4px;
-        padding: 10px 12px; border-radius: 22px; color: var(--text);
+        /* same corners as the app's tiles (daisyUI --radius-box: 2rem, squircle) */
+        padding: 10px 12px; border-radius: var(--tile-radius, 2rem); color: var(--text);
         background: var(--card); border: 1px solid var(--border);
         touch-action: pan-y; -webkit-touch-callout: none;
         transition: scale 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s ease, opacity 0.2s ease;
@@ -1466,7 +1766,8 @@ class GuestHaDashboardPanel extends HTMLElement {
       .cc-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .cc-tile.sel { box-shadow: 0 0 0 2.5px var(--accent); }
       .cc-tile.h1 { flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; }
-      .cc-tile.s1 { justify-content: center; align-items: center; padding: 0; border-radius: 50%; }
+      @supports (corner-shape: squircle) { .cc-tile { corner-shape: squircle; } }
+      .cc-tile.s1 { justify-content: center; align-items: center; padding: 0; }
       .cc-tile .cc-ic {
         position: relative; z-index: 1; width: 34px; height: 34px; flex-shrink: 0;
         display: grid; place-items: center; border-radius: 50%;
@@ -1491,7 +1792,7 @@ class GuestHaDashboardPanel extends HTMLElement {
         right: 12px; bottom: 10px; display: flex; gap: 10px; font-size: 0.8rem; color: var(--muted);
       }
       .cc-tile .deco-cover {
-        inset: 0; background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 45%, transparent), transparent 70%);
+        inset: 0; background: color-mix(in srgb, var(--accent) 16%, transparent);
       }
       .cc-tile .cc-resize {
         position: absolute; right: 0; bottom: 0; z-index: 3; width: 26px; height: 26px; cursor: nwse-resize;
@@ -1515,9 +1816,42 @@ class GuestHaDashboardPanel extends HTMLElement {
         box-shadow: 0 18px 40px rgba(0,0,0,0.25); opacity: 0.94;
       }
       @keyframes cc-wiggle { from { rotate: -1.2deg; } to { rotate: 1.2deg; } }
+      /* vinyl style preview: 33⅓ rpm, always on in the editor */
+      .vinyl-mini { animation: vinyl-spin 1.8s linear infinite; color: var(--text); }
+      @keyframes vinyl-spin { to { transform: rotate(360deg); } }
+      .cc-tile .deco-vinyl { right: 12px; top: 12px; width: 44%; height: auto; aspect-ratio: 1; }
+      .seg .vinyl-mini { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; }
       @media (prefers-reduced-motion: reduce) {
         .cc-grid.is-dragging .cc-tile { animation: none !important; }
+        .vinyl-mini { animation: none; }
       }
+      /* Music tab */
+      .music-list { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 4px; }
+      .music-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+      .music-list code { font-size: 0.75rem; color: var(--muted); }
+      .muted { color: var(--muted); font-size: 0.8rem; }
+      .station-list { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 6px; }
+      .station { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
+      .station .grip { cursor: grab; color: var(--muted); user-select: none; }
+      .station input, .station-add input, .copy-row input {
+        min-width: 0; padding: 7px 10px; border-radius: 10px; font: inherit; font-size: 0.85rem;
+        border: 1px solid var(--border); background: var(--input-bg); color: var(--text);
+      }
+      .station input[data-st-name] { flex: 0 1 160px; }
+      .station input[data-st-url] { flex: 1 1 220px; }
+      .st-status { min-width: 64px; font-size: 0.78rem; color: var(--muted); }
+      .station-add, .copy-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+      .station-add input { flex: 1 1 160px; }
+      .field-error { margin: 4px 0; color: var(--danger-text); font-size: 0.82rem; }
+      .ok-line { margin: 6px 0; font-weight: 600; }
+      .lib-services { display: grid; gap: 4px; }
+      .lib-svc { padding: 8px 0; border-bottom: 1px solid var(--border); }
+      .lib-svc-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+      .lib-svc input { min-width: 0; flex: 1 1 160px; padding: 7px 10px; border-radius: 10px; font: inherit; font-size: 0.85rem;
+        border: 1px solid var(--border); background: var(--input-bg); color: var(--text); }
+      .wizard { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 10px; font-size: 0.9rem; }
+      .wizard code { padding: 2px 0; font-size: 0.8rem; word-break: break-all; }
+      .copy-row input { flex: 1 1 220px; font-family: ui-monospace, monospace; }
       .inspector {
         display: grid; gap: 2px; padding: 14px 16px 6px; border-radius: 22px; max-width: 560px; margin: 0 auto;
         background: color-mix(in srgb, var(--input-bg) 70%, transparent); border: 1px solid var(--border);
@@ -1580,9 +1914,22 @@ class GuestHaDashboardPanel extends HTMLElement {
       h3 { margin: 18px 0 8px; font-size: 1rem; }
       .count { color: var(--muted); font-size: 0.8rem; }
       .preview-head {
-        display: flex; justify-content: space-between; align-items: center;
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px;
         padding: 12px 14px; border-bottom: 1px solid var(--border);
       }
+      .preview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; }
+      .preview-controls select {
+        min-width: 0; flex: 1 1 180px; padding: 7px 10px; border-radius: 10px; font: inherit; font-size: 0.85rem;
+        border: 1px solid var(--border); background: var(--input-bg); color: var(--text);
+      }
+      .preview-controls .seg button { padding: 6px 10px; font-size: 0.8rem; }
+      .preview-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; font-size: 0.8rem; }
+      .preview-custom[hidden] { display: none; }
+      .preview-custom input { width: 76px; padding: 6px 8px; border-radius: 8px; font: inherit; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); }
+      .preview-custom details { width: 100%; }
+      .preview-custom summary { cursor: pointer; color: var(--muted); }
+      .preview-custom .safe-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+      .preview-custom .field-error { width: 100%; margin: 0; color: var(--danger-text); }
       .preview-head strong { font-size: 0.92rem; }
       .rotate-btn {
         display: inline-flex; align-items: center; gap: 8px;
@@ -1592,35 +1939,35 @@ class GuestHaDashboardPanel extends HTMLElement {
       .rotate-btn[data-orient="landscape"] svg { transform: rotate(-90deg); }
       .preview-body {
         flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 14px 12px;
-        background:
-          radial-gradient(ellipse at 30% 20%, rgba(255,107,0,0.12), transparent 45%),
-          radial-gradient(ellipse at 80% 80%, rgba(140,100,255,0.12), transparent 40%),
-          var(--bg);
+        background: var(--bg);
       }
       .stage {
         position: relative; flex: 1; min-height: 0; width: 100%;
         animation: stage-in 0.7s cubic-bezier(0.2, 0.9, 0.25, 1) both;
       }
+      /* 100 %: real size, the preview column scrolls */
+      .stage.actual { overflow: auto; }
+      .stage.actual .iphone { position: relative; left: auto; top: auto; margin: 8px auto; transform: rotate(var(--r)); }
       @keyframes stage-in {
         from { opacity: 0; transform: translateY(18px); filter: blur(6px); }
         to { opacity: 1; transform: none; filter: none; }
       }
       /*
-       * iPhone 15 Pro. Size is the real point size; --s scales it to fit.
-       * Rotation: the portrait frame is turned by ±90° (which visually is the
-       * landscape box), then the layout swaps to landscape with no transition.
+       * The device frame (www/devices.js preset or a custom size). The screen is
+       * the real CSS px size (--sw × --sh, set from JS); --s scales the whole
+       * frame to fit. Rotation: the frame is turned by ±90° (which visually is the
+       * other box), then the layout swaps with no transition.
        */
       .iphone {
-        --ow: ${IPHONE_15_PRO.w + IPHONE_15_PRO.bezel * 2}px;
-        --oh: ${IPHONE_15_PRO.h + IPHONE_15_PRO.bezel * 2}px;
+        --ow: 413px; --oh: 872px; --bezel: 10px; --radius: 55px; --safe-t: 59px;
         --s: 1; --r: 0deg;
         --screen-bg: #f3f0f7; --status-fg: #000;
         position: absolute; left: 50%; top: 50%;
-        width: var(--ow); height: var(--oh); padding: ${IPHONE_15_PRO.bezel}px;
-        border-radius: ${IPHONE_15_PRO.radius + IPHONE_15_PRO.bezel}px;
+        width: var(--ow); height: var(--oh); padding: var(--bezel);
+        border-radius: calc(var(--radius) + var(--bezel));
         transform: translate(-50%, -50%) scale(var(--s)) rotate(var(--r));
         transition: transform 0.75s cubic-bezier(0.32, 0.72, 0, 1);
-        background: linear-gradient(135deg, #8e8b86 0%, #3a3936 22%, #1c1c1e 50%, #3a3936 78%, #8e8b86 100%);
+        background: #2a2a2c;
         box-shadow:
           inset 0 0 0 1.5px rgba(255,255,255,0.22),
           inset 0 0 0 4px #111,
@@ -1630,14 +1977,14 @@ class GuestHaDashboardPanel extends HTMLElement {
         will-change: transform;
       }
       .iphone.no-anim { transition: none; }
-      .iphone[data-orient="landscape"] {
-        --ow: ${IPHONE_15_PRO.h + IPHONE_15_PRO.bezel * 2}px;
-        --oh: ${IPHONE_15_PRO.w + IPHONE_15_PRO.bezel * 2}px;
+      .iphone[data-frame="wall"], .iphone[data-frame="tablet"], .iphone[data-frame="custom"] {
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 30px 60px -24px rgba(0,0,0,0.45);
       }
+      .iphone[data-frame="wall"] { background: #1c1c1e; }
       .iphone[data-mode="dark"] { --screen-bg: #0e1014; --status-fg: #fff; }
       .iphone-screen {
         position: relative; width: 100%; height: 100%; overflow: hidden;
-        border-radius: ${IPHONE_15_PRO.radius}px; background: var(--screen-bg);
+        border-radius: var(--radius); background: var(--screen-bg);
         transition: background 0.4s ease;
       }
       /* Full-screen like a real PWA; the page gets the safe-area insets via postMessage. */
@@ -1646,7 +1993,7 @@ class GuestHaDashboardPanel extends HTMLElement {
         border: 0; display: block; background: transparent;
       }
       .ios-status {
-        position: absolute; top: 0; left: 0; right: 0; height: ${IPHONE_15_PRO.safeTop}px; z-index: 2;
+        position: absolute; top: 0; left: 0; right: 0; height: var(--safe-t); z-index: 2;
         display: flex; align-items: center; justify-content: space-between;
         padding: 4px 30px 0 46px; color: var(--status-fg);
         font: 600 17px/1 -apple-system, "SF Pro Text", system-ui, sans-serif;
@@ -1654,7 +2001,13 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       .ios-status .ios-icons { display: flex; gap: 6px; align-items: center; }
       .ios-status svg { display: block; fill: currentColor; }
-      .iphone[data-orient="landscape"] .ios-status { display: none; }
+      .iphone[data-orient="landscape"] .ios-status,
+      .iphone:not([data-frame="island"]):not([data-frame="notch"]):not([data-frame="home"]) .ios-status { display: none; }
+      .iphone:not([data-frame="island"]):not([data-frame="notch"]):not([data-frame="punch"]) .island,
+      .iphone:not([data-frame="island"]):not([data-frame="notch"]) .home-ind { display: none; }
+      .iphone[data-frame="notch"][data-orient="portrait"] .island { top: 0; width: 160px; height: 31px; border-radius: 0 0 20px 20px; }
+      .iphone[data-frame="punch"] .island { top: 12px; width: 12px; height: 12px; }
+      .iphone[data-frame="punch"][data-orient="landscape"] .island { left: 12px; top: 50%; width: 12px; height: 12px; }
       .island {
         position: absolute; left: 50%; top: 11px; width: 126px; height: 37px;
         transform: translateX(-50%); border-radius: 999px; background: #000; pointer-events: none;
@@ -1694,6 +2047,26 @@ class GuestHaDashboardPanel extends HTMLElement {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="3"/><path d="M11 18h2"/></svg>
               <span></span>
             </button>
+            <div class="preview-controls">
+              <select id="previewDevice" aria-label=""></select>
+              <div class="seg" id="previewScale" role="group">
+                <button type="button" data-scale="fit"></button>
+                <button type="button" data-scale="100"></button>
+              </div>
+            </div>
+            <div class="preview-custom" id="previewCustom" hidden>
+              <label><span data-l="customW"></span> <input type="number" id="customW" min="${CUSTOM_MIN}" max="${CUSTOM_MAX}" step="1" inputmode="numeric" /></label>
+              <span aria-hidden="true">×</span>
+              <label><span data-l="customH"></span> <input type="number" id="customH" min="${CUSTOM_MIN}" max="${CUSTOM_MAX}" step="1" inputmode="numeric" /></label>
+              <button type="button" class="btn ghost" id="customSwap" data-l="swapWH"></button>
+              <p class="field-error" id="customError" role="alert" hidden></p>
+              <details id="customSafeBox">
+                <summary data-l="customSafe"></summary>
+                <div class="safe-grid">
+                  ${["t", "r", "b", "l"].map((k) => `<label><span data-l="safe${k.toUpperCase()}"></span> <input type="number" min="0" max="400" step="1" data-safe="${k}" /></label>`).join("")}
+                </div>
+              </details>
+            </div>
           </div>
           <div class="preview-body">
             <div class="stage" id="previewStage">
@@ -1707,7 +2080,7 @@ class GuestHaDashboardPanel extends HTMLElement {
                       <svg width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect x="0.5" y="0.5" width="22" height="12" rx="3.8" fill="none" stroke="currentColor" opacity="0.4"/><rect x="2" y="2" width="19" height="9" rx="2.5"/><path d="M24 4.5v4c.8-.3 1.4-1.1 1.4-2s-.6-1.7-1.4-2Z" opacity="0.45"/></svg>
                     </span>
                   </div>
-                  <iframe title="Guest dashboard live preview" allow="fullscreen" hidden></iframe>
+                  <iframe title="Guest dashboard live preview" allow="fullscreen; autoplay; encrypted-media" hidden></iframe>
                   <div class="screen-empty" hidden></div>
                   <div class="island"></div>
                   <div class="home-ind"></div>
@@ -1720,13 +2093,20 @@ class GuestHaDashboardPanel extends HTMLElement {
       </div>
     `;
     this.shadowRoot.getElementById("rotatePreview").addEventListener("click", () => this._rotatePreview());
+    this._bindPreviewControls();
     const frame = this.shadowRoot.querySelector("#iphone iframe");
     frame.addEventListener("load", () => this._postSafeArea());
     this._onFrameMessage = (e) => {
       if (e.source !== frame.contentWindow) return;
-      if (e.data?.type === "guest-ha:ready") this._postSafeArea();
+      if (e.data?.type === "guest-ha:ready") {
+        this._postSafeArea();
+        this._draftSent = "";
+        this._pushDraft();
+      }
       if (e.data?.type === "guest-ha:auth-request") this._postAuth(e.origin);
     };
+    // typing in an input changes the draft without a re-render
+    this.shadowRoot.getElementById("editorHost").addEventListener("input", () => this._pushDraft());
     this._attachShellObservers();
     this._tickStatusClock();
   }
@@ -1772,22 +2152,195 @@ class GuestHaDashboardPanel extends HTMLElement {
     }, expected);
   }
 
+  /**
+   * `{ type: "dash-preview", ... }` to the preview iframe, addressed to the
+   * dashboard's own origin only (the page checks ours: src/lib/previewBridge.js).
+   */
+  _postPreview(data) {
+    const frame = this.shadowRoot?.querySelector("#iphone iframe");
+    if (!frame?.contentWindow || !this._livePreviewSrc) return;
+    let origin = "";
+    try {
+      origin = new URL(this._livePreviewSrc, window.location.href).origin;
+    } catch {
+      return;
+    }
+    frame.contentWindow.postMessage({ type: "dash-preview", ...data }, origin);
+  }
+
+  /**
+   * The preview shows the draft at once (before Uložit): after every render or
+   * grid change, at most once per frame, only when the config changed.
+   */
+  _pushDraft() {
+    if (this._draftQueued) return;
+    this._draftQueued = true;
+    requestAnimationFrame(() => {
+      this._draftQueued = false;
+      let json = "";
+      try {
+        json = JSON.stringify(this._config);
+      } catch {
+        return;
+      }
+      if (json === this._draftSent) return;
+      this._draftSent = json;
+      this._postPreview({ config: JSON.parse(json) });
+    });
+  }
+
   /** env(safe-area-inset-*) is 0 inside an iframe, so hand the page the simulated insets. */
   _postSafeArea() {
-    const frame = this.shadowRoot?.querySelector("#iphone iframe");
-    if (!frame?.contentWindow) return;
-    const p = IPHONE_15_PRO;
-    const insets = this._orient === "landscape"
-      ? { top: 0, right: p.safeSide, bottom: p.safeBottomLandscape, left: p.safeSide }
-      : { top: p.safeTop, right: 0, bottom: p.safeBottom, left: 0 };
-    frame.contentWindow.postMessage({ type: "guest-ha:safe-area", insets }, "*");
+    this._postPreview({ safe: this._deviceSafe(this._orient) });
+  }
+
+  /** Current preset (www/devices.js) or the custom size, as one shape. */
+  _device() {
+    if (this._dev.id === "custom") {
+      const { w, h, safe } = this._dev.custom;
+      return { id: "custom", label: this._t("devCustom"), group: "custom", w, h, frame: "custom", safe: { portrait: safe, landscape: safe }, custom: true };
+    }
+    return DEVICE_PRESETS.find((d) => d.id === this._dev.id) || DEVICE_PRESETS.find((d) => d.id === DEFAULT_DEVICE) || DEVICE_PRESETS[0];
+  }
+
+  /** Screen size in CSS px for an orientation (custom: exactly as typed in portrait). */
+  _screenSize(orient) {
+    const d = this._device();
+    return orient === "landscape" ? { w: d.h, h: d.w } : { w: d.w, h: d.h };
+  }
+
+  _deviceSafe(orient) {
+    const d = this._device();
+    const s = (orient === "landscape" ? d.safe?.landscape : d.safe?.portrait) || {};
+    return { t: s.t || 0, r: s.r || 0, b: s.b || 0, l: s.l || 0 };
+  }
+
+  _saveDevice() {
+    this._dev.orient = this._orient;
+    try {
+      localStorage.setItem(DEVICE_KEY, JSON.stringify(this._dev));
+    } catch {
+      /* storage blocked: the choice lasts for this session */
+    }
+  }
+
+  /** Frame size, bezel and screen size as CSS variables on the frame. */
+  _applyDevice() {
+    const phone = this.shadowRoot?.getElementById("iphone");
+    if (!phone) return;
+    const d = this._device();
+    const m = FRAME_METRICS[d.frame] || FRAME_METRICS.custom;
+    const { w, h } = this._screenSize(this._orient);
+    phone.dataset.frame = d.frame;
+    phone.dataset.device = d.id;
+    phone.style.setProperty("--ow", `${w + m.bezel * 2}px`);
+    phone.style.setProperty("--oh", `${h + m.bezel * 2}px`);
+    phone.style.setProperty("--bezel", `${m.bezel}px`);
+    phone.style.setProperty("--radius", `${m.radius}px`);
+    phone.style.setProperty("--safe-t", `${this._deviceSafe("portrait").t}px`);
+    this.shadowRoot.getElementById("previewStage")?.classList.toggle("actual", this._dev.scale === "100");
+  }
+
+  /** Device dropdown, scale switch and custom size: built once, kept in sync. */
+  _bindPreviewControls() {
+    const root = this.shadowRoot;
+    const select = root.getElementById("previewDevice");
+    const relayout = () => {
+      this._saveDevice();
+      this._applyDevice();
+      this._fitPreview();
+      this._postSafeArea();
+      this._renderPreview();
+    };
+    select.addEventListener("change", () => {
+      const id = select.value;
+      if (id !== "custom" && !DEVICE_PRESETS.some((d) => d.id === id)) return;
+      this._dev.id = id;
+      // wall displays are shown wide
+      const preset = DEVICE_PRESETS.find((d) => d.id === id);
+      this._orient = preset?.landscape ? "landscape" : preset ? "portrait" : this._orient;
+      root.getElementById("rotatePreview").dataset.orient = this._orient;
+      root.getElementById("iphone").dataset.orient = this._orient;
+      relayout();
+    });
+    root.getElementById("previewScale").addEventListener("click", (e) => {
+      const s = e.target.closest("[data-scale]")?.dataset.scale;
+      if (s !== "fit" && s !== "100") return;
+      this._dev.scale = s;
+      relayout();
+    });
+    const wIn = root.getElementById("customW");
+    const hIn = root.getElementById("customH");
+    const err = root.getElementById("customError");
+    const applySize = () => {
+      const w = Number(wIn.value);
+      const h = Number(hIn.value);
+      const ok = [w, h].every((v) => Number.isInteger(v) && v >= CUSTOM_MIN && v <= CUSTOM_MAX);
+      err.hidden = ok;
+      err.textContent = ok ? "" : this._t("customInvalid");
+      if (!ok) return;
+      // typed as seen: in landscape the first number is still the width
+      const [pw, ph] = this._orient === "landscape" ? [h, w] : [w, h];
+      this._dev.custom.w = pw;
+      this._dev.custom.h = ph;
+      relayout();
+    };
+    wIn.addEventListener("change", applySize);
+    hIn.addEventListener("change", applySize);
+    root.getElementById("customSwap").addEventListener("click", () => {
+      [wIn.value, hIn.value] = [hIn.value, wIn.value];
+      applySize();
+    });
+    root.querySelectorAll("[data-safe]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const v = Number(input.value);
+        this._dev.custom.safe[input.dataset.safe] = Number.isInteger(v) && v >= 0 && v <= 400 ? v : 0;
+        relayout();
+      });
+    });
+  }
+
+  /** Labels, options and values of the preview controls (no listeners). */
+  _renderPreviewControls() {
+    const root = this.shadowRoot;
+    const select = root.getElementById("previewDevice");
+    if (!select) return;
+    select.setAttribute("aria-label", this._t("previewDevice"));
+    const groups = ["phone", "tablet", "wall"].map((g) => `
+      <optgroup label="${this._escape(this._t(`devGroup_${g}`))}">
+        ${DEVICE_PRESETS.filter((d) => d.group === g).map((d) => `<option value="${d.id}">${this._escape(d.label)}</option>`).join("")}
+      </optgroup>`).join("");
+    const html = `${groups}<optgroup label="${this._escape(this._t("devGroup_custom"))}"><option value="custom">${this._escape(this._t("devCustom"))}</option></optgroup>`;
+    if (select.dataset.lang !== this._uiLang()) {
+      select.innerHTML = html;
+      select.dataset.lang = this._uiLang();
+    }
+    select.value = this._dev.id;
+    const scale = root.getElementById("previewScale");
+    scale.setAttribute("aria-label", this._t("previewScale"));
+    scale.querySelectorAll("[data-scale]").forEach((b) => {
+      b.textContent = this._t(b.dataset.scale === "fit" ? "scaleFit" : "scale100");
+      b.classList.toggle("active", b.dataset.scale === this._dev.scale);
+      b.setAttribute("aria-pressed", String(b.dataset.scale === this._dev.scale));
+    });
+    root.querySelectorAll("#previewCustom [data-l]").forEach((el) => { el.textContent = this._t(el.dataset.l); });
+    const custom = root.getElementById("previewCustom");
+    custom.hidden = this._dev.id !== "custom";
+    const { w, h } = this._screenSize(this._orient);
+    const wIn = root.getElementById("customW");
+    const hIn = root.getElementById("customH");
+    if (root.activeElement !== wIn) wIn.value = String(w);
+    if (root.activeElement !== hIn) hIn.value = String(h);
+    root.querySelectorAll("[data-safe]").forEach((input) => {
+      if (root.activeElement !== input) input.value = String(this._dev.custom.safe[input.dataset.safe] || 0);
+    });
   }
 
   _orientBox(orient) {
-    const { w, h, bezel } = IPHONE_15_PRO;
-    const pw = w + bezel * 2;
-    const ph = h + bezel * 2;
-    return orient === "landscape" ? { w: ph, h: pw } : { w: pw, h: ph };
+    const d = this._device();
+    const { bezel } = FRAME_METRICS[d.frame] || FRAME_METRICS.custom;
+    const { w, h } = this._screenSize(orient);
+    return { w: w + bezel * 2, h: h + bezel * 2 };
   }
 
   _fitScale(orient) {
@@ -1795,6 +2348,7 @@ class GuestHaDashboardPanel extends HTMLElement {
     if (!stage) return 1;
     const { width, height } = stage.getBoundingClientRect();
     if (!width || !height) return 1;
+    if (this._dev.scale === "100") return 1;
     const box = this._orientBox(orient);
     return Math.min((width - 8) / box.w, (height - 8) / box.h, 1);
   }
@@ -1825,8 +2379,9 @@ class GuestHaDashboardPanel extends HTMLElement {
       phone.removeEventListener("transitionend", onEnd);
       phone.classList.add("no-anim");
       this._orient = next;
-      localStorage.setItem(ORIENT_KEY, next);
+      this._saveDevice();
       phone.dataset.orient = next;
+      this._applyDevice();
       this._postSafeArea();
       phone.style.setProperty("--r", "0deg");
       void phone.offsetWidth;
@@ -1860,7 +2415,15 @@ class GuestHaDashboardPanel extends HTMLElement {
     const rotate = this.shadowRoot.querySelector("#rotatePreview span");
     if (rotate) rotate.textContent = this._orient === "portrait" ? this._t("rotateLandscape") : this._t("rotatePortrait");
     const meta = this.shadowRoot.getElementById("phoneMeta");
-    if (meta) meta.textContent = this._t("previewMeta");
+    const d = this._device();
+    const { w: sw, h: sh } = this._screenSize(this._orient);
+    const notes = [
+      d.sizeSource === "typical" ? this._t("previewTypical") : d.sizeSource === "playwright-viewport" ? this._t("previewViewport") : "",
+      d.safeApprox ? this._t("previewApprox") : "",
+    ].filter(Boolean);
+    if (meta) meta.textContent = [this._t("previewMeta", d.label, sw, sh), ...notes].join(" · ");
+    this._applyDevice();
+    this._renderPreviewControls();
 
     const phone = this.shadowRoot.getElementById("iphone");
     if (!phone) return;
@@ -1906,6 +2469,7 @@ class GuestHaDashboardPanel extends HTMLElement {
   _render() {
     this._syncTheme();
     this._ensureShell();
+    this._pushDraft();
     this.shadowRoot.querySelector(".shell").classList.toggle("no-preview", !this._previewOn);
     const c = this._config;
     if (!c.appearance) c.appearance = { mode: "light", accent: "#ff6b00" };
@@ -1933,6 +2497,8 @@ class GuestHaDashboardPanel extends HTMLElement {
       ["guest", "tabGuest"],
       ["guests", "tabGuests"],
       ["standby", "tabStandby"],
+      ["music", "tabMusic"],
+      ["library", "tabLibrary"],
       ["styles", "tabStyles"],
     ];
     const tabChanged = this._lastTab !== this._tab;
@@ -1960,6 +2526,8 @@ class GuestHaDashboardPanel extends HTMLElement {
               ${this._tab === "dock" ? this._renderDock(c) : ""}
               ${this._tab === "styles" ? this._renderStyles(c) : ""}
               ${this._tab === "standby" ? this._renderStandby(c) : ""}
+              ${this._tab === "music" ? this._renderMusic(c) : ""}
+              ${this._tab === "library" ? this._renderLibrary(c) : ""}
               ${this._tab === "guests" ? this._guests.render() : ""}
             </div>
             `}
@@ -2017,6 +2585,9 @@ class GuestHaDashboardPanel extends HTMLElement {
     if (this._tab === "dock") this._bindDock();
     if (this._tab === "styles") this._bindStyles();
     if (this._tab === "standby") this._bindStandby();
+    if (this._tab === "library") this._bindLibrary();
+    if (this._tab === "music") this._bindMusic();
+    else if (this._radioTest) this._stopRadioTest();
     if (this._tab === "guests") this._guests.bind(this.shadowRoot);
     this._bindIconPickers();
     this.shadowRoot.getElementById("uiPreview")?.addEventListener("change", (e) => {
@@ -2047,6 +2618,13 @@ class GuestHaDashboardPanel extends HTMLElement {
         ${this._toggle('data-gen="use24h"', gen.use24h !== false, this._t("genUse24h"))}
       </div>
       <p class="hint" data-header-hint>${this._t("headerTilesHint")}</p>
+      <h3>${this._t("layoutSection")}</h3>
+      ${Object.entries(GENERAL_ENUMS).map(([key, values]) => `
+        <div class="row"><label>${this._t(key)}</label>
+          <div class="seg wrap">${values.map((v) => `
+            <button type="button" data-gen-enum="${key}" data-value="${v}" class="${(gen[key] || values[0]) === v ? "active" : ""}">${this._t(`${key}_${v}`)}</button>`).join("")}
+          </div></div>
+        <p class="hint">${this._t(`${key}Hint`)}</p>`).join("")}
       ${this._renderIphone(gen)}
     `;
   }
@@ -2081,6 +2659,466 @@ class GuestHaDashboardPanel extends HTMLElement {
     this._on("[data-gen]", "change", (e) => {
       general()[e.currentTarget.dataset.gen] = e.currentTarget.checked;
     });
+    this._on("[data-gen-enum]", "click", (e) => {
+      const { genEnum, value } = e.currentTarget.dataset;
+      if (GENERAL_ENUMS[genEnum]?.includes(value)) general()[genEnum] = value;
+      this._render();
+    });
+  }
+
+  // ─── Music tab: HA players, browser radio, Spotify (docs/PLAYER_ENGINES.md) ──
+
+  /** Origin of the dashboard app (hosted or self), where spotify-callback.html lives. */
+  _dashOrigin(c = this._config) {
+    try {
+      return new URL(this._buildPreviewSrc(c) || HOSTED_BASE).origin;
+    } catch {
+      return HOSTED_BASE;
+    }
+  }
+
+  _radio() {
+    const c = this._config;
+    if (!c.radio || typeof c.radio !== "object") c.radio = { stations: [], mediaLibrary: false, directory: false };
+    if (!Array.isArray(c.radio.stations)) c.radio.stations = [];
+    return c.radio;
+  }
+
+  /** Same rules as music.normalize_radio on the server. */
+  _stationError(name, url, ignoreIndex = -1) {
+    const n = String(name || "").trim();
+    if (!n || n.length > 60) return this._t("radioErrName");
+    let u;
+    try {
+      u = new URL(String(url || "").trim());
+    } catch {
+      return this._t("radioErrUrl");
+    }
+    if (u.protocol !== "https:" || u.username || u.password) return this._t("radioErrUrl");
+    const list = this._radio().stations;
+    if (list.some((s, i) => i !== ignoreIndex && s.url === u.toString())) return this._t("radioErrDup");
+    if (ignoreIndex < 0 && list.length >= 50) return this._t("radioErrMax");
+    return "";
+  }
+
+  _renderMusic(c) {
+    const radio = this._radio();
+    const sp = c.spotify || {};
+    const players = Object.keys(this._hass?.states || {}).filter((id) => id.startsWith("media_player.")).sort();
+    const test = this._radioTest || {};
+    const status = this._spotifyStatus || {};
+    const redirect = `${this._dashOrigin(c)}/spotify-callback.html`;
+    const httpsDash = redirect.startsWith("https://");
+    return `
+      <h3>${this._t("musicHaPlayers")}</h3>
+      <p class="hint">${this._t("musicHaPlayersHint")}</p>
+      ${players.length ? `<ul class="music-list">${players.map((id) => `
+        <li><span>${this._escape(this._friendly(id))}</span><code>${this._escape(id)}</code><span class="muted">${this._escape(this._hass?.states?.[id]?.state || "")}</span></li>`).join("")}</ul>`
+        : `<p class="hint">${this._t("musicNoPlayers")}</p>`}
+
+      <h3>${this._t("radioSection")}</h3>
+      <p class="hint">${this._t("radioHint")}</p>
+      ${radio.stations.length ? `<ol class="station-list" id="stationList">${radio.stations.map((s, i) => `
+        <li class="station" draggable="true" data-st="${i}">
+          <span class="grip" aria-hidden="true">⋮⋮</span>
+          <input data-st-name="${i}" value="${this._escape(s.name)}" maxlength="60" aria-label="${this._t("radioName")}" />
+          <input data-st-url="${i}" value="${this._escape(s.url)}" inputmode="url" aria-label="${this._t("radioUrl")}" />
+          <button type="button" class="btn ghost" data-st-test="${i}">${test.index === i && test.status !== "fail" ? this._t("radioTestStop") : this._t("radioTest")}</button>
+          <span class="st-status" data-st-status="${i}" aria-live="polite">${test.index === i ? this._t(test.status === "ok" ? "radioTestOk" : test.status === "fail" ? "radioTestFail" : "radioTesting") : ""}</span>
+          <button type="button" class="btn ghost" data-st-move="${i}:-1" ${i === 0 ? "disabled" : ""} aria-label="${this._t("radioUp")}">↑</button>
+          <button type="button" class="btn ghost" data-st-move="${i}:1" ${i === radio.stations.length - 1 ? "disabled" : ""} aria-label="${this._t("radioDown")}">↓</button>
+          <button type="button" class="btn quiet" data-st-del="${i}">${this._t("radioRemove")}</button>
+        </li>`).join("")}</ol>` : `<p class="hint">${this._t("radioEmpty")}</p>`}
+      ${this._radioEditError ? `<p class="field-error" role="alert">${this._escape(this._radioEditError)}</p>` : ""}
+      <div class="station-add">
+        <input id="newStName" placeholder="${this._t("radioName")}" maxlength="60" value="${this._escape(this._newStation?.name || "")}" />
+        <input id="newStUrl" placeholder="https://" inputmode="url" value="${this._escape(this._newStation?.url || "")}" />
+        <button type="button" class="btn primary" id="addStation">${this._t("radioAdd")}</button>
+      </div>
+      ${this._radioError ? `<p class="field-error" role="alert" id="radioError">${this._escape(this._radioError)}</p>` : ""}
+      <div class="toggle-list">
+        ${this._toggle('data-radio="mediaLibrary"', radio.mediaLibrary === true, this._t("radioLibrary"))}
+        ${this._toggle('data-radio="directory"', radio.directory === true, this._t("radioDirectory"))}
+      </div>
+      <p class="hint">${this._t("radioDirectoryHint")}</p>
+      ${radio.directory ? `
+        <div class="station-add">
+          <input id="radioQuery" placeholder="${this._t("radioSearch")}" value="${this._escape(this._radioQuery || "")}" />
+          <button type="button" class="btn" id="radioSearchBtn">${this._t("radioSearchBtn")}</button>
+        </div>
+        ${this._radioResults ? (this._radioResults.length ? `<ul class="music-list">${this._radioResults.map((r, i) => `
+          <li><span>${this._escape(r.name)}</span><span class="muted">${this._escape(r.codec || "")} ${r.bitrate ? `${r.bitrate} kb/s` : ""}</span>
+          <button type="button" class="btn ghost" data-dir-add="${i}">${this._t("radioAdd")}</button></li>`).join("")}</ul>`
+          : `<p class="hint">${this._t("radioSearchNone")}</p>`) : ""}
+        ${this._radioSearchFail ? `<p class="hint">${this._t("radioSearchFail")}</p>` : ""}` : ""}
+
+      <h3>${this._t("spotifySection")}</h3>
+      <div class="spotify-card" data-spotify-card>
+        <div class="toggle-list">
+          ${this._toggle('data-spotify="enabled"', sp.enabled === true, this._t("spotifyEnable"))}
+        </div>
+        <p class="hint">${this._t("spotifyNeeds")}</p>
+        ${sp.enabled !== true ? "" : status.connected ? `
+          <p class="ok-line">${this._escape(this._t("spotifyConnected", status.display_name))}</p>
+          <div class="toggle-list">${this._toggle('data-spotify="webPlayer"', sp.webPlayer === true, this._t("spotifyWebPlayer"))}</div>
+          <button type="button" class="btn quiet" id="spotifyDisconnect">${this._t("spotifyDisconnect")}</button>` : `
+          <ol class="wizard" data-spotify-wizard>
+            <li>${this._t("spotifyStep1")}</li>
+            <li>${this._t("spotifyStep2")}
+              <div class="copy-row"><code id="spotifyRedirect">${this._escape(redirect)}</code>
+              <button type="button" class="btn ghost" id="copyRedirect">${this._t("copy")}</button></div>
+              ${httpsDash ? "" : `<p class="field-error">${this._t("spotifyStep2Warn")}</p>`}</li>
+            <li>${this._t("spotifyStep3")}</li>
+            <li>${this._t("spotifyStep4")}
+              <div class="copy-row"><input id="spotifyClientId" value="${this._escape(status.client_id || "")}" placeholder="${this._t("spotifyClientId")}" autocomplete="off" spellcheck="false" />
+              <button type="button" class="btn" id="spotifySaveId">${this._t("spotifySaveId")}</button></div></li>
+            <li>${this._t("spotifyStep5")}
+              <div class="copy-row"><button type="button" class="btn primary" id="spotifyConnect" ${status.configured ? "" : "disabled"}>${this._t("spotifyConnect")}</button></div>
+              <p class="hint">${this._t("spotifyPaste")}</p>
+              <div class="copy-row"><input id="spotifyCode" autocomplete="off" spellcheck="false" />
+              <button type="button" class="btn ghost" id="spotifyPasteBtn">${this._t("spotifyPasteBtn")}</button></div></li>
+          </ol>`}
+        ${this._spotifyError ? `<p class="field-error" role="alert">${this._escape(this._t("spotifyErr", this._spotifyError))}</p>` : ""}
+      </div>
+    `;
+  }
+
+  async _loadSpotifyStatus() {
+    try {
+      this._spotifyStatus = await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/spotify/status" });
+    } catch {
+      this._spotifyStatus = {};
+    }
+    if (this._tab === "music") this._render();
+  }
+
+  async _spotifyCall(msg) {
+    this._spotifyError = "";
+    try {
+      const res = await this._hass.connection.sendMessagePromise(msg);
+      if (res && "connected" in res) this._spotifyStatus = { ...this._spotifyStatus, ...res };
+      return res;
+    } catch (err) {
+      this._spotifyError = err?.code || err?.message || "error";
+      return null;
+    } finally {
+      this._render();
+    }
+  }
+
+  _stopRadioTest() {
+    if (this._testAudio) {
+      this._testAudio.pause();
+      this._testAudio.removeAttribute("src");
+      this._testAudio.load();
+    }
+    clearTimeout(this._testTimer);
+    this._radioTest = null;
+  }
+
+  _bindMusic() {
+    const radio = this._radio();
+    if (this._spotifyStatus === undefined) {
+      this._spotifyStatus = {};
+      this._loadSpotifyStatus();
+    }
+    this._on("[data-st-name]", "change", (e) => {
+      const i = Number(e.currentTarget.dataset.stName);
+      const err = this._stationError(e.currentTarget.value, radio.stations[i].url, i);
+      this._radioEditError = err;
+      if (!err) radio.stations[i].name = e.currentTarget.value.trim();
+      this._render();
+    });
+    this._on("[data-st-url]", "change", (e) => {
+      const i = Number(e.currentTarget.dataset.stUrl);
+      const err = this._stationError(radio.stations[i].name, e.currentTarget.value, i);
+      this._radioEditError = err;
+      if (!err) radio.stations[i].url = new URL(e.currentTarget.value.trim()).toString();
+      this._render();
+    });
+    this._on("[data-st-del]", "click", (e) => {
+      const i = Number(e.currentTarget.dataset.stDel);
+      if (this._radioTest?.index === i) this._stopRadioTest();
+      radio.stations.splice(i, 1);
+      this._render();
+    });
+    this._on("[data-st-move]", "click", (e) => {
+      const [i, d] = e.currentTarget.dataset.stMove.split(":").map(Number);
+      const j = i + d;
+      if (j < 0 || j >= radio.stations.length) return;
+      [radio.stations[i], radio.stations[j]] = [radio.stations[j], radio.stations[i]];
+      this._stopRadioTest();
+      this._render();
+    });
+    // drag to reorder (mouse); the ↑ ↓ buttons do the same from the keyboard
+    let dragFrom = -1;
+    this._on(".station", "dragstart", (e) => {
+      dragFrom = Number(e.currentTarget.dataset.st);
+      e.dataTransfer.effectAllowed = "move";
+    });
+    this._on(".station", "dragover", (e) => e.preventDefault());
+    this._on(".station", "drop", (e) => {
+      e.preventDefault();
+      const to = Number(e.currentTarget.dataset.st);
+      if (dragFrom < 0 || dragFrom === to) return;
+      const [moved] = radio.stations.splice(dragFrom, 1);
+      radio.stations.splice(to, 0, moved);
+      dragFrom = -1;
+      this._stopRadioTest();
+      this._render();
+    });
+    this._on("[data-st-test]", "click", (e) => {
+      const i = Number(e.currentTarget.dataset.stTest);
+      if (this._radioTest?.index === i && this._radioTest.status !== "fail") {
+        this._stopRadioTest();
+        this._render();
+        return;
+      }
+      this._stopRadioTest();
+      const audio = (this._testAudio ||= new Audio());
+      this._radioTest = { index: i, status: "loading" };
+      const done = (status) => {
+        if (this._radioTest?.index !== i) return;
+        this._radioTest.status = status;
+        clearTimeout(this._testTimer);
+        if (status === "fail") audio.pause();
+        this._render();
+      };
+      audio.onplaying = () => done("ok");
+      audio.onerror = () => done("fail");
+      this._testTimer = setTimeout(() => done("fail"), 10000);
+      audio.src = radio.stations[i].url;
+      audio.play().catch(() => done("fail"));
+      this._render();
+    });
+    const nameIn = this.shadowRoot.getElementById("newStName");
+    const urlIn = this.shadowRoot.getElementById("newStUrl");
+    const keep = () => { this._newStation = { name: nameIn?.value || "", url: urlIn?.value || "" }; };
+    nameIn?.addEventListener("input", keep);
+    urlIn?.addEventListener("input", keep);
+    this.shadowRoot.getElementById("addStation")?.addEventListener("click", () => {
+      const err = this._stationError(nameIn.value, urlIn.value);
+      this._radioError = err;
+      if (!err) {
+        radio.stations.push({ id: `st${Date.now().toString(36)}`, name: nameIn.value.trim(), url: new URL(urlIn.value.trim()).toString() });
+        this._newStation = null;
+      }
+      this._render();
+    });
+    this._on("[data-radio]", "change", (e) => {
+      radio[e.currentTarget.dataset.radio] = e.currentTarget.checked;
+      this._render();
+    });
+    const query = this.shadowRoot.getElementById("radioQuery");
+    query?.addEventListener("input", () => { this._radioQuery = query.value; });
+    this.shadowRoot.getElementById("radioSearchBtn")?.addEventListener("click", async () => {
+      this._radioSearchFail = false;
+      try {
+        const res = await this._hass.connection.sendMessagePromise({ type: "guest_ha_dashboard/radio/search", name: query.value });
+        this._radioResults = res.stations || [];
+      } catch {
+        this._radioResults = null;
+        this._radioSearchFail = true;
+      }
+      this._render();
+    });
+    this._on("[data-dir-add]", "click", (e) => {
+      const r = this._radioResults?.[Number(e.currentTarget.dataset.dirAdd)];
+      if (!r) return;
+      const err = this._stationError(r.name, r.url);
+      this._radioError = err;
+      if (!err) radio.stations.push({ id: `st${Date.now().toString(36)}`, name: r.name.slice(0, 60), url: r.url });
+      this._render();
+    });
+
+    // Spotify
+    const sp = (this._config.spotify ||= { enabled: false, webPlayer: false });
+    this._on("[data-spotify]", "change", (e) => {
+      sp[e.currentTarget.dataset.spotify] = e.currentTarget.checked;
+      this._render();
+    });
+    this.shadowRoot.getElementById("copyRedirect")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      try {
+        await navigator.clipboard.writeText(this.shadowRoot.getElementById("spotifyRedirect").textContent);
+        btn.textContent = this._t("copied");
+      } catch { /* clipboard blocked: the address stays selectable */ }
+    });
+    this.shadowRoot.getElementById("spotifySaveId")?.addEventListener("click", () => {
+      const id = this.shadowRoot.getElementById("spotifyClientId").value.trim();
+      this._spotifyCall({
+        type: "guest_ha_dashboard/spotify/configure",
+        client_id: id,
+        redirect_uri: `${this._dashOrigin()}/spotify-callback.html`,
+      });
+    });
+    const finish = (code, state) => this._spotifyCall({ type: "guest_ha_dashboard/spotify/callback", code, state });
+    if (!this._onSpotifyMessage) {
+      // the callback page on the dash origin hands back code + state (public/spotify-callback.js)
+      this._onSpotifyMessage = (e) => {
+        if (e.origin !== this._dashOrigin() || e.data?.type !== "dash-spotify-callback") return;
+        if (typeof e.data.code === "string" && typeof e.data.state === "string") finish(e.data.code, e.data.state);
+      };
+      window.addEventListener("message", this._onSpotifyMessage);
+    }
+    this.shadowRoot.getElementById("spotifyConnect")?.addEventListener("click", async () => {
+      // open the window inside the click (popup blockers), then point it at Spotify
+      const popup = window.open("about:blank", "dash-spotify", "width=480,height=720");
+      const res = await this._spotifyCall({ type: "guest_ha_dashboard/spotify/connect" });
+      if (res?.authorize_url && popup) popup.location.href = res.authorize_url;
+      else popup?.close();
+    });
+    this.shadowRoot.getElementById("spotifyPasteBtn")?.addEventListener("click", () => {
+      const raw = this.shadowRoot.getElementById("spotifyCode").value.trim();
+      const sep = raw.indexOf(":");
+      if (sep > 0) finish(raw.slice(sep + 1), raw.slice(0, sep));
+      else this._spotifyError = "bad_request";
+    });
+    this.shadowRoot.getElementById("spotifyDisconnect")?.addEventListener("click", () =>
+      this._spotifyCall({ type: "guest_ha_dashboard/spotify/disconnect" }));
+  }
+
+  // ─── Videotéka tab (docs/LIBRARY.md): services, defaults, refresh ─────────
+
+  _libraryConfig() {
+    const c = this._config;
+    c.library = { enabled: false, movieProfileId: null, movieRootFolder: "", tvProfileId: null, tvRootFolder: "", interval: 3, ...(c.library || {}) };
+    return c.library;
+  }
+
+  async _libCall(msg) {
+    try {
+      return { ok: await this._hass.connection.sendMessagePromise(msg) };
+    } catch (err) {
+      return { error: err?.code || err?.message || "error" };
+    }
+  }
+
+  async _loadLibraryServices() {
+    const res = await this._libCall({ type: "guest_ha_dashboard/library/services" });
+    this._libServices = res.ok || {};
+    if (this._tab === "library") this._render();
+  }
+
+  _renderLibrary(c) {
+    const lib = this._libraryConfig();
+    const svc = this._libServices || {};
+    const tests = this._libTests || {};
+    const opts = this._libOptions || {};
+    const editing = this._libEditing || "";
+    const fields = { tmdb: ["api_key"], radarr: ["url", "api_key"], sonarr: ["url", "api_key"], qbittorrent: ["url", "username", "password"] };
+    const label = { url: "libUrl", api_key: "libApiKey", username: "libUser", password: "libPassword" };
+    const select = (key, list, value, text) => `
+      <select data-lib-default="${key}">
+        <option value="">—</option>
+        ${(list || []).map((o) => `<option value="${this._escape(o.v)}" ${String(value ?? "") === String(o.v) ? "selected" : ""}>${this._escape(text(o))}</option>`).join("")}
+        ${value && !(list || []).some((o) => String(o.v) === String(value)) ? `<option value="${this._escape(value)}" selected>${this._escape(value)}</option>` : ""}
+      </select>`;
+    const profiles = (s) => (opts[s]?.qualityProfiles || []).map((p) => ({ v: p.id, n: p.name }));
+    const roots = (s) => (opts[s]?.rootFolders || []).map((r) => ({ v: r.path, n: r.path }));
+    return `
+      <p class="hint">${this._t("libIntro")}</p>
+      <div class="toggle-list">${this._toggle('data-lib-enable', lib.enabled === true, this._t("libEnable"))}</div>
+      <h3>${this._t("libServices")}</h3>
+      <div class="lib-services">${Object.keys(fields).map((s) => {
+        const st = svc[s] || {};
+        const test = tests[s];
+        return `
+        <div class="lib-svc" data-lib-svc="${s}">
+          <div class="lib-svc-head">
+            <strong>${this._t(`libSvc_${s}`)}</strong>
+            <span class="muted" data-lib-state="${s}">${st.configured ? this._escape(this._t("libConfigured", st.url || "")) : this._t("libNotConfigured")}</span>
+          </div>
+          ${editing === s || !st.configured ? `
+            <div class="station-add">
+              ${fields[s].map((f) => `<input data-lib-field="${f}" ${f === "url" ? `inputmode="url" placeholder="http://192.168.1.10:${s === "radarr" ? 7878 : s === "sonarr" ? 8989 : 8080}" value="${this._escape(st.url || "")}"` : `type="${f === "username" ? "text" : "password"}" autocomplete="off" placeholder="${st.configured ? this._t("libKeepKey") : this._t(label[f])}"`} aria-label="${this._t(label[f])}" />`).join("")}
+              <button type="button" class="btn primary" data-lib-save="${s}">${this._t("libSave")}</button>
+            </div>` : `
+            <div class="station-add">
+              <button type="button" class="btn ghost" data-lib-edit="${s}">${this._t("libChange")}</button>
+              <button type="button" class="btn" data-lib-test="${s}">${this._t("libTest")}</button>
+              <button type="button" class="btn quiet" data-lib-remove="${s}">${this._t("libRemove")}</button>
+            </div>`}
+          ${test ? `<p class="${test.ok ? "ok-line" : "field-error"}" role="status" data-lib-test-result="${s}">${this._escape(test.ok ? this._t("libTestOk", test.version || "") : this._t("libTestFail", test.error))}</p>` : ""}
+        </div>`;
+      }).join("")}</div>
+      <h3>${this._t("libDefaults")}</h3>
+      <p class="hint">${this._t("libDefaultsHint")}</p>
+      <div class="row"><label>${this._t("libMovieProfile")}</label>${select("movieProfileId", profiles("radarr"), lib.movieProfileId, (o) => o.n)}</div>
+      <div class="row"><label>${this._t("libMovieRoot")}</label>${select("movieRootFolder", roots("radarr"), lib.movieRootFolder, (o) => o.n)}</div>
+      <div class="row"><label>${this._t("libTvProfile")}</label>${select("tvProfileId", profiles("sonarr"), lib.tvProfileId, (o) => o.n)}</div>
+      <div class="row"><label>${this._t("libTvRoot")}</label>${select("tvRootFolder", roots("sonarr"), lib.tvRootFolder, (o) => o.n)}</div>
+      <div class="row"><label>${this._t("libInterval")}</label>
+        <div class="seg">${[2, 3, 5, 10].map((v) => `<button type="button" data-lib-interval="${v}" class="${lib.interval === v ? "active" : ""}">${v} s</button>`).join("")}</div></div>
+      <p class="hint">${this._t("libGuestsHint")}</p>
+      <h3>${this._t("libTmdbAttribution")}</h3>
+      <p class="hint" data-tmdb-attribution>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    `;
+  }
+
+  _bindLibrary() {
+    const lib = this._libraryConfig();
+    if (this._libServices === undefined) {
+      this._libServices = {};
+      this._loadLibraryServices();
+    }
+    this.shadowRoot.querySelector("[data-lib-enable]")?.addEventListener("change", (e) => {
+      lib.enabled = e.currentTarget.checked;
+    });
+    this._on("[data-lib-edit]", "click", (e) => {
+      this._libEditing = e.currentTarget.dataset.libEdit;
+      this._render();
+    });
+    this._on("[data-lib-save]", "click", async (e) => {
+      const s = e.currentTarget.dataset.libSave;
+      const box = this.shadowRoot.querySelector(`[data-lib-svc="${s}"]`);
+      const msg = { type: "guest_ha_dashboard/library/set_service", service: s };
+      box.querySelectorAll("[data-lib-field]").forEach((input) => {
+        if (input.value.trim()) msg[input.dataset.libField] = input.value.trim();
+      });
+      const res = await this._libCall(msg);
+      this._libTests = { ...(this._libTests || {}), [s]: res.error ? { ok: false, error: res.error } : undefined };
+      if (res.ok) {
+        this._libServices = res.ok;
+        this._libEditing = "";
+      }
+      this._render();
+    });
+    this._on("[data-lib-remove]", "click", async (e) => {
+      const s = e.currentTarget.dataset.libRemove;
+      const res = await this._libCall({ type: "guest_ha_dashboard/library/set_service", service: s, remove: true });
+      if (res.ok) this._libServices = res.ok;
+      this._render();
+    });
+    this._on("[data-lib-test]", "click", async (e) => {
+      const s = e.currentTarget.dataset.libTest;
+      const res = await this._libCall({ type: "guest_ha_dashboard/library/test", service: s });
+      this._libTests = { ...(this._libTests || {}), [s]: res.ok ? { ok: true, version: res.ok.version } : { ok: false, error: res.error } };
+      if (res.ok && (s === "radarr" || s === "sonarr")) {
+        const o = await this._libCall({ type: "guest_ha_dashboard/library/options", service: s });
+        if (o.ok) this._libOptions = { ...(this._libOptions || {}), [s]: o.ok };
+      }
+      this._render();
+    });
+    this._on("[data-lib-default]", "change", (e) => {
+      const key = e.currentTarget.dataset.libDefault;
+      const v = e.currentTarget.value;
+      lib[key] = key.endsWith("ProfileId") ? (v ? Number(v) : null) : v;
+    });
+    this._on("[data-lib-interval]", "click", (e) => {
+      lib.interval = Number(e.currentTarget.dataset.libInterval);
+      this._render();
+    });
+  }
+
+  /** Media tiles: Home Assistant player, or dash's own browser radio / Spotify. */
+  _sourceRow(d) {
+    if (d.type !== "media_player" && d.type !== "player") return "";
+    const active = d.type === "media_player" ? "ha" : d.source === "spotify" ? "spotify" : "browser";
+    return `<div class="row"><label>${this._t("tileSource")}</label>
+      <div class="seg wrap">${["ha", "browser", "spotify"].map((s) => `
+        <button type="button" data-tile-source="${s}" class="${s === active ? "active" : ""}">${this._t(`source_${s}`)}</button>`).join("")}
+      </div></div>`;
   }
 
   _renderHosting(c) {
@@ -2163,8 +3201,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       sb()[sbSet] = /^\d+$/.test(value) ? Number(value) : value;
       this._render();
     });
-    const post = (on) => this.shadowRoot.querySelector("#iphone iframe")?.contentWindow
-      ?.postMessage({ type: "guest-ha:standby", on }, "*");
+    const post = (on) => this._postPreview({ standby: on });
     this.shadowRoot.getElementById("standbyShow")?.addEventListener("click", () => post(true));
     this.shadowRoot.getElementById("standbyHide")?.addEventListener("click", () => post(false));
     this.shadowRoot.getElementById("photoInput")?.addEventListener("change", (e) => {
@@ -2428,13 +3465,25 @@ class GuestHaDashboardPanel extends HTMLElement {
     return this._devKeys.get(d);
   }
 
+  /** Tile sizes for packTiles() / indexForCell() (www/layout.js = shared/layout.mjs). */
+  _layoutSpec(page) {
+    return page.devices.map((d) => {
+      const { cols, rows } = resolveTile(d);
+      return { id: d.id, w: cols, h: rows };
+    });
+  }
+
   _gridTiles(page) {
+    const layout = packTiles(this._layoutSpec(page));
     return page.devices.map((d, di) => {
       const { style, size, cols, rows } = resolveTile(d);
+      const p = layout[di];
+      const place = `data-tile-id="${this._escape(p.id)}" data-col="${p.col}" data-row="${p.row}" data-w="${p.w}" data-h="${p.h}"
+          style="grid-column: ${p.col} / span ${p.w}; grid-row: ${p.row} / span ${p.h}"`;
       if (d.type === "divider") {
         return `
         <div class="cc-tile cc-divider ${di === this._devIdx ? "sel" : ""}" tabindex="0" data-ti="${di}" data-key="${this._devKey(d)}"
-          style="grid-column: span ${cols}; grid-row: span ${rows}">
+          ${place}>
           <input class="cc-div-input" data-div-label="${di}" value="${this._escape(d.label || "")}" maxlength="${DIVIDER_LABEL_MAX}"
             placeholder="${this._escape(this._t("dividerPlaceholder"))}" aria-label="${this._escape(this._t("type_divider"))}" />
           <span class="cc-div-line" aria-hidden="true"></span>
@@ -2442,7 +3491,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       const single = cols === 1 && rows === 1;
       const icon = d.icon || DEFAULT_DEVICE_ICON[d.type] || "Sparkles";
-      const label = d.label || (d.id ? this._friendly(d.id) : this._t(`type_${d.type}`));
+      const label = this._tileName(d);
       const deco = {
         slider: '<span class="deco deco-fill-x"></span>',
         vertical: '<span class="deco deco-fill-y"></span>',
@@ -2450,11 +3499,12 @@ class GuestHaDashboardPanel extends HTMLElement {
         dial: `<svg class="deco deco-dial" viewBox="0 0 100 52" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"><path d="M6 48a44 44 0 0 1 88 0" opacity="0.2"/><path d="M6 48a44 44 0 0 1 62-40"/></svg>`,
         cover: '<span class="deco deco-cover"></span>',
         mini: '<span class="deco deco-media">▶ ⏭</span>',
+        vinyl: vinylSvg("deco deco-vinyl"),
       }[style] || (d.type === "media_player" ? '<span class="deco deco-media">⏮ ▶ ⏭</span>' : "");
       return `
         <div class="cc-tile st-${style} ${rows === 1 ? "h1" : ""} ${single ? "s1" : ""} ${di === this._devIdx ? "sel" : ""}"
           tabindex="0" data-ti="${di}" data-key="${this._devKey(d)}" title="${this._escape(label)}"
-          style="grid-column: span ${cols}; grid-row: span ${rows}">
+          ${place}>
           ${deco}
           <span class="cc-ic">${iconSvg(icon, 18)}</span>
           ${single || (cols === 1 && style !== "vertical") ? "" : `
@@ -2486,6 +3536,7 @@ class GuestHaDashboardPanel extends HTMLElement {
   _refreshGrid(page, skipKey = null) {
     const grid = this.shadowRoot.getElementById("ccGrid");
     if (!grid) return;
+    this._pushDraft();
     const before = new Map([...grid.children].map((el) => [el.dataset.key, el.getBoundingClientRect()]));
     grid.innerHTML = this._gridTiles(page);
     for (const el of grid.children) {
@@ -2532,11 +3583,19 @@ class GuestHaDashboardPanel extends HTMLElement {
     const grid = this.shadowRoot.getElementById("ccGrid");
     if (!grid) return;
     let g = null;
-    const tileAt = (x, y, exceptKey) => [...grid.children].find((el) => {
-      if (el.dataset.key === exceptKey) return false;
-      const r = el.getBoundingClientRect();
-      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-    });
+    /** Grid cell (1-based) under the dragged tile's top-left corner. */
+    const dropCell = () => {
+      const { gap, cell } = this._gridMetrics(grid);
+      const r = grid.getBoundingClientRect();
+      const cs = getComputedStyle(grid);
+      const step = cell + gap;
+      const x = g.x - g.grabX + cell / 2 - r.left - parseFloat(cs.paddingLeft);
+      const y = g.y - g.grabY + cell / 2 - r.top - parseFloat(cs.paddingTop);
+      return {
+        col: Math.max(1, Math.min(4, Math.floor(x / step) + 1)),
+        row: Math.max(1, Math.floor(y / step) + 1),
+      };
+    };
     const placeDragged = () => {
       const el = grid.querySelector(`[data-key="${g.key}"]`);
       if (!el) return;
@@ -2590,10 +3649,11 @@ class GuestHaDashboardPanel extends HTMLElement {
       }
       if (g.mode === "drag") {
         placeDragged();
-        const over = tileAt(g.x, g.y, g.key);
-        if (over && performance.now() > g.lockUntil) {
+        if (performance.now() > g.lockUntil) {
+          // the drop cell becomes a new array index, packed by the same function
           const from = page.devices.indexOf(g.device);
-          const to = Number(over.dataset.ti);
+          const { col, row } = dropCell();
+          const to = indexForCell(this._layoutSpec(page), from, col, row);
           if (from !== to) {
             page.devices.splice(from, 1);
             page.devices.splice(to, 0, g.device);
@@ -2635,6 +3695,18 @@ class GuestHaDashboardPanel extends HTMLElement {
         return;
       }
       if (state.mode === "drag") {
+        // settle on the cell under the tile now (the last move may have hit the lock)
+        g = state;
+        const from = page.devices.indexOf(state.device);
+        const { col, row } = dropCell();
+        g = null;
+        const to = indexForCell(this._layoutSpec(page), from, col, row);
+        if (from !== to) {
+          page.devices.splice(from, 1);
+          page.devices.splice(to, 0, state.device);
+          this._devIdx = to;
+          this._refreshGrid(page, state.key);
+        }
         const el = grid.querySelector(`[data-key="${state.key}"]`);
         if (el) {
           const tx = parseFloat(el.style.getPropertyValue("--tx")) || 0;
@@ -2686,7 +3758,7 @@ class GuestHaDashboardPanel extends HTMLElement {
       return `
       <div class="inspector" data-di="${di}">
         <div class="inspector-head">
-          <strong>${this._escape(d.label || this._t(`type_${d.type}`))}</strong>
+          <strong>${this._escape(this._tileName(d))}</strong>
           <button type="button" class="btn" data-move="-1" ${di === 0 ? "disabled" : ""}>${this._t("moveLeft")}</button>
           <button type="button" class="btn" data-move="1" ${di === page.devices.length - 1 ? "disabled" : ""}>${this._t("moveRight")}</button>
           <button type="button" class="btn danger" id="removeDevice">${this._t("delete")}</button>
@@ -2699,11 +3771,12 @@ class GuestHaDashboardPanel extends HTMLElement {
       return `
       <div class="inspector" data-di="${di}" data-inspector-type="${d.type}">
         <div class="inspector-head">
-          <strong>${this._escape(d.label || this._t(`type_${d.type}`))}</strong>
+          <strong>${this._escape(this._tileName(d))}</strong>
           <button type="button" class="btn" data-move="-1" ${di === 0 ? "disabled" : ""}>${this._t("moveLeft")}</button>
           <button type="button" class="btn" data-move="1" ${di === page.devices.length - 1 ? "disabled" : ""}>${this._t("moveRight")}</button>
           <button type="button" class="btn danger" id="removeDevice">${this._t("delete")}</button>
         </div>
+        ${this._sourceRow(d)}
         ${Object.keys(styles).length > 1 ? `<div class="row"><label>${this._t("devStyle")}</label>
           ${seg("tile-style", Object.keys(styles), style, (s) => this._t(`style_${s}`))}</div>` : ""}
         ${styles[style].length > 1 ? `<div class="row"><label>${this._t("devSize")}</label>
@@ -2721,11 +3794,12 @@ class GuestHaDashboardPanel extends HTMLElement {
     return `
       <div class="inspector" data-di="${di}">
         <div class="inspector-head">
-          <strong>${this._escape(d.label || this._t(`type_${d.type}`))}</strong>
+          <strong>${this._escape(this._tileName(d))}</strong>
           <button type="button" class="btn" data-move="-1" ${di === 0 ? "disabled" : ""}>${this._t("moveLeft")}</button>
           <button type="button" class="btn" data-move="1" ${di === page.devices.length - 1 ? "disabled" : ""}>${this._t("moveRight")}</button>
           <button type="button" class="btn danger" id="removeDevice">${this._t("delete")}</button>
         </div>
+        ${this._sourceRow(d)}
         <div class="row"><label>${this._t("devType")}</label>
           <select data-k="type">${ENTITY_TYPES.map((t) => `<option value="${t}" ${d.type === t ? "selected" : ""}>${this._t(`type_${t}`)}</option>`).join("")}</select></div>
         <div class="row"><label>${this._t("devEntity")}</label>
@@ -2735,7 +3809,7 @@ class GuestHaDashboardPanel extends HTMLElement {
         <div class="row"><label>${this._t("pageIcon")}</label>
           ${this._iconPicker(`dev-${di}`, d.icon || DEFAULT_DEVICE_ICON[d.type], (ic) => { d.icon = ic; })}</div>
         <div class="row"><label>${this._t("devStyle")}</label>
-          ${seg("tile-style", Object.keys(styles), style, (s) => this._t(`style_${s}`))}</div>
+          ${seg("tile-style", Object.keys(styles), style, (s) => `${s === "vinyl" ? vinylSvg() : ""}${this._t(`style_${s}`)}`)}</div>
         <div class="row"><label>${this._t("devSize")}</label>
           ${seg("tile-size", styles[style], size, (s) => s.replace("x", "×"))}</div>
         ${d.type === "entity" ? `<p class="hint">${this._t("entityGenericHint")}</p>` : ""}
@@ -2892,6 +3966,24 @@ class GuestHaDashboardPanel extends HTMLElement {
       page.devices.splice(this._devIdx, 1);
       this._devIdx = -1;
       this._iconOpen = null;
+      this._render();
+    });
+    this._on("[data-tile-source]", "click", (e) => {
+      const src = e.currentTarget.dataset.tileSource;
+      const keep = (type) => (TILE_STYLES[type]?.[device.style] ? device.style : Object.keys(TILE_STYLES[type])[0]);
+      if (src === "ha" && device.type !== "media_player") {
+        const style = keep("media_player");
+        Object.assign(device, { type: "media_player", style, size: TILE_STYLES.media_player[style][0], id: "" });
+        delete device.source;
+      } else if (src !== "ha") {
+        const style = keep("player");
+        if (device.type !== "player") {
+          Object.assign(device, { type: "player", style, size: TILE_STYLES.player[style][0] });
+          delete device.id;
+          delete device.outputs;
+        }
+        device.source = src;
+      }
       this._render();
     });
     this._on("[data-tile-style]", "click", (e) => {

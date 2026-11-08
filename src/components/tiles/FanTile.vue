@@ -243,10 +243,6 @@ async function preset(mode) {
   color: var(--color-primary-content);
 }
 
-.is-off {
-  opacity: 0.5;
-}
-
 .spin {
   animation: fan-spin 2.4s linear infinite;
 }
