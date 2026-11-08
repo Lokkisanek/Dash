@@ -1,4 +1,26 @@
-# Progress: phase 2 (branch feat/phase2-wide-music-library)
+# Progress
+
+## Phase 0 - promotion hygiene (uncommitted, 2026-11-08)
+
+Done in the working tree:
+
+- Internal business model removed from the repository (commit 06cb885 by the maintainer); `Claude outputs/` in `.gitignore`. It stays in git history (commit d50a76d) until the history is rewritten.
+- Old repository name replaced in links (README, manifest.json, CHANGELOG links, SELF_HOSTING, RELEASING).
+- `CLA.md` draft, contact section with a contact e-mail placeholder, `SECURITY.md`, issue template config, `npm run check:placeholders`.
+- README first screen, "How this was built", "Status and limits".
+- Open Graph / Twitter tags, `public/og.png`, `docs/img/social-preview.png` (`npm run og`).
+- `scripts/gh-settings.sh` for the repository settings.
+- Showcase tooling (`npm run showcase`): `showcase/out/dash-showcase.mp4` (not committed) and `docs/img/hero.gif` (README hero), both from the demo build.
+
+Manual (maintainer):
+
+- Replace the contact e-mail placeholder (`npm run check:placeholders` lists it); resolve the `OWNER:` comments; have the CLA reviewed by a lawyer.
+- Run `scripts/gh-settings.sh` (description, homepage, topics, Discussions, private vulnerability reporting).
+- Upload `docs/img/social-preview.png` (Settings -> General -> Social preview); create the Discussions categories.
+- Redeploy the hosted demo so `/og.png` is live.
+- Decide whether to purge the business model from git history (`git filter-repo` + force-push).
+
+# Phase 2 (branch feat/phase2-wide-music-library)
 
 Baseline before this branch (main at 2326a2e, v2.1.0-beta.3): build 690 KB `dist/`, panel.js 137 475 B, vitest 173, pytest (pure) 519, ruff clean, 6 Playwright specs green.
 

@@ -3,6 +3,21 @@
 All notable changes to dash are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Repository cleanup before promotion: the internal business model is no longer in the repository (`Claude outputs/` is ignored), and links point to the renamed repository `Lokkisanek/Dash`.
+- README: a new first screen (tagline, demo and install links, who it is for, how it works), a "How this was built" section about AI assistance, and "Status and limits".
+
+### Added
+
+- `CLA.md` (draft Contributor License Agreement, to be reviewed by a lawyer); CONTRIBUTING and the pull request template explain how to agree to it.
+- `SECURITY.md` (private reporting), issue template config with links to Discussions and security advisories.
+- Open Graph and Twitter meta tags and a share image (`npm run og` renders `public/og.png` and `docs/img/social-preview.png`).
+- `npm run check:placeholders` lists owner placeholders still to fill in (not part of CI).
+- Showcase tooling (`npm run showcase`): records the demo build and composes a vertical showcase video and the README hero GIF (encoding needs ffmpeg).
+
 ## [2.1.1] - 08.11.2026
 
 ### Added
@@ -184,9 +199,10 @@ First public release under the name **dash**.
 - The bundled demo Wi-Fi password in the default config. The mock/demo build shows `demo-password` instead.
 - The old React liquid-glass demo page and its unused dependencies.
 
+[Unreleased]: https://github.com/Lokkisanek/Dash/compare/v2.1.1...HEAD
 [2.1.1]: https://github.com/Lokkisanek/Dash/releases/tag/v2.1.1
 [2.1.0]: https://github.com/Lokkisanek/Dash/releases/tag/v2.1.0
-[2.1.0-beta.3]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.3
-[2.1.0-beta.2]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.2
-[2.1.0-beta.1]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.1
-[2.0.0]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.0.0
+[2.1.0-beta.3]: https://github.com/Lokkisanek/Dash/releases/tag/v2.1.0-beta.3
+[2.1.0-beta.2]: https://github.com/Lokkisanek/Dash/releases/tag/v2.1.0-beta.2
+[2.1.0-beta.1]: https://github.com/Lokkisanek/Dash/releases/tag/v2.1.0-beta.1
+[2.0.0]: https://github.com/Lokkisanek/Dash/releases/tag/v2.0.0
