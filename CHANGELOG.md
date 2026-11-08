@@ -3,7 +3,7 @@
 All notable changes to dash are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.1.0] - 08.11.2026
 
 ### Fixed
 
@@ -178,6 +178,7 @@ First public release under the name **dash**.
 - The bundled demo Wi-Fi password in the default config. The mock/demo build shows `demo-password` instead.
 - The old React liquid-glass demo page and its unused dependencies.
 
+[2.1.0]: https://github.com/Lokkisanek/Dash/releases/tag/v2.1.0
 [2.1.0-beta.3]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.3
 [2.1.0-beta.2]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.2
 [2.1.0-beta.1]: https://github.com/Lokkisanek/Guest-HA-Dashboard/releases/tag/v2.1.0-beta.1
