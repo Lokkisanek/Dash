@@ -30,6 +30,7 @@ policy = load("guest_policy")
 RADARR_KEY = "fake-radarr-key-11112222"
 SONARR_KEY = "fake-sonarr-key-33334444"
 QB_PASSWORD = "fake-qb-password-5555"
+QB_KEY = "qbt_fakeKey0123456789abcdefABCD"
 TMDB_KEY = "fake-tmdb-key-66667777"
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 200
 
@@ -198,6 +199,8 @@ class FakeQbit:
     def __init__(self, version: str) -> None:
         self.version = version
         self.calls: list[tuple] = []
+        self.auth_seen: list[str] = []
+        self.logins = 0
         app = web.Application()
         app.router.add_post("/api/v2/auth/login", self.login)
         app.router.add_get(
@@ -234,6 +237,7 @@ class FakeQbit:
         self.web = app
 
     async def login(self, request):
+        self.logins += 1
         form = await request.post()
         if form.get("password") != QB_PASSWORD:
             return web.Response(text="Fails.")
@@ -243,8 +247,10 @@ class FakeQbit:
 
     def guard(self, handler):
         async def inner(request):
-            if request.cookies.get("SID") != "sid-xyz":
+            bearer = request.headers.get("Authorization") == f"Bearer {QB_KEY}"
+            if request.cookies.get("SID") != "sid-xyz" and not bearer:
                 return web.Response(status=403)
+            self.auth_seen.append("key" if bearer else "sid")
             return await handler(request)
 
         return inner
@@ -524,6 +530,75 @@ async def test_qbittorrent_pause_name_follows_the_version(version, expected) -> 
     finally:
         await session.close()
         await server.close()
+
+
+async def test_qbittorrent_api_key_skips_the_login() -> None:
+    fake = FakeQbit("2.14.1")
+    server = await _server(fake.web)
+    session = aiohttp.ClientSession()
+    url = str(server.make_url("")).rstrip("/")
+    try:
+        q = qbit_mod.QBittorrent(lambda: session, url, api_key=QB_KEY)
+        assert await q.test() == {"version": "2.14.1"}
+        assert [t["hash"] for t in await q.torrents()] == ["ABCDEF0123"]
+        await q.control("pause", "ABCDEF0123")
+        assert fake.calls[-1][0] == "stop"
+        # every request carried the key, none went through the cookie login
+        assert fake.logins == 0 and set(fake.auth_seen) == {"key"}
+        # a wrong key is refused at once, without a login attempt
+        bad = qbit_mod.QBittorrent(lambda: session, url, api_key="qbt_wrong")
+        with pytest.raises(client_mod.ServiceError) as err:
+            await bad.test()
+        assert err.value.code == "auth_failed" and fake.logins == 0
+    finally:
+        await session.close()
+        await server.close()
+
+
+def test_qbittorrent_sign_in_modes() -> None:
+    data: dict = {}
+    svc = service_mod.LibraryService(data, lambda: None, lambda: None)
+    url = "http://192.168.1.10:8080"
+    # an API key without a key is refused; an unknown mode too
+    with pytest.raises(client_mod.ServiceError) as err:
+        svc.set_service("qbittorrent", {"url": url, "auth": "api_key"})
+    assert err.value.code == "missing_key"
+    with pytest.raises(client_mod.ServiceError):
+        svc.set_service("qbittorrent", {"url": url, "auth": "digest"})
+    status = svc.set_service(
+        "qbittorrent", {"url": url, "auth": "api_key", "api_key": QB_KEY}
+    )
+    assert status["qbittorrent"] == {"configured": True, "url": url, "auth": "api_key"}
+    assert data["services"]["qbittorrent"] == {
+        "url": url,
+        "auth": "api_key",
+        "api_key": QB_KEY,
+    }
+    assert svc.qbit._api_key == QB_KEY
+    # "Změnit" with the same mode and no new key keeps the key
+    svc.set_service("qbittorrent", {"url": url + "/qb"})
+    assert data["services"]["qbittorrent"]["api_key"] == QB_KEY
+    # switching to the password forgets the key
+    svc.set_service(
+        "qbittorrent",
+        {"url": url, "auth": "password", "username": "admin", "password": QB_PASSWORD},
+    )
+    assert data["services"]["qbittorrent"] == {
+        "url": url,
+        "auth": "password",
+        "username": "admin",
+        "password": QB_PASSWORD,
+    }
+    assert svc.qbit._api_key == "" and svc.qbit._password == QB_PASSWORD
+    # and back: the password is gone, a key is required again
+    with pytest.raises(client_mod.ServiceError):
+        svc.set_service("qbittorrent", {"url": url, "auth": "api_key"})
+    # entries saved by 2.1.0 have no mode: they keep working with the password
+    data["services"]["qbittorrent"] = {"url": url, "username": "a", "password": "b"}
+    svc._build()
+    assert svc.services_status()["qbittorrent"]["auth"] == "password"
+    assert svc.qbit._password == "b"
+    assert QB_KEY not in json.dumps(svc.services_status())
 
 
 async def test_owner_torrent_controls_validate(env) -> None:

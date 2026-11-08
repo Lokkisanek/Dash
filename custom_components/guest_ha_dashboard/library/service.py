@@ -26,6 +26,13 @@ from .tmdb import TMDB_BASE, Tmdb
 SERVICES = ("tmdb", "radarr", "sonarr", "qbittorrent")
 STATUS_CACHE_SECONDS = 45
 SEEN_MAX = 600
+# qBittorrent sign-in modes and the secrets each one keeps
+QBIT_AUTH = {"api_key": ("api_key",), "password": ("username", "password")}
+
+
+def qbit_auth(entry: dict) -> str:
+    """Entries without a mode (saved by 2.1.0) use the username and password."""
+    return "api_key" if entry.get("auth") == "api_key" else "password"
 
 
 def _key(media: str, tmdb_id: int) -> tuple[str, int]:
@@ -86,13 +93,14 @@ class LibraryService:
             else None
         )
         q = s.get("qbittorrent", {})
-        self.qbit = (
-            QBittorrent(
+        self.qbit = None
+        if q.get("url") and qbit_auth(q) == "api_key":
+            if q.get("api_key"):
+                self.qbit = QBittorrent(self._session, q["url"], api_key=q["api_key"])
+        elif q.get("url"):
+            self.qbit = QBittorrent(
                 self._session, q["url"], q.get("username", ""), q.get("password", "")
             )
-            if q.get("url")
-            else None
-        )
         self.posters.arr_hosts = {
             name: {"url": s[name]["url"], "api_key": s[name]["api_key"]}
             for name in ("radarr", "sonarr")
@@ -115,6 +123,7 @@ class LibraryService:
             "qbittorrent": {
                 "configured": self.qbit is not None,
                 "url": s.get("qbittorrent", {}).get("url", ""),
+                "auth": qbit_auth(s.get("qbittorrent", {})),
             },
         }
 
@@ -132,7 +141,17 @@ class LibraryService:
                     raise ServiceError("bad_url")
                 entry["url"] = url
             old = self.data["services"].get(name, {})
-            for secret in ("api_key", "username", "password"):
+            auth = ""
+            if name == "qbittorrent":
+                # API key (qBittorrent 5.2+) or username + password; switching
+                # modes forgets the other mode's secrets
+                auth = fields.get("auth") or qbit_auth(old)
+                if auth not in QBIT_AUTH:
+                    raise ServiceError("bad_request")
+                if auth != qbit_auth(old):
+                    old = {}
+                entry["auth"] = auth
+            for secret in QBIT_AUTH.get(auth, ("api_key", "username", "password")):
                 value = fields.get(secret)
                 if isinstance(value, str) and value:
                     if len(value) > 300:
@@ -142,7 +161,8 @@ class LibraryService:
                     entry[secret] = old[
                         secret
                     ]  # "Změnit" without a new key keeps the old one
-            if name in ("tmdb", "radarr", "sonarr") and not entry.get("api_key"):
+            needs_key = name in ("tmdb", "radarr", "sonarr") or auth == "api_key"
+            if needs_key and not entry.get("api_key"):
                 raise ServiceError("missing_key")
             self.data["services"][name] = entry
         self._save()

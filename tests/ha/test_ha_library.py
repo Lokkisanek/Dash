@@ -19,6 +19,7 @@ pytestmark = pytest.mark.parametrize("expected_lingering_timers", [True])
 
 FAKE_KEY = "fake-radarr-key-ABCD1234"
 FAKE_PASSWORD = "fake-qb-password-EFGH5678"
+FAKE_QB_KEY = "qbt_fakeKey0123456789abcdefWXYZ"
 
 
 async def test_service_secrets_never_come_back(
@@ -55,6 +56,29 @@ async def test_service_secrets_never_come_back(
     assert replies[3]["result"]["library"]["enabled"] is False
     blob = json.dumps(replies)
     assert FAKE_KEY not in blob and FAKE_PASSWORD not in blob
+
+
+async def test_qbittorrent_api_key_mode(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, hass_ws_client: Any
+) -> None:
+    client = await hass_ws_client(hass)
+    base = {
+        "type": f"{DOMAIN}/library/set_service",
+        "service": "qbittorrent",
+        "url": "http://192.168.1.10:8080",
+    }
+    await client.send_json_auto_id({**base, "auth": "api_key"})
+    assert (await client.receive_json())["error"]["code"] == "missing_key"
+    await client.send_json_auto_id({**base, "auth": "digest"})
+    assert (await client.receive_json())["error"]["code"] == "invalid_format"
+    await client.send_json_auto_id({**base, "auth": "api_key", "api_key": FAKE_QB_KEY})
+    reply = await client.receive_json()
+    assert reply["result"]["qbittorrent"] == {
+        "configured": True,
+        "url": "http://192.168.1.10:8080",
+        "auth": "api_key",
+    }
+    assert FAKE_QB_KEY not in json.dumps(reply)
 
 
 async def test_bad_service_url_is_refused(

@@ -165,6 +165,7 @@ def ws_services(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         vol.Optional("api_key"): str,
         vol.Optional("username"): str,
         vol.Optional("password"): str,
+        vol.Optional("auth"): vol.In(("api_key", "password")),
         vol.Optional("remove"): bool,
     }
 )
@@ -173,7 +174,7 @@ def ws_services(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
 def ws_set_service(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     fields = {
         k: msg[k]
-        for k in ("url", "api_key", "username", "password", "remove")
+        for k in ("url", "api_key", "username", "password", "auth", "remove")
         if k in msg
     }
     try:
